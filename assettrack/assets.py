@@ -62,9 +62,20 @@ def create_asset(
         raise ValueError(f"create_asset failed: {error}") from error
 
 
-def get_asset_by_tag(conn: sqlite3.Connection, asset_tag: str) -> Optional[Dict]:
-    """Fetch an asset by asset_tag."""
-    raise NotImplementedError
+def get_asset_by_tag(
+    db_connection: sqlite3.Connection,
+    asset_tag: str,
+) -> dict | None:
+    normalized_tag = asset_tag.strip()
+    if not normalized_tag:
+        return None
+
+    cursor = db_connection.execute(
+        "SELECT * FROM assets WHERE asset_tag = ?;",
+        (normalized_tag,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
 
 
 def update_asset(conn: sqlite3.Connection, asset_tag: str, **fields) -> None:
