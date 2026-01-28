@@ -26,6 +26,9 @@ inventory_lists.json
 # local sqlite db files (real inventory stays local)
 data/*.db
 
+# legacy database
+legacy/
+
 # Logs
 *.log
 
@@ -34,3 +37,5 @@ data/*.db
 
 # Mac stuff
 .DS_Store
+
+
