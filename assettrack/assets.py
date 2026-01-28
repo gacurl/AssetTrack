@@ -117,8 +117,33 @@ def update_asset(
     if cursor.rowcount == 0:
         raise ValueError(f"No asset found for asset_tag={normalized_tag}")
 
+def retire_asset(
+    db_connection: sqlite3.Connection,
+    asset_tag: str,
+    updated_date: str | None = None,
+) -> None:
+    normalized_tag = asset_tag.strip()
+    if not normalized_tag:
+        raise ValueError("asset_tag is required")
 
+    table_columns = get_asset_table_columns(db_connection)
 
-def retire_asset(conn: sqlite3.Connection, asset_tag: str) -> None:
-    """Soft-retire an asset (no hard deletes)."""
-    raise NotImplementedError
+    set_clauses = ["accountability_status = ?"]
+    sql_values: list[Any] = ["retired"]
+
+    if "updated_date" in table_columns:
+        set_clauses.append("updated_date = ?")
+        sql_values.append(updated_date)
+
+    sql_statement = (
+        f"UPDATE assets SET {', '.join(set_clauses)} "
+        f"WHERE asset_tag = ?;"
+    )
+    sql_values.append(normalized_tag)
+
+    cursor = db_connection.execute(sql_statement, sql_values)
+    db_connection.commit()
+
+    if cursor.rowcount == 0:
+        raise ValueError(f"No asset found for asset_tag={normalized_tag}")
+
