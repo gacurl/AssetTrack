@@ -23,13 +23,14 @@ inventory.db
 # da2062_layout.json
 inventory_lists.json
 
+# local sqlite db files (real inventory stays local)
+data/*.db
+
 # Logs
 *.log
 
 # PyInstaller
 *.spec
-
-inventory.db
 
 # Mac stuff
 .DS_Store
