@@ -1,4 +1,9 @@
 # assettrack/assets.py
+from __future__ import annotations
+from typing import Any, Mapping
+from assettrack.audit import record_event
+
+import sqlite3
 """
 Asset CRUD helpers.
 
@@ -7,11 +12,6 @@ No UI wiring.
 No audit/state engine.
 No legacy integration.
 """
-
-from __future__ import annotations
-
-from typing import Any, Mapping
-import sqlite3
 
 def get_asset_table_columns(db_connection: sqlite3.Connection) -> set[str]:
     """Return column names for the assets table."""
@@ -60,7 +60,15 @@ def create_asset(
         db_connection.commit()
     except sqlite3.IntegrityError as error:
         raise ValueError(f"create_asset failed: {error}") from error
-
+    
+    record_event(
+        db_connection,
+        asset_tag=asset_tag,
+        event_type="created",
+        event_date=str(asset_data.get("created_date") or ""),
+        actor="system",
+        payload=dict(asset_data),
+    )
 
 def get_asset_by_tag(
     db_connection: sqlite3.Connection,
@@ -116,6 +124,15 @@ def update_asset(
 
     if cursor.rowcount == 0:
         raise ValueError(f"No asset found for asset_tag={normalized_tag}")
+    
+    record_event(
+        db_connection,
+        asset_tag=normalized_tag,
+        event_type="updated",
+        event_date=str(update_values.get("updated_date") or ""),
+        actor="system",
+        payload=dict(update_values),
+    )
 
 def retire_asset(
     db_connection: sqlite3.Connection,
@@ -146,4 +163,12 @@ def retire_asset(
 
     if cursor.rowcount == 0:
         raise ValueError(f"No asset found for asset_tag={normalized_tag}")
+    
+    record_event(
+        db_connection,
+        asset_tag=normalized_tag,
+        event_type="retired",
+        event_date=str(updated_date or ""),
+        actor="system",
+    )
 
