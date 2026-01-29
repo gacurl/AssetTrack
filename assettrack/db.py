@@ -25,39 +25,20 @@ def _create_schema(conn: sqlite3.Connection):
     """
     cursor = conn.cursor()
 
-    cursor.execute(
+        cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS assets (
+        CREATE TABLE IF NOT EXISTS asset_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-            -- Identity
-            asset_tag TEXT NOT NULL UNIQUE,
-            serial_number TEXT,
+            -- Link (FK-like, kept lightweight/offline-friendly)
+            asset_tag TEXT NOT NULL,
 
-            -- Description
-            equipment_type TEXT NOT NULL,
-            manufacturer TEXT,
-            model TEXT,
-            model_code TEXT,
-
-            -- Custody
-            custody_state TEXT NOT NULL,
-            issued_to_name TEXT,
-            issued_to_role TEXT,
-
-            -- Status
-            accountability_status TEXT NOT NULL,
-            condition TEXT NOT NULL,
-
-            -- Location (asset-first; case/slot are logistics)
-            location_site TEXT,
-            building_room TEXT,
-            case_number TEXT,
-            slot_number TEXT,
-
-            -- Timestamps (date-level is sufficient)
-            created_date TEXT NOT NULL,
-            updated_date TEXT
+            -- Event details
+            event_type TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            actor TEXT,
+            notes TEXT,
+            payload TEXT
         );
         """
     )
