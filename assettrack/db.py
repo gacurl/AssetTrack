@@ -25,22 +25,22 @@ def _create_schema(conn: sqlite3.Connection):
     """
     cursor = conn.cursor()
 
-        cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS asset_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cursor.execute(
+    """
+    CREATE TABLE IF NOT EXISTS asset_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-            -- Link (FK-like, kept lightweight/offline-friendly)
-            asset_tag TEXT NOT NULL,
+        -- Link (FK-like, kept lightweight/offline-friendly)
+        asset_tag TEXT NOT NULL,
 
-            -- Event details
-            event_type TEXT NOT NULL,
-            event_date TEXT NOT NULL,
-            actor TEXT,
-            notes TEXT,
-            payload TEXT
-        );
-        """
-    )
+        -- Event details
+        event_type TEXT NOT NULL,
+        event_date TEXT NOT NULL,
+        actor TEXT,
+        notes TEXT,
+        payload TEXT
+    );
+    """
+)
 
     conn.commit()
