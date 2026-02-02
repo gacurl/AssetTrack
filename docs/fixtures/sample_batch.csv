@@ -1,0 +1,4 @@
+asset_tag,timestamp,event_type,issued_to_name,operator_id,case_number,slot_number,building_room,notes
+AT-SMOKE-0001,2026-02-02T13:00:00Z,scan,Jane Smith,gcurl,CASE-01,SLOT-01,BQ26-101,"Initial scan"
+AT-SMOKE-0001,2026-02-02T13:05:00Z,update,Jane Smith,gcurl,CASE-01,SLOT-02,BQ26-101,"Moved slots"
+AT-SMOKE-0002,2026-02-02T13:10:00Z,issue,John Doe,gcurl,OUT,OUT,,"Checked out"
