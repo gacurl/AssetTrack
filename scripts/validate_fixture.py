@@ -1,3 +1,4 @@
+# scripts/validate_fixture.py
 """
 Smoke test: parse the sample batch CSV and validate required fields.
 Run:
