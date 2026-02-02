@@ -7,6 +7,7 @@ a validation preview with per-row errors.
 """
 
 from typing import List, Dict, Any
+from datetime import datetime
 
 REQUIRED_FIELDS = [
     "asset_tag",
@@ -25,6 +26,33 @@ ALLOWED_EVENT_TYPES = {
     "UPDATE",
     "RETIRE",
 }
+
+CREATE_HINT_FIELDS = {
+    "serial_number",
+    "manufacturer",
+    "model",
+    "model_code",
+    "building_room",
+    "notes",
+}
+
+def _is_iso8601_timestamp(value: str) -> bool:
+    """
+    Accepts ISO-8601 timestamps, including 'Z' for UTC.
+    """
+    s = (value or "").strip()
+    if not s:
+        return False
+
+    # Python's fromisoformat doesn't accept 'Z' directly.
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+
+    try:
+        datetime.fromisoformat(s)
+        return True
+    except ValueError:
+        return False
 
 def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     rows = []
@@ -47,6 +75,14 @@ def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                 errors.append(
                     f"Invalid event_type: {event_type} (allowed: {sorted(ALLOWED_EVENT_TYPES)})"
                 )
+        
+        timestamp = data.get("timestamp")
+        if timestamp and not _is_iso8601_timestamp(str(timestamp)):
+            errors.append(f"Invalid timestamp (expected ISO-8601): {timestamp}")
+
+        # TODO (Issue 3-4): enforce create rule:
+        # If asset_tag does not exist, require equipment_type.
+        # Needs DB existence check, not heuristics.
 
         if errors:
             overall_valid = False
