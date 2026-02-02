@@ -8,7 +8,6 @@ a validation preview with per-row errors.
 
 from typing import List, Dict, Any
 
-
 REQUIRED_FIELDS = [
     "asset_tag",
     "timestamp",
@@ -19,6 +18,13 @@ REQUIRED_FIELDS = [
     "slot_number",
 ]
 
+ALLOWED_EVENT_TYPES = {
+    "SCAN",
+    "ISSUE",
+    "RETURN",
+    "UPDATE",
+    "RETIRE",
+}
 
 def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     rows = []
@@ -33,6 +39,14 @@ def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             value = data.get(field)
             if value is None or str(value).strip() == "":
                 errors.append(f"Missing required field: {field}")
+
+        event_type = data.get("event_type")
+        if event_type:
+            event_type_normalized = str(event_type).strip().upper()
+            if event_type_normalized not in ALLOWED_EVENT_TYPES:
+                errors.append(
+                    f"Invalid event_type: {event_type} (allowed: {sorted(ALLOWED_EVENT_TYPES)})"
+                )
 
         if errors:
             overall_valid = False
