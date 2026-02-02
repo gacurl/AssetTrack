@@ -8,6 +8,7 @@ a validation preview with per-row errors.
 
 from typing import List, Dict, Any
 from datetime import datetime
+import re
 
 REQUIRED_FIELDS = [
     "asset_tag",
@@ -35,6 +36,8 @@ CREATE_HINT_FIELDS = {
     "building_room",
     "notes",
 }
+
+ASSET_TAG_RE = re.compile(r"^[A-Z0-9-]+$")
 
 def _is_iso8601_timestamp(value: str) -> bool:
     """
@@ -67,6 +70,10 @@ def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             value = data.get(field)
             if value is None or str(value).strip() == "":
                 errors.append(f"Missing required field: {field}")
+        
+        asset_tag = str(data.get("asset_tag", "")).strip().upper()
+        if asset_tag and not ASSET_TAG_RE.match(asset_tag):
+            errors.append(f"Invalid asset_tag (allowed A-Z, 0-9, '-'): {data.get('asset_tag')}")
 
         event_type = data.get("event_type")
         if event_type:
