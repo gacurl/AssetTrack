@@ -91,6 +91,12 @@ def validate_rows(parsed_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         # If asset_tag does not exist, require equipment_type.
         # Needs DB existence check, not heuristics.
 
+        case_number = str(data.get("case_number", "")).strip().upper()
+        slot_number = str(data.get("slot_number", "")).strip().upper()
+
+        if (case_number == "OUT") != (slot_number == "OUT"):
+            errors.append("case_number and slot_number must both be OUT (or neither)")
+
         if errors:
             overall_valid = False
 
