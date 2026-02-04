@@ -39,5 +39,3 @@ def record_event(
             json.dumps(payload) if payload is not None else None,
         ),
     )
-
-    conn.commit()

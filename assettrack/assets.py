@@ -57,7 +57,6 @@ def create_asset(
 
     try:
         db_connection.execute(sql_statement, sql_values)
-        db_connection.commit()
     except sqlite3.IntegrityError as error:
         raise ValueError(f"create_asset failed: {error}") from error
     
@@ -120,7 +119,6 @@ def update_asset(
     sql_values = list(update_values.values()) + [normalized_tag]
 
     cursor = db_connection.execute(sql_statement, sql_values)
-    db_connection.commit()
 
     if cursor.rowcount == 0:
         raise ValueError(f"No asset found for asset_tag={normalized_tag}")
@@ -159,7 +157,6 @@ def retire_asset(
     sql_values.append(normalized_tag)
 
     cursor = db_connection.execute(sql_statement, sql_values)
-    db_connection.commit()
 
     if cursor.rowcount == 0:
         raise ValueError(f"No asset found for asset_tag={normalized_tag}")
