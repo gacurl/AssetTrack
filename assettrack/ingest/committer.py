@@ -6,12 +6,19 @@ import sqlite3
 from typing import Any
 
 from assettrack.db import get_connection
+from assettrack.assets import create_asset, update_asset, retire_asset
+from assettrack.audit import record_event
 
+# Atomic batch commit layer.
+# This module is the ONLY place where batch ingest rows are turned into DB writes.
+# All writes happen inside a single sqlite transaction (all-or-nothing).
+
+
+# Ingest contract (mirrors validator.py)
+# Creation vs update is enforced here using DB existence checks.
 ALLOWED_EVENT_TYPES = {"SCAN", "ISSUE", "RETURN", "UPDATE", "RETIRE"}
-
 # Rule: if asset does NOT exist yet, only SCAN is allowed to create it.
 CREATE_EVENT_TYPES = {"SCAN"}
-
 # Rule: if asset DOES exist, these are allowed.
 UPDATE_EVENT_TYPES = {"SCAN", "ISSUE", "RETURN", "UPDATE", "RETIRE"}
 
@@ -23,6 +30,7 @@ class BatchPreconditionError(BatchCommitError):
     """Raised when validated data cannot be safely committed."""
     pass
 
+# Apply rows sequentially inside ONE transaction. Any exception aborts the entire batch.
 def _apply_rows(conn: sqlite3.Connection, validated_rows: list[dict[str, Any]]) -> None:
     """
     Apply all rows to the DB (called inside a single transaction).
@@ -30,6 +38,7 @@ def _apply_rows(conn: sqlite3.Connection, validated_rows: list[dict[str, Any]]) 
     This function MUST NOT commit. The caller owns the transaction boundary.
     """
     for row in validated_rows:
+        # row_number comes from CSV preview; used only for human-readable errors
         row_number = row.get("row_number", "?")
 
         # Support either {"row_number": n, "data": {...}} OR flat dict rows
@@ -42,6 +51,7 @@ def _apply_rows(conn: sqlite3.Connection, validated_rows: list[dict[str, Any]]) 
         except Exception as e:
             raise BatchCommitError(f"Row {row_number} failed: {e}") from e
 
+# Lightweight existence check used only for create-vs-update decisions. No locking, no writes.
 def _asset_exists(conn: sqlite3.Connection, asset_tag: str) -> bool:
     cursor = conn.execute(
         "SELECT 1 FROM assets WHERE asset_tag = ? LIMIT 1",
@@ -49,6 +59,7 @@ def _asset_exists(conn: sqlite3.Connection, asset_tag: str) -> bool:
     )
     return cursor.fetchone() is not None
 
+# This function enforces ingest rules AND performs the actual write. It MUST NOT commit; the caller owns the transaction boundary.
 def _apply_one_event(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     """
     Apply a single ingest event to the DB.
@@ -81,7 +92,42 @@ def _apply_one_event(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     if event_type in UPDATE_EVENT_TYPES and not exists:
         # enforce create rule here (validator TODO)
         raise BatchCommitError(f"Asset {asset_tag} does not exist (cannot apply {event_type})")
+    
+    event_date = _normalize_iso8601_timestamp(str(data.get("timestamp", "")))
+    actor = str(data.get("operator_id", "")).strip() or None
+    notes = str(data.get("notes", "")).strip() or None
 
+    # SCAN is the only event allowed to implicitly create a new asset
+    if event_type == "SCAN" and not exists:
+        create_asset(conn, asset_data=data)
+    else:
+        # for now, use update_asset for location-ish fields if present
+        update_asset(
+            conn,
+            asset_tag,
+            issued_to_name=data.get("issued_to_name"),
+            operator_id=data.get("operator_id"),
+            case_number=data.get("case_number"),
+            slot_number=data.get("slot_number"),
+            building_room=data.get("building_room"),
+            updated_date=event_date,
+        )
+
+    if event_type == "RETIRE":
+        retire_asset(conn, asset_tag, updated_date=event_date)
+
+    # Always record the ingest event exactly as received (append-only audit log)
+    record_event(
+        conn,
+        asset_tag=asset_tag,
+        event_type=event_type,
+        event_date=event_date,
+        actor=actor,
+        notes=notes,
+        payload=dict(data),
+    )
+
+# Entry point for batch ingest: opens the DB connection and owns the transaction.
 def commit_batch(validated_rows: list[dict]) -> None:
     """
     Commit a validated batch atomically (all-or-nothing).
@@ -101,6 +147,7 @@ def commit_batch(validated_rows: list[dict]) -> None:
     finally:
         conn.close()
 
+# Normalizes scanner timestamps (accepts trailing 'Z') and validates ISO-8601
 def _normalize_iso8601_timestamp(value: str) -> str:
     s = (value or "").strip()
     if not s:
