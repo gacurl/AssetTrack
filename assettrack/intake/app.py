@@ -9,7 +9,7 @@ Feynman-brief:
 """
 
 from __future__ import annotations
-from flask import Flask, request, render_template_string, session, redirect
+from flask import Flask, request, render_template, session, redirect
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.intake.scan import Scan
 from assettrack.ingest.validator import validate_rows
@@ -43,72 +43,12 @@ def auth_ok(submitted: str | None) -> bool:
         return True
     return submitted == INTAKE_PASSCODE
 
-PAGE = """
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AssetTrack Intake</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .row { margin: 0.75rem 0; }
-      input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; margin-left: 0.25rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 820px; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-    </style>
-  </head>
-  <body>
-    <h1>AssetTrack Intake</h1>
-    {% if auth_enabled %}
-      <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
-    {% endif %}
-    {% if auth_enabled and authed %}
-      <p><a href="/lock">Lock</a></p>
-    {% endif %}
-
-    <div class="card">
-      <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
-      <p><a href="/preview" target="_blank">Preview ingest rows (JSON)</a></p>
-
-      {% if auth_enabled and not authed %}
-        <form method="post">
-          <input type="password" name="access_code" placeholder="Access code" autofocus />
-          <button type="submit">Unlock</button>
-        </form>
-      {% else %}
-        <form class="row" method="post" action="/">
-          <input
-            type="text"
-            name="scan_text"
-            placeholder="Scan here..."
-            autofocus
-            autocomplete="off"
-          />
-          <button type="submit">Submit</button>
-          <button type="submit" name="action" value="clear">Clear queue</button>
-        </form>
-      {% endif %}
-    </div>
-
-    <div class="card">
-      <h2>Latest scan</h2>
-      <p><code>{{ latest }}</code></p>
-    </div>
-
-    <div class="card">
-      <h2>Queue ({{ queue_len }})</h2>
-      <ul>
-        {% for s in queue %}
-          <li><code>{{ s.asset_tag }}</code></li>
-        {% endfor %}
-      </ul>
-    </div>
-  </body>
-</html>
-"""
-
+def seconds_since_last_seen() -> int | None:
+    last_seen = session.get("last_seen")
+    if not last_seen:
+        return None
+    now = int(time.time())
+    return max(0, now - int(last_seen))
 
 @app.route("/", methods=["GET", "POST"])
 def intake():
@@ -153,14 +93,14 @@ def intake():
                 SCAN_QUEUE.append(record)
                 latest = record.asset_tag
 
-    return render_template_string(
-        PAGE,
-        latest=latest,
-        queue=SCAN_QUEUE,
-        queue_len=len(SCAN_QUEUE),
-        authed=authed,
-        auth_enabled=bool(INTAKE_PASSCODE),
-    )
+    return render_template(
+      "index.html",
+      latest=latest,
+      queue=SCAN_QUEUE,
+      queue_len=len(SCAN_QUEUE),
+      authed=authed,
+      auth_enabled=bool(INTAKE_PASSCODE),
+  )
 
 @app.route("/preview", methods=["GET"])
 def preview():
