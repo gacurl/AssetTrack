@@ -12,6 +12,7 @@ from __future__ import annotations
 from flask import Flask, request, render_template_string, session, redirect
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.intake.scan import Scan
+from assettrack.ingest.validator import validate_rows
 import os
 
 app = Flask(__name__)
@@ -146,6 +147,21 @@ def intake():
 def preview():
     rows = [scan_to_ingest_row(s) for s in SCAN_QUEUE]
     return {"count": len(rows), "rows": rows}
+
+@app.get("/preview/validate")
+def preview_validate():
+    parsed_rows = [
+        {"row_number": idx + 1, "data": scan_to_ingest_row(s)}
+        for idx, s in enumerate(SCAN_QUEUE)
+    ]
+
+    result = validate_rows(parsed_rows)
+
+    return {
+        "row_count": len(parsed_rows),
+        "valid": bool(result.get("valid")) if isinstance(result, dict) else False,
+        "result": result,
+    }
 
 @app.get("/lock")
 def lock():
