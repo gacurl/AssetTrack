@@ -8,3 +8,4 @@ pypdf==6.6.2
 python-dateutil==2.9.0.post0
 reportlab==4.4.9
 six==1.17.0
+Flask==3.0.2
