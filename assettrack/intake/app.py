@@ -9,14 +9,16 @@ Feynman-brief:
 """
 
 from __future__ import annotations
-from flask import Flask, request, render_template_string
-
+from flask import Flask, request, render_template_string, session, redirect
+from assettrack.intake.to_ingest import scan_to_ingest_row
+from assettrack.intake.scan import Scan
 import os
 
 app = Flask(__name__)
+app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 
 # In-memory only: wiped on restart (by design for Issue 4-1).
-SCAN_QUEUE: list[str] = []
+SCAN_QUEUE: list[Scan] = []
 
 def sanitize_scan(raw: str) -> str:
     """
@@ -54,9 +56,13 @@ PAGE = """
   </head>
   <body>
     <h1>AssetTrack Intake</h1>
+    {% if auth_enabled and authed %}
+      <p><a href="/lock">Lock</a></p>
+    {% endif %}
 
     <div class="card">
       <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
+      <p><a href="/preview" target="_blank">Preview ingest rows (JSON)</a></p>
 
       {% if auth_enabled and not authed %}
         <form method="post">
@@ -87,7 +93,7 @@ PAGE = """
       <h2>Queue ({{ queue_len }})</h2>
       <ul>
         {% for s in queue %}
-          <li><code>{{ s }}</code></li>
+          <li><code>{{ s.asset_tag }}</code></li>
         {% endfor %}
       </ul>
     </div>
@@ -99,12 +105,21 @@ PAGE = """
 @app.route("/", methods=["GET", "POST"])
 def intake():
     latest = ""
-    authed = True
 
-    if INTAKE_PASSCODE:
+    # If no passcode is set, auth is disabled.
+    if not INTAKE_PASSCODE:
+        authed = True
+    else:
+        authed = bool(session.get("authed", False))
+
+    # Handle unlock attempt
+    if request.method == "POST" and INTAKE_PASSCODE and "access_code" in request.form:
         submitted_code = request.form.get("access_code")
-        authed = auth_ok(submitted_code)
+        if auth_ok(submitted_code):
+            session["authed"] = True
+        return redirect("/")
 
+    # Handle scan / clear
     if request.method == "POST" and authed:
         action = request.form.get("action", "scan")
 
@@ -114,8 +129,9 @@ def intake():
             raw = request.form.get("scan_text", "")
             scan = sanitize_scan(raw)
             if scan:
-                SCAN_QUEUE.append(scan)
-                latest = scan
+                record = Scan.now(asset_tag=scan)
+                SCAN_QUEUE.append(record)
+                latest = record.asset_tag
 
     return render_template_string(
         PAGE,
@@ -126,6 +142,15 @@ def intake():
         auth_enabled=bool(INTAKE_PASSCODE),
     )
 
+@app.route("/preview", methods=["GET"])
+def preview():
+    rows = [scan_to_ingest_row(s) for s in SCAN_QUEUE]
+    return {"count": len(rows), "rows": rows}
+
+@app.get("/lock")
+def lock():
+    session.pop("authed", None)
+    return redirect("/")
 
 if __name__ == "__main__":
     # Local dev run (container wiring comes later).
