@@ -9,8 +9,9 @@ Feynman-brief:
 """
 
 from __future__ import annotations
-
 from flask import Flask, request, render_template_string
+
+import os
 
 app = Flask(__name__)
 
@@ -23,6 +24,17 @@ def sanitize_scan(raw: str) -> str:
     Anything else (tabs/newlines/suffix junk) is dropped.
     """
     return "".join(ch for ch in raw if ch.isalnum())
+
+INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
+
+def auth_ok(submitted: str | None) -> bool:
+    """
+    Minimal auth gate.
+    If no passcode is set, auth is disabled.
+    """
+    if not INTAKE_PASSCODE:
+        return True
+    return submitted == INTAKE_PASSCODE
 
 PAGE = """
 <!doctype html>
@@ -46,17 +58,24 @@ PAGE = """
     <div class="card">
       <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
 
-      <form class="row" method="post" action="/">
-        <input
-          type="text"
-          name="scan_text"
-          placeholder="Scan here..."
-          autofocus
-          autocomplete="off"
-        />
-        <button type="submit">Submit</button>
-        <button type="submit" name="action" value="clear">Clear queue</button>
-      </form>
+      {% if auth_enabled and not authed %}
+        <form method="post">
+          <input type="password" name="access_code" placeholder="Access code" autofocus />
+          <button type="submit">Unlock</button>
+        </form>
+      {% else %}
+        <form class="row" method="post" action="/">
+          <input
+            type="text"
+            name="scan_text"
+            placeholder="Scan here..."
+            autofocus
+            autocomplete="off"
+          />
+          <button type="submit">Submit</button>
+          <button type="submit" name="action" value="clear">Clear queue</button>
+        </form>
+      {% endif %}
     </div>
 
     <div class="card">
@@ -80,23 +99,31 @@ PAGE = """
 @app.route("/", methods=["GET", "POST"])
 def intake():
     latest = ""
-    if request.method == "POST":
-      action = request.form.get("action", "scan")
+    authed = True
 
-      if action == "clear":
-          SCAN_QUEUE.clear()
-      else:
-          raw = request.form.get("scan_text", "")
-          scan = sanitize_scan(raw)
-          if scan:
-              SCAN_QUEUE.append(scan)
-              latest = scan
+    if INTAKE_PASSCODE:
+        submitted_code = request.form.get("access_code")
+        authed = auth_ok(submitted_code)
+
+    if request.method == "POST" and authed:
+        action = request.form.get("action", "scan")
+
+        if action == "clear":
+            SCAN_QUEUE.clear()
+        else:
+            raw = request.form.get("scan_text", "")
+            scan = sanitize_scan(raw)
+            if scan:
+                SCAN_QUEUE.append(scan)
+                latest = scan
 
     return render_template_string(
         PAGE,
         latest=latest,
         queue=SCAN_QUEUE,
         queue_len=len(SCAN_QUEUE),
+        authed=authed,
+        auth_enabled=bool(INTAKE_PASSCODE),
     )
 
 
