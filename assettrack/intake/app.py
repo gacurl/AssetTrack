@@ -17,6 +17,13 @@ app = Flask(__name__)
 # In-memory only: wiped on restart (by design for Issue 4-1).
 SCAN_QUEUE: list[str] = []
 
+def sanitize_scan(raw: str) -> str:
+    """
+    Keep only letters and numbers.
+    Anything else (tabs/newlines/suffix junk) is dropped.
+    """
+    return "".join(ch for ch in raw if ch.isalnum())
+
 PAGE = """
 <!doctype html>
 <html lang="en">
@@ -48,6 +55,7 @@ PAGE = """
           autocomplete="off"
         />
         <button type="submit">Submit</button>
+        <button type="submit" name="action" value="clear">Clear queue</button>
       </form>
     </div>
 
@@ -73,11 +81,16 @@ PAGE = """
 def intake():
     latest = ""
     if request.method == "POST":
-        raw = request.form.get("scan_text", "")
-        scan = raw.strip()
-        if scan:
-            SCAN_QUEUE.append(scan)
-            latest = scan
+      action = request.form.get("action", "scan")
+
+      if action == "clear":
+          SCAN_QUEUE.clear()
+      else:
+          raw = request.form.get("scan_text", "")
+          scan = sanitize_scan(raw)
+          if scan:
+              SCAN_QUEUE.append(scan)
+              latest = scan
 
     return render_template_string(
         PAGE,
