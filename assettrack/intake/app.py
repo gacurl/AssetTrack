@@ -14,12 +14,18 @@ from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.intake.scan import Scan
 from assettrack.ingest.validator import validate_rows
 import os
+import time
 
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 
 # In-memory only: wiped on restart (by design for Issue 4-1).
 SCAN_QUEUE: list[Scan] = []
+INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
+INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # 5 minutes default
+
+def touch_session() -> None:
+    session["last_seen"] = int(time.time())
 
 def sanitize_scan(raw: str) -> str:
     """
@@ -27,8 +33,6 @@ def sanitize_scan(raw: str) -> str:
     Anything else (tabs/newlines/suffix junk) is dropped.
     """
     return "".join(ch for ch in raw if ch.isalnum())
-
-INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 
 def auth_ok(submitted: str | None) -> bool:
     """
@@ -57,6 +61,9 @@ PAGE = """
   </head>
   <body>
     <h1>AssetTrack Intake</h1>
+    {% if auth_enabled %}
+      <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
+    {% endif %}
     {% if auth_enabled and authed %}
       <p><a href="/lock">Lock</a></p>
     {% endif %}
@@ -112,12 +119,24 @@ def intake():
         authed = True
     else:
         authed = bool(session.get("authed", False))
+    
+    # Auto-lock after inactivity.
+    if INTAKE_PASSCODE and authed:
+        last_seen = int(session.get("last_seen", 0))
+        now = int(time.time())
+        if last_seen and (now - last_seen) > INTAKE_TIMEOUT_SECONDS:
+            session.pop("authed", None)
+            session.pop("last_seen", None)
+            authed = False
+        else:
+            touch_session()
 
     # Handle unlock attempt
     if request.method == "POST" and INTAKE_PASSCODE and "access_code" in request.form:
         submitted_code = request.form.get("access_code")
         if auth_ok(submitted_code):
             session["authed"] = True
+            touch_session()
         return redirect("/")
 
     # Handle scan / clear
@@ -166,6 +185,7 @@ def preview_validate():
 @app.get("/lock")
 def lock():
     session.pop("authed", None)
+    session.pop("last_seen", None)
     return redirect("/")
 
 if __name__ == "__main__":
