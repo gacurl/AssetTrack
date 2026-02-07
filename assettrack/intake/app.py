@@ -108,16 +108,10 @@ def build_parsed_rows_from_queue() -> list[dict]:
       [{"row_number": 1, "data": {...}}, ...]
     Also inject session equipment_type for SCAN rows missing it.
     """
-    equipment_type = (session.get("equipment_type") or "").strip()
-
     rows: list[dict] = []
+
     for idx, s in enumerate(SCAN_QUEUE):
         data = scan_to_ingest_row(s)
-
-        # Make preview reflect the operator's selected type
-        if data.get("event_type") == "SCAN" and not str(data.get("equipment_type") or "").strip():
-            data["equipment_type"] = equipment_type
-
         rows.append({"row_number": idx + 1, "data": data})
 
     return rows
@@ -160,7 +154,8 @@ def intake():
             raw = request.form.get("scan_text", "")
             scan = sanitize_scan(raw)
             if scan:
-                record = Scan.now(asset_tag=scan)
+                equipment_type = (request.form.get("equipment_type") or session.get("equipment_type") or "laptop").strip() or "laptop"
+                record = Scan.now(asset_tag=scan, equipment_type=equipment_type)
 
                 existing = {s.asset_tag for s in SCAN_QUEUE}
                 if record.asset_tag in existing:
@@ -168,6 +163,7 @@ def intake():
 
                 SCAN_QUEUE.append(record)
                 latest = record.asset_tag
+                session["equipment_type"] = "laptop"
                 touch_session()
 
         return redirect("/")
@@ -180,6 +176,8 @@ def intake():
     if authed and last_seen_age_seconds is None:
         last_seen_age_seconds = 0
 
+    if not SCAN_QUEUE:
+        session["equipment_type"] = "laptop"
     return render_template(
         "index.html",
         latest=latest,
@@ -189,7 +187,7 @@ def intake():
         auth_enabled=auth_enabled(),
         timeout_seconds=timeout_seconds,
         last_seen_age_seconds=last_seen_age_seconds,
-        equipment_type=(session.get("equipment_type") or "").strip(),
+        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
     )
 
 
@@ -203,13 +201,14 @@ def preview():
         rows = [r["data"] for r in parsed_rows]
         return {"count": len(rows), "valid": is_valid, "result": validation, "rows": rows}
 
+
     return render_template(
         "preview.html",
         row_count=len(parsed_rows),
         parsed_rows=parsed_rows,
         valid=is_valid,
         validation=validation,
-        equipment_type=(session.get("equipment_type") or "").strip(),
+        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
     )
 
 

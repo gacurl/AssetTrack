@@ -25,6 +25,7 @@ def scan_to_ingest_row(scan: Scan) -> dict:
         scanned_at = scanned_at.replace(tzinfo=timezone.utc)
 
     operator_id = (scan.operator_id or DEFAULT_OPERATOR_ID or "").strip()
+    equipment_type = (getattr(scan, "equipment_type", "") or "").strip() or "laptop"
 
     return {
         "asset_tag": (scan.asset_tag or "").strip().upper(),
@@ -37,5 +38,5 @@ def scan_to_ingest_row(scan: Scan) -> dict:
         "building_room": "",    # optional
         "notes": "",            # optional
         "row_number": None,     # preview convenience
-        "equipment_type": "",   # may be required later for create; leaving blank for now
+        "equipment_type": equipment_type,
     }
