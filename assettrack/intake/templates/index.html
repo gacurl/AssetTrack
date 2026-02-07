@@ -23,8 +23,8 @@
         <p>
           Timeout: {{ timeout_seconds }}s<br />
           Last activity:
-          {% if seconds_since_last_seen is not none %}
-            {{ seconds_since_last_seen }}s ago
+          {% if last_seen_age_seconds is not none %}
+            <span id="last-activity-seconds">{{ last_seen_age_seconds }}</span>s ago
           {% else %}
             n/a
           {% endif %}
@@ -74,5 +74,17 @@
         {% endfor %}
       </ul>
     </div>
+    <script>
+      const lastActivityEl = document.getElementById("last-activity-seconds");
+
+      if (lastActivityEl) {
+        let seconds = parseInt(lastActivityEl.textContent, 10);
+
+        setInterval(() => {
+          seconds += 1;
+          lastActivityEl.textContent = seconds;
+        }, 1000);
+      }
+    </script>
   </body>
 </html>
