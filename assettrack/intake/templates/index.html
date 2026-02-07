@@ -60,7 +60,7 @@
 
     <div class="card">
       <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
-      <p><a href="/preview" target="_blank">Preview ingest rows (JSON)</a></p>
+      <p><a href="/preview" target="_blank">Preview batch</a></p>
 
       {% if auth_enabled and not authed %}
         <form method="post">
@@ -95,7 +95,7 @@
         </form>
       {% endif %}
       <form method="post" action="/preview/commit" style="margin-top: 10px;">
-        <button type="submit">Commit batch</button>
+        <button type="submit">Add to database</button>
       </form>
     </div>
 
