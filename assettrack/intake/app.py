@@ -248,7 +248,7 @@ def preview_commit():
                 "error": "Validation failed",
                 "result": validation,
             }, 400
-        flash("Validation failed. Fix the batch before adding to the database.", "error")
+        flash("Fix the batch before adding to the database.", "error")
         return redirect(url_for("preview"))
 
     equipment_type = (session.get("equipment_type") or "").strip()
@@ -259,7 +259,7 @@ def preview_commit():
                 "committed": 0,
                 "error": "Equipment type is required to create new assets",
             }, 400
-        flash("Equipment type is required to create new assets.", "error")
+        flash("Equipment type is required before adding new assets to the database.", "error")
         return redirect(url_for("preview"))
 
     # Commit atomically.
@@ -268,7 +268,7 @@ def preview_commit():
     except BatchCommitError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 500
-        flash(str(e), "error")
+        flash(f"Could not add items to the database: {e}", "error")
         return redirect(url_for("preview"))
 
     # Clear queue ONLY after commit succeeds.
