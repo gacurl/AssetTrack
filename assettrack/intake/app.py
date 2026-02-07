@@ -248,7 +248,7 @@ def preview_commit():
                 "error": "Validation failed",
                 "result": validation,
             }, 400
-        flash("Validation failed. Fix the batch before committing.", "error")
+        flash("Validation failed. Fix the batch before adding to the database.", "error")
         return redirect(url_for("preview"))
 
     equipment_type = (session.get("equipment_type") or "").strip()
@@ -278,7 +278,7 @@ def preview_commit():
     if wants_json():
         return {"ok": True, "committed": result.committed_count}
 
-    flash(f"Committed {result.committed_count} rows.", "success")
+    flash(f"Added {result.committed_count} items to the database.", "success")
     return redirect(url_for("intake"))
 
 
