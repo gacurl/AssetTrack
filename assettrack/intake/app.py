@@ -1,11 +1,12 @@
 # assettrack/intake/app.py
 """
-Issue 4-1: Local Intake UI (Keyboard Wedge) — proof of capture.
+Issue 4-1+: Local Intake UI (Keyboard Wedge)
 
 Feynman-brief:
 - Scanner acts like a keyboard.
 - Browser input box receives the "typed" barcode + Enter.
 - We store scans in an in-memory list (queue) and echo them back.
+- Preview/validate/commit are separate steps; commit is atomic.
 """
 
 from __future__ import annotations
@@ -16,10 +17,10 @@ from typing import Optional
 
 from flask import Flask, redirect, render_template, request, session
 
+from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.ingest.validator import validate_rows
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
-
 
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
@@ -30,8 +31,7 @@ SCAN_QUEUE: list[Scan] = []
 INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
 
-
-# Helper functions
+# Helpers
 
 def now_seconds() -> int:
     return int(time.time())
@@ -100,7 +100,23 @@ def seconds_since_last_seen() -> Optional[int]:
         return None
     return max(0, now_seconds() - int(last_seen))
 
-# Route handlers
+
+def build_parsed_rows_from_queue() -> list[dict]:
+    equipment_type = (session.get("equipment_type") or "").strip()
+
+    rows = []
+    for idx, s in enumerate(SCAN_QUEUE):
+        data = scan_to_ingest_row(s)
+
+        # Make preview reflect the operator's selected type
+        if data.get("event_type") == "SCAN" and not str(data.get("equipment_type") or "").strip():
+            data["equipment_type"] = equipment_type
+
+        rows.append({"row_number": idx + 1, "data": data})
+
+    return rows
+
+# Routes
 
 @app.route("/", methods=["GET", "POST"])
 def intake():
@@ -118,6 +134,7 @@ def intake():
 
     # Handle scan / clear only when authed.
     if request.method == "POST" and authed:
+        session["equipment_type"] = (request.form.get("equipment_type") or "").strip()
         action = request.form.get("action", "scan")
 
         if action == "clear":
@@ -128,6 +145,11 @@ def intake():
             scan = sanitize_scan(raw)
             if scan:
                 record = Scan.now(asset_tag=scan)
+
+                existing = {s.asset_tag for s in SCAN_QUEUE}
+                if record.asset_tag in existing:
+                    return redirect("/")
+                
                 SCAN_QUEUE.append(record)
                 latest = record.asset_tag
                 touch_session()
@@ -156,16 +178,14 @@ def intake():
 
 @app.get("/preview")
 def preview():
-    rows = [scan_to_ingest_row(s) for s in SCAN_QUEUE]
+    parsed_rows = build_parsed_rows_from_queue()
+    rows = [r["data"] for r in parsed_rows]
     return {"count": len(rows), "rows": rows}
 
 
 @app.get("/preview/validate")
 def preview_validate():
-    parsed_rows = [
-        {"row_number": idx + 1, "data": scan_to_ingest_row(s)}
-        for idx, s in enumerate(SCAN_QUEUE)
-    ]
+    parsed_rows = build_parsed_rows_from_queue()
     result = validate_rows(parsed_rows)
 
     return {
@@ -173,6 +193,55 @@ def preview_validate():
         "valid": bool(result.get("valid")) if isinstance(result, dict) else False,
         "result": result,
     }
+
+
+@app.post("/preview/commit")
+def preview_commit():
+    # Enforce auth and inactivity timeout for commit requests.
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        return {"ok": False, "committed": 0, "error": "Locked"}, 401
+
+    parsed_rows = [
+        {"row_number": idx + 1, "data": scan_to_ingest_row(s)}
+        for idx, s in enumerate(SCAN_QUEUE)
+    ]
+
+    # Validate first (commit boundary: reviewed + valid only).
+    validation = validate_rows(parsed_rows)
+    is_valid = bool(validation.get("valid")) if isinstance(validation, dict) else False
+    if not is_valid:
+        return {
+            "ok": False,
+            "committed": 0,
+            "error": "Validation failed",
+            "result": validation,
+        }, 400
+
+    equipment_type = (session.get("equipment_type") or "").strip()
+
+    if not equipment_type:
+        return {
+            "ok": False,
+            "committed": 0,
+            "error": "Equipment type is required to create new assets",
+        }, 400
+
+    for r in parsed_rows:
+        data = r.get("data", {})
+        if data.get("event_type") == "SCAN" and not data.get("equipment_type"):
+            data["equipment_type"] = equipment_type
+    # Commit atomically.
+    try:
+        result = commit_batch(parsed_rows)
+    except BatchCommitError as e:
+        return {"ok": False, "committed": 0, "error": str(e)}, 500
+
+    # Clear queue ONLY after commit succeeds.
+    SCAN_QUEUE.clear()
+    touch_session()
+
+    return {"ok": True, "committed": result.committed_count}
 
 
 @app.get("/lock")

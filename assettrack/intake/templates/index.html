@@ -58,17 +58,34 @@
         </form>
       {% else %}
         <form class="row" method="post" action="/">
-          <input
-            type="text"
-            name="scan_text"
-            placeholder="Scan here..."
-            autofocus
-            autocomplete="off"
-          />
-          <button type="submit">Submit</button>
-          <button type="submit" name="action" value="clear">Clear queue</button>
+          <div class="row">
+            <label for="equipment_type"><strong>Equipment type</strong> (required to create new assets)</label><br />
+            <input
+              type="text"
+              id="equipment_type"
+              name="equipment_type"
+              placeholder="e.g. laptop"
+              value="{{ equipment_type or '' }}"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="row">
+            <input
+              type="text"
+              name="scan_text"
+              placeholder="Scan here..."
+              autofocus
+              autocomplete="off"
+            />
+            <button type="submit">Submit</button>
+            <button type="submit" name="action" value="clear">Clear queue</button>
+          </div>
         </form>
       {% endif %}
+      <form method="post" action="/preview/commit" style="margin-top: 10px;">
+        <button type="submit">Commit batch</button>
+      </form>
     </div>
 
     <div class="card">
