@@ -12,6 +12,9 @@
       button { padding: 0.6rem 1rem; font-size: 1rem; margin-left: 0.25rem; }
       .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 820px; }
       code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
+      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 820px; }
+      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
+      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
     </style>
   </head>
   <body>
@@ -47,6 +50,14 @@
       <p><a href="/lock">Lock</a></p>
     {% endif %}
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category|e }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     <div class="card">
       <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
       <p><a href="/preview" target="_blank">Preview ingest rows (JSON)</a></p>
@@ -58,17 +69,34 @@
         </form>
       {% else %}
         <form class="row" method="post" action="/">
-          <input
-            type="text"
-            name="scan_text"
-            placeholder="Scan here..."
-            autofocus
-            autocomplete="off"
-          />
-          <button type="submit">Submit</button>
-          <button type="submit" name="action" value="clear">Clear queue</button>
+          <div class="row">
+            <label for="equipment_type"><strong>Equipment type</strong> (required to create new assets)</label><br />
+            <input
+              type="text"
+              id="equipment_type"
+              name="equipment_type"
+              placeholder="e.g. laptop"
+              value="{{ equipment_type or '' }}"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="row">
+            <input
+              type="text"
+              name="scan_text"
+              placeholder="Scan here..."
+              autofocus
+              autocomplete="off"
+            />
+            <button type="submit">Submit</button>
+            <button type="submit" name="action" value="clear">Clear queue</button>
+          </div>
         </form>
       {% endif %}
+      <form method="post" action="/preview/commit" style="margin-top: 10px;">
+        <button type="submit">Commit batch</button>
+      </form>
     </div>
 
     <div class="card">

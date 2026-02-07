@@ -1,0 +1,114 @@
+<!-- file: assettrack/intake/templates/preview.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AssetTrack Preview</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
+      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
+      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; }
+      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
+      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
+      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; border-bottom: 1px solid #eee; padding: 0.5rem; vertical-align: top; }
+      th { background: #fafafa; }
+      .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
+      .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
+      .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+      .row { margin: 0.75rem 0; }
+      button { padding: 0.6rem 1rem; font-size: 1rem; }
+      a { text-decoration: none; }
+    </style>
+  </head>
+
+  <body>
+    <h1>Batch Preview</h1>
+
+    <div class="row">
+      <a href="/">← Back to intake</a>
+    </div>
+
+    <!-- Flash messages (commit/validate errors) -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category|e }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="card">
+      <p>
+        <strong>Rows:</strong> {{ row_count }}
+        &nbsp;|&nbsp;
+        <strong>Equipment type (session):</strong> <code>{{ equipment_type or "" }}</code>
+        &nbsp;|&nbsp;
+        <strong>Status:</strong>
+        {% if valid %}
+          <span class="pill good">valid</span>
+        {% else %}
+          <span class="pill bad">not valid</span>
+        {% endif %}
+      </p>
+
+      <form method="post" action="/preview/commit" style="margin-top: 10px;">
+        <button type="submit">Add to database</button>
+      </form>
+
+      <p style="margin-top: 10px;">
+        Tip: for raw JSON, open <code>/preview?json=1</code> or <code>/preview/validate</code>.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Rows</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 70px;">#</th>
+            <th style="width: 120px;">Event</th>
+            <th style="width: 220px;">Asset tag</th>
+            <th style="width: 160px;">Timestamp</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in parsed_rows %}
+            {% set d = r["data"] %}
+            <tr>
+              <td><code>{{ r["row_number"] }}</code></td>
+              <td><code>{{ d.get("event_type", "") }}</code></td>
+              <td><code>{{ d.get("asset_tag", "") }}</code></td>
+              <td><code>{{ d.get("timestamp", "") }}</code></td>
+              <td>
+                <code>operator_id</code>: <code>{{ d.get("operator_id", "") }}</code>
+                {% if d.get("equipment_type") %}
+                  <br /><code>equipment_type</code>: <code>{{ d.get("equipment_type") }}</code>
+                {% endif %}
+                {% if d.get("case_number") or d.get("slot_number") %}
+                  <br /><code>case</code>/<code>slot</code>:
+                  <code>{{ d.get("case_number","") }}</code>/<code>{{ d.get("slot_number","") }}</code>
+                {% endif %}
+                {% if d.get("issued_to_name") %}
+                  <br /><code>issued_to_name</code>: <code>{{ d.get("issued_to_name") }}</code>
+                {% endif %}
+                {% if d.get("notes") %}
+                  <br /><code>notes</code>: <code>{{ d.get("notes") }}</code>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Validation result</h2>
+      <pre>{{ validation | tojson(indent=2) }}</pre>
+    </div>
+  </body>
+</html>

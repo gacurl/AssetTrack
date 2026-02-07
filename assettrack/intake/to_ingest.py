@@ -3,35 +3,39 @@
 Translate intake Scan objects into the row shape the ingest pipeline expects.
 
 Feynman-brief:
-- Intake captures "what was scanned"
-- Ingest expects a dict shaped like a CSV row
-- This adapter keeps those worlds decoupled
+- Scanner acts like a keyboard wedge.
+- A wedge scan is a SCAN event.
+- This adapter fills safe defaults so preview/validate/commit can work.
 """
+
 from __future__ import annotations
+
+import os
 from datetime import timezone
+
 from assettrack.intake.scan import Scan
 
 
-def scan_to_ingest_row(scan: Scan) -> dict:
-    """
-    Convert an intake Scan into the ingest-row shape.
+DEFAULT_OPERATOR_ID = os.getenv("ASSETTRACK_OPERATOR_ID", "intake")
 
-    This is preview-only. We do not commit anything here.
-    We only fill what intake actually knows today and leave the rest blank.
-    """
+
+def scan_to_ingest_row(scan: Scan) -> dict:
     scanned_at = scan.scanned_at
     if scanned_at.tzinfo is None:
         scanned_at = scanned_at.replace(tzinfo=timezone.utc)
 
+    operator_id = (scan.operator_id or DEFAULT_OPERATOR_ID or "").strip()
+
     return {
-        "asset_tag": scan.asset_tag,
+        "asset_tag": (scan.asset_tag or "").strip().upper(),
         "timestamp": scanned_at.isoformat(),
-        "event_type": "",         # intake does not know yet
-        "issued_to_name": "",     # intake does not know yet
-        "operator_id": scan.operator_id or "",
-        "case_number": "",        # intake does not know yet
-        "slot_number": "",        # intake does not know yet
-        "building_room": "",      # optional, safe default
-        "notes": "",              # optional, safe default
-        "row_number": None,       # ingest validator may accept None
+        "event_type": "SCAN",
+        "issued_to_name": "",   # not required for SCAN
+        "operator_id": operator_id,
+        "case_number": "",      # optional for SCAN (validator controls)
+        "slot_number": "",      # optional for SCAN (validator controls)
+        "building_room": "",    # optional
+        "notes": "",            # optional
+        "row_number": None,     # preview convenience
+        "equipment_type": "",   # may be required later for create; leaving blank for now
     }

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Mapping
 from assettrack.audit import record_event
+from datetime import date
 
 import sqlite3
 """
@@ -41,6 +42,20 @@ def create_asset(
     }
 
     insert_values["asset_tag"] = asset_tag
+
+    # Required NOT NULL defaults (schema-driven)
+    if "custody_state" in table_columns and not insert_values.get("custody_state"):
+        insert_values["custody_state"] = "in_stock"
+
+    if "accountability_status" in table_columns and not insert_values.get("accountability_status"):
+        insert_values["accountability_status"] = "accountable"
+    
+    if "created_date" in table_columns and not insert_values.get("created_date"):
+        insert_values["created_date"] = date.today().isoformat()  # "YYYY-MM-DD"
+
+    # Optional but commonly NOT NULL in your model — set if present
+    if "condition" in table_columns and not insert_values.get("condition"):
+        insert_values["condition"] = "serviceable"
 
     if "retired" in table_columns and "retired" not in insert_values:
         insert_values["retired"] = 0
