@@ -42,5 +42,3 @@ def _create_schema(conn: sqlite3.Connection):
     );
     """
 )
-
-    conn.commit()

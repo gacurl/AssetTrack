@@ -1,4 +1,4 @@
-# assettrack/intake/app.py
+# file: assettrack/intake/app.py
 """
 Issue 4-1+: Local Intake UI (Keyboard Wedge)
 
@@ -15,7 +15,7 @@ import os
 import time
 from typing import Optional
 
-from flask import Flask, redirect, render_template, request, session
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.ingest.validator import validate_rows
@@ -30,6 +30,7 @@ SCAN_QUEUE: list[Scan] = []
 
 INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
+
 
 # Helpers
 
@@ -102,9 +103,14 @@ def seconds_since_last_seen() -> Optional[int]:
 
 
 def build_parsed_rows_from_queue() -> list[dict]:
+    """
+    Build rows in the validator/committer format:
+      [{"row_number": 1, "data": {...}}, ...]
+    Also inject session equipment_type for SCAN rows missing it.
+    """
     equipment_type = (session.get("equipment_type") or "").strip()
 
-    rows = []
+    rows: list[dict] = []
     for idx, s in enumerate(SCAN_QUEUE):
         data = scan_to_ingest_row(s)
 
@@ -115,6 +121,16 @@ def build_parsed_rows_from_queue() -> list[dict]:
         rows.append({"row_number": idx + 1, "data": data})
 
     return rows
+
+
+def wants_json() -> bool:
+    """
+    Simple switch so curl/automation can still get JSON:
+      /preview?json=1
+      /preview/commit?json=1 (POST)
+    """
+    return (request.args.get("json") or "").strip() == "1"
+
 
 # Routes
 
@@ -149,7 +165,7 @@ def intake():
                 existing = {s.asset_tag for s in SCAN_QUEUE}
                 if record.asset_tag in existing:
                     return redirect("/")
-                
+
                 SCAN_QUEUE.append(record)
                 latest = record.asset_tag
                 touch_session()
@@ -173,14 +189,28 @@ def intake():
         auth_enabled=auth_enabled(),
         timeout_seconds=timeout_seconds,
         last_seen_age_seconds=last_seen_age_seconds,
+        equipment_type=(session.get("equipment_type") or "").strip(),
     )
 
 
 @app.get("/preview")
 def preview():
     parsed_rows = build_parsed_rows_from_queue()
-    rows = [r["data"] for r in parsed_rows]
-    return {"count": len(rows), "rows": rows}
+    validation = validate_rows(parsed_rows)
+    is_valid = bool(validation.get("valid")) if isinstance(validation, dict) else False
+
+    if wants_json():
+        rows = [r["data"] for r in parsed_rows]
+        return {"count": len(rows), "valid": is_valid, "result": validation, "rows": rows}
+
+    return render_template(
+        "preview.html",
+        row_count=len(parsed_rows),
+        parsed_rows=parsed_rows,
+        valid=is_valid,
+        validation=validation,
+        equipment_type=(session.get("equipment_type") or "").strip(),
+    )
 
 
 @app.get("/preview/validate")
@@ -200,48 +230,56 @@ def preview_commit():
     # Enforce auth and inactivity timeout for commit requests.
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
-        return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
 
-    parsed_rows = [
-        {"row_number": idx + 1, "data": scan_to_ingest_row(s)}
-        for idx, s in enumerate(SCAN_QUEUE)
-    ]
+    parsed_rows = build_parsed_rows_from_queue()
 
     # Validate first (commit boundary: reviewed + valid only).
     validation = validate_rows(parsed_rows)
     is_valid = bool(validation.get("valid")) if isinstance(validation, dict) else False
     if not is_valid:
-        return {
-            "ok": False,
-            "committed": 0,
-            "error": "Validation failed",
-            "result": validation,
-        }, 400
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Validation failed",
+                "result": validation,
+            }, 400
+        flash("Validation failed. Fix the batch before committing.", "error")
+        return redirect(url_for("preview"))
 
     equipment_type = (session.get("equipment_type") or "").strip()
-
     if not equipment_type:
-        return {
-            "ok": False,
-            "committed": 0,
-            "error": "Equipment type is required to create new assets",
-        }, 400
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Equipment type is required to create new assets",
+            }, 400
+        flash("Equipment type is required to create new assets.", "error")
+        return redirect(url_for("preview"))
 
-    for r in parsed_rows:
-        data = r.get("data", {})
-        if data.get("event_type") == "SCAN" and not data.get("equipment_type"):
-            data["equipment_type"] = equipment_type
     # Commit atomically.
     try:
         result = commit_batch(parsed_rows)
     except BatchCommitError as e:
-        return {"ok": False, "committed": 0, "error": str(e)}, 500
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": str(e)}, 500
+        flash(str(e), "error")
+        return redirect(url_for("preview"))
 
     # Clear queue ONLY after commit succeeds.
     SCAN_QUEUE.clear()
     touch_session()
 
-    return {"ok": True, "committed": result.committed_count}
+    if wants_json():
+        return {"ok": True, "committed": result.committed_count}
+
+    flash(f"Committed {result.committed_count} rows.", "success")
+    return redirect(url_for("intake"))
 
 
 @app.get("/lock")
