@@ -223,6 +223,28 @@ def preview_validate():
         "result": result,
     }
 
+@app.post("/preview/discard")
+def preview_discard():
+    # Enforce auth and inactivity timeout for discard requests.
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "discarded": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    discarded = len(SCAN_QUEUE)
+    SCAN_QUEUE.clear()
+
+    # Reset UI defaults back to laptop (same invariant as intake()).
+    session["equipment_type"] = "laptop"
+    touch_session()
+
+    if wants_json():
+        return {"ok": True, "discarded": discarded}
+
+    flash("Batch discarded.", "success")
+    return redirect(url_for("intake"))
 
 @app.post("/preview/commit")
 def preview_commit():
@@ -234,6 +256,18 @@ def preview_commit():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    # Require deliberate confirmation before adding to the database.
+    confirmed = (request.form.get("confirm_reviewed") or "").strip().lower() in {"on", "true", "1", "yes"}
+    if not confirmed:
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Please confirm you reviewed the batch before adding it.",
+            }, 400
+        flash("Please confirm you reviewed the batch before adding it.", "error")
+        return redirect(url_for("preview"))
+    
     parsed_rows = build_parsed_rows_from_queue()
 
     # Validate first (commit boundary: reviewed + valid only).
