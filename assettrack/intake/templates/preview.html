@@ -56,7 +56,17 @@
       </p>
 
       <form method="post" action="/preview/commit" style="margin-top: 10px;">
-        <button type="submit">Add to database</button>
+        <label style="display:block; margin-bottom: 10px;">
+          <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
+          I reviewed this batch and want to add it to the database.
+        </label>
+
+        <button id="add_btn" type="submit" disabled>Add to database</button>
+      </form>
+
+      <form method="post" action="/preview/discard" style="margin-top: 10px;"
+            onsubmit="return confirm('Discard this batch? This clears the queue.');">
+        <button type="submit">Discard batch</button>
       </form>
 
       <p style="margin-top: 10px;">
@@ -110,5 +120,15 @@
       <h2>Validation result</h2>
       <pre>{{ validation | tojson(indent=2) }}</pre>
     </div>
+
+    <script>
+      const cb = document.getElementById('confirm_reviewed');
+      const btn = document.getElementById('add_btn');
+      if (cb && btn) {
+        const sync = () => { btn.disabled = !cb.checked; };
+        cb.addEventListener('change', sync);
+        sync();
+      }
+    </script>
   </body>
 </html>
