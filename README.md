@@ -58,6 +58,19 @@ Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or
 
 ---
 
+## ⚠️ Legacy Documentation Notice ⚠️
+
+The sections below this point reflect **historical or transitional documentation** from earlier iterations of the project and are being reviewed.
+
+They may reference capabilities, workflows, or artifacts that are **not part of the current AssetTrack system**. These sections will be either updated, moved to a legacy archive, or removed as documentation cleanup continues.
+
+For the authoritative description of current behavior, refer to:
+- **About**
+- **Current Capabilities**
+- **Features**
+
+---
+
 ## ⚙️ Requirements
 
 - **Python**: 3.10+
