@@ -58,19 +58,6 @@ Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or
 
 ---
 
-## ⚠️ Legacy Documentation Notice ⚠️
-
-The sections below this point reflect **historical or transitional documentation** from earlier iterations of the project and are being reviewed.
-
-They may reference capabilities, workflows, or artifacts that are **not part of the current AssetTrack system**. These sections will be either updated, moved to a legacy archive, or removed as documentation cleanup continues.
-
-For the authoritative description of current behavior, refer to:
-- **About**
-- **Current Capabilities**
-- **Features**
-
----
-
 ## Requirements
 
 AssetTrack is intentionally minimal. The requirements below reflect the **current, supported runtime**.
@@ -138,3 +125,15 @@ docker run --rm -p 8000:8000 -v "$(pwd)/data:/app/data" assettrack:local
 ```
 
 Then open <http://127.0.0.1:8000/>
+
+---
+
+## Acknowledgements
+
+AssetTrack was built through iterative design, operational testing, and disciplined reduction of accidental complexity.
+
+Thanks to:
+- Open-source tooling that prioritizes clarity and composability
+- Field operators whose workflows demand reliability over polish
+- Prior iterations of this project, which informed what to remove as much as what to keep
+- **:contentReference[oaicite:0]{index=0} (@CyberJrod)** for the initial iteration, early technical feedback, candid review, and pressure-testing assumptions
