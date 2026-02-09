@@ -41,32 +41,20 @@ Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or
 
 ## 📌 Features
 
-- **Inventory Management**
-  - Track **Model, Category, Box #, Serial** (Asset Tag stored in DB only).
-  - Bulk add serials (comma-separated **or** one-per-line).
-  - Managed dropdowns for **Model / Category / Box** stored in `inventory_lists.json`.
-  - Import/Export CSV.
+- **Scan --> Preview Queue**
+  - Barcode scans stage rows into a preview queue (no immediate database writes).
+  - Preview data can be validated before committing.
 
-- **Issuing & Returning**
-  - Separate **Issue** and **Return** tabs with validation.
-  - Custodian metadata: **Issued by (From)** and **Contact** stored per custodian.
+- **Review-Confirmed Commit**
+  - Commits are intentionally gated by an explicit operator confirmation flag.
+  - On success, commits write **atomically** to SQLite and the preview queue is cleared.
 
-- **Issued Items Overview**
-  - See all items currently issued by custodian.
-  - Edit custodian’s **Issued by** and **Contact**.
-  - Generate DA 2062 **on demand** for any custodian.
+- **Offline-First Storage**
+  - Data is stored locally in SQLite (no external services required).
 
-- **DA 2062 Generation**
-  - Uses `DA2062_flat.pdf` as a template.
-  - Auto-groups by model.
-  - **10 serials per row** (first line: Model + 4 S/N, wrapped line: 6 S/N).
-  - Automatic pagination with page indicator `1/N`, `2/N`, etc.
-  - Calibration tab for fine-tuning overlay positions.
-
-- **Recycle Bin**
-  - Delete is **allowed only for On Hand** items.
-  - Issued items cannot be deleted.
-  - Restore or permanently purge deleted items.
+- **Docker Support with Real Persistence**
+  - Docker runs are supported, but SQLite persistence requires mounting host `./data` to container `/app/data`.
+  - Without the bind mount, the database is container-local and disposable.
 
 ---
 
