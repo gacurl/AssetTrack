@@ -1,12 +1,41 @@
 # ⚠️ Disclaimer (Not Government Endorsed)
 
-This software is an independent tool and is **not affiliated with, endorsed by, or sponsored by** the U.S. Department of Defense (DoD), the U.S. Army, or any other government agency. Use of this software does **not** imply compliance with or substitution for official DoD/Army policies, forms, or procedures. **You are responsible** for verifying accuracy and complying with all applicable regulations and for using official systems where required.
+This software is an independent tool and is **not affiliated with, endorsed by, or sponsored by** the U.S. Department of War (DoW), U.S. Department of Defense (DoD), or any other government agency. Use of this software does **not** imply compliance with or substitution for official DoW/DoD policies, forms, or procedures. **You are responsible** for verifying accuracy and complying with all applicable regulations and for using official systems where required.
 
 ---
 
-# Hand Receipt Manager (DA Form 2062)
+# AssetTrack
 
-A desktop Python application to track inventory (e.g., IP phones, laptops), issue/return equipment, and generate **DA Form 2062** hand receipts using a **flattened** PDF template. Supports barcode scanning (keyboard wedge), bulk serial entry, managed dropdown lists, and a soft-delete **Recycle Bin**.
+AssetTrack is an offline-first asset intake and accountability system designed for environments where reliability matters more than polish.
+
+It provides a disciplined workflow for scanning physical assets, reviewing staged intake data, and committing records atomically to a local SQLite database. The system is intentionally simple, portable, and auditable.
+
+AssetTrack supports:
+- Barcode scanning into a preview queue
+- Operator review with explicit confirmation before commit
+- Atomic writes to SQLite (no partial state)
+- Offline operation with no external service dependencies
+- Dockerized deployment with explicit data persistence
+
+AssetTrack is optimized for field use, controlled networks, and operational settings where accidental data loss, silent failures, or hidden state are unacceptable.
+
+---
+
+## Current Capabilities (Authoritative)
+
+The sections below are in the process of being revised.  
+The list here reflects the **current, verified behavior** of AssetTrack.
+
+AssetTrack currently provides:
+- Offline-first operation with no external service dependencies
+- Barcode scanning into a staged **preview queue**
+- Preview validation prior to commit
+- Explicit operator review confirmation before commit
+- Atomic commits to a local SQLite database
+- Deterministic clearing of the preview queue on successful commit
+- Dockerized execution with explicit host-mounted data persistence
+
+Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or calibration tools are **not part of the current AssetTrack system** and will be removed or archived as documentation cleanup continues.
 
 ---
 
