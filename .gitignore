@@ -26,8 +26,12 @@ inventory_lists.json
 # local sqlite db files (real inventory stays local)
 data/*.db
 
-# legacy database
+# Legacy data artifacts (old SQLite DBs, experiments) — intentionally ignored
 legacy/
+
+# Legacy documentation archive — intentionally tracked
+!docs/legacy/
+!docs/legacy/**
 
 # Logs
 *.log

@@ -1,195 +1,139 @@
 # ⚠️ Disclaimer (Not Government Endorsed)
 
-This software is an independent tool and is **not affiliated with, endorsed by, or sponsored by** the U.S. Department of Defense (DoD), the U.S. Army, or any other government agency. Use of this software does **not** imply compliance with or substitution for official DoD/Army policies, forms, or procedures. **You are responsible** for verifying accuracy and complying with all applicable regulations and for using official systems where required.
+This software is an independent tool and is **not affiliated with, endorsed by, or sponsored by** the U.S. Department of War (DoW), U.S. Department of Defense (DoD), or any other government agency. Use of this software does **not** imply compliance with or substitution for official DoW/DoD policies, forms, or procedures. **You are responsible** for verifying accuracy and complying with all applicable regulations and for using official systems where required.
 
 ---
 
-# Hand Receipt Manager (DA Form 2062)
+# AssetTrack
 
-A desktop Python application to track inventory (e.g., IP phones, laptops), issue/return equipment, and generate **DA Form 2062** hand receipts using a **flattened** PDF template. Supports barcode scanning (keyboard wedge), bulk serial entry, managed dropdown lists, and a soft-delete **Recycle Bin**.
+AssetTrack is an offline-first asset intake and accountability system designed for environments where reliability matters more than polish.
+
+It provides a disciplined workflow for scanning physical assets, reviewing staged intake data, and committing records atomically to a local SQLite database. The system is intentionally simple, portable, and auditable.
+
+AssetTrack supports:
+- Barcode scanning into a preview queue
+- Operator review with explicit confirmation before commit
+- Atomic writes to SQLite (no partial state)
+- Offline operation with no external service dependencies
+- Dockerized deployment with explicit data persistence
+
+AssetTrack is optimized for field use, controlled networks, and operational settings where accidental data loss, silent failures, or hidden state are unacceptable.
+
+---
+
+## Current Capabilities (Authoritative)
+
+The sections below are in the process of being revised.  
+The list here reflects the **current, verified behavior** of AssetTrack.
+
+AssetTrack currently provides:
+- Offline-first operation with no external service dependencies
+- Barcode scanning into a staged **preview queue**
+- Preview validation prior to commit
+- Explicit operator review confirmation before commit
+- Atomic commits to a local SQLite database
+- Deterministic clearing of the preview queue on successful commit
+- Dockerized execution with explicit host-mounted data persistence
+
+Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or calibration tools are **not part of the current AssetTrack system** and will be removed or archived as documentation cleanup continues.
 
 ---
 
 ## 📌 Features
 
-- **Inventory Management**
-  - Track **Model, Category, Box #, Serial** (Asset Tag stored in DB only).
-  - Bulk add serials (comma-separated **or** one-per-line).
-  - Managed dropdowns for **Model / Category / Box** stored in `inventory_lists.json`.
-  - Import/Export CSV.
+- **Scan --> Preview Queue**
+  - Barcode scans stage rows into a preview queue (no immediate database writes).
+  - Preview data can be validated before committing.
 
-- **Issuing & Returning**
-  - Separate **Issue** and **Return** tabs with validation.
-  - Custodian metadata: **Issued by (From)** and **Contact** stored per custodian.
+- **Review-Confirmed Commit**
+  - Commits are intentionally gated by an explicit operator confirmation flag.
+  - On success, commits write **atomically** to SQLite and the preview queue is cleared.
 
-- **Issued Items Overview**
-  - See all items currently issued by custodian.
-  - Edit custodian’s **Issued by** and **Contact**.
-  - Generate DA 2062 **on demand** for any custodian.
+- **Offline-First Storage**
+  - Data is stored locally in SQLite (no external services required).
 
-- **DA 2062 Generation**
-  - Uses `DA2062_flat.pdf` as a template.
-  - Auto-groups by model.
-  - **10 serials per row** (first line: Model + 4 S/N, wrapped line: 6 S/N).
-  - Automatic pagination with page indicator `1/N`, `2/N`, etc.
-  - Calibration tab for fine-tuning overlay positions.
-
-- **Recycle Bin**
-  - Delete is **allowed only for On Hand** items.
-  - Issued items cannot be deleted.
-  - Restore or permanently purge deleted items.
+- **Docker Support with Real Persistence**
+  - Docker runs are supported, but SQLite persistence requires mounting host `./data` to container `/app/data`.
+  - Without the bind mount, the database is container-local and disposable.
 
 ---
 
-## ⚙️ Requirements
+## Requirements
 
-- **Python**: 3.10+
-- **Dependencies**:
-  ```bash
-  python -m pip install --upgrade pypdf reportlab pandas openpyxl cryptography
-  ```
-- **Template**: `DA2062_flat.pdf` (flattened version of DA Form 2062) placed in the same folder as the script.
+AssetTrack is intentionally minimal. The requirements below reflect the **current, supported runtime**.
 
----
+### Runtime
 
-## 🚀 Quick Start
+- **Python:** 3.12
+- **Operating System:** macOS, Linux, or Windows (tested primarily on macOS and Linux)
+- **Database:** SQLite (local file-based storage)
+- **Shell:** POSIX-compatible shell recommended for setup commands
 
-1. Clone or download the repository.
-2. Place `DA2062_flat.pdf` next to `hand_receipt_manager.py`.
-3. Install dependencies:
-   ```bash
-   python -m pip install --upgrade pypdf reportlab pandas openpyxl cryptography
-   ```
-4. Run the app:
-   ```bash
-   python hand_receipt_manager.py
-   ```
+### Python Dependencies
 
-On first run, the following files are created:
-- `inventory.db` — SQLite database
-- `inventory_lists.json` — Model/Category/Box dropdown values
-- `da2062_layout.json` — Calibration settings
+All Python dependencies are defined in `requirements.txt`.
 
----
+No PDF generation libraries, GUI frameworks, or reporting toolkits are required or supported.
 
-## 📖 Application Guide
+### Docker (Optional)
 
-### Inventory Tab
-- Add items by selecting **Model**, **Category**, and optional **Box #**.
-- Paste/scan multiple serial numbers.
-- Use **Add Model / Add Category / Add Box** to update dropdown lists.
-- Delete moves On Hand items to the **Recycle Bin**.
+Docker is supported for packaging and deployment.
 
-### Issue Tab
-- Fill out **From**, **To (Person/Unit)**, and **Contact**.
-- Scan/enter serials, validate, then issue.
-- Issued items are tracked under the custodian.
+**Important:**  
+SQLite persistence **requires** a host bind mount.
 
-### Return Tab
-- Scan/enter serials to validate and mark them returned.
+- Host directory: `./data`
+- Container path: `/app/data`
 
-### Issued Items Tab
-- Shows custodians with their issued counts, **Issued by**, and **Contact**.
-- Generate DA 2062 for the selected custodian.
-- File name format:  
-  ```
-  DA2062_{Custodian}_{YYYYMMDD}.pdf
-  ```
+Running without this bind mount will result in a container-local, disposable database.
 
-### Recycle Bin Tab
-- Soft-deleted items are listed.
-- Restore or permanently delete.
-- Only **On Hand** items can be deleted.
+### Hardware (Optional)
 
-### Calibration Tab
-- Fine-tune X/Y positions and font sizes for overlay fields.
-- Reset or save calibration settings.
+- USB barcode scanner operating in keyboard (HID) mode
+- Tested with common handheld scanners; no vendor-specific SDKs required
 
 ---
 
-## 📦 Import/Export
+## Quick Start
 
-- **Export CSV**: Save current inventory (excludes deleted).
-- **Import CSV**: Add/update items. Revives soft-deleted serials if matched.
-
-CSV required columns:
-- `Model`, `Category`, `Serial Number`  
-Optional: `Box #`, `Asset Tag #`
-
----
-
-## 🖨️ DA 2062 Generation
-
-- Grouped by model.
-- Each row can contain up to 10 serials:
-  - Line 1: Model + 4 serials
-  - Line 2: 6 more serials (wrapped)
-- Page 2+ does not repeat To/From headers.
-- Contact information is displayed below the To field.
-
----
-
-## 🔒 Security & Privacy
-
-- All data stays local in `inventory.db`.
-- Exported CSVs and PDFs may contain sensitive equipment data—handle accordingly.
-
----
-
-## 🛠️ Building an EXE (Optional)
-
-You can bundle the app with **PyInstaller**:
+### Local (venv)
 
 ```bash
-python -m pip install pyinstaller
-pyinstaller ^
-  --onefile ^
-  --name HandReceiptManager ^
-  --add-data "DA2062_flat.pdf;." ^
-  hand_receipt_manager.py
+# from repo root
+python3 -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# run the intake UI
+python -m assettrack.intake.app
 ```
 
-This creates `dist/HandReceiptManager.exe`.
+Then open <http://127.0.0.1:8000/>
+
+### Docker (with persistence)
+
+SQLite persistence requires a bind mount. **Without it**, the database will be **disposable**.
+
+```bash
+# build
+docker build -t assettrack:local .
+
+# run (persist ./data on the host)
+docker run --rm -p 8000:8000 -v "$(pwd)/data:/app/data" assettrack:local
+```
+
+Then open <http://127.0.0.1:8000/>
 
 ---
 
-## 📂 Files Created
+## Acknowledgements
 
-- `inventory.db` — SQLite database
-- `inventory_lists.json` — Dropdown values
-- `da2062_layout.json` — Calibration settings
-- `DA2062_flat.pdf` — Flattened DA Form 2062 template (required)
+AssetTrack was built through iterative design, operational testing, and disciplined reduction of accidental complexity.
 
----
-
-## 🧰 Troubleshooting
-
-- **Missing modules** → Reinstall requirements:
-  ```bash
-  python -m pip install --upgrade pypdf reportlab pandas openpyxl cryptography
-  ```
-- **Template not found** → Ensure `DA2062_flat.pdf` is next to the script.
-- **Encrypted template** → You’ll be prompted for a password.
-- **Cannot delete issued items** → Only On Hand items can be deleted.
-
----
----
-
-## 🖼️ Application Gallery
-
-Below are example screenshots of the Hand Receipt Manager interface and generated DA Form 2062.
-
-| Inventory Tab | Issue Tab | Return Tab |
-|----------------|------------|-------------|
-| ![Inventory Tab](images/inventory_tab.png) | ![Issue Tab](images/issue_tab.png) | ![Return Tab](images/return_tab.png) |
-
-| Issued Items | Recycle Bin | Calibration |
-|---------------|--------------|--------------|
-| ![Issued Items Tab](images/issued_items_tab.png) | ![Recycle Bin Tab](images/recycle_bin_tab.png) | ![Calibration Tab](images/calibration_tab.png) |
-
-| Generated 2062 Form |
-|----------------------|
-| ![Generated 2062](images/generated_2062.png) |
-
----
-
+Thanks to:
+- Open-source tooling that prioritizes clarity and composability
+- Field operators whose workflows demand reliability over polish
+- Prior iterations of this project, which informed what to remove as much as what to keep
+- **:contentReference[oaicite:0]{index=0} (@CyberJrod)** for the initial iteration, early technical feedback, candid review, and pressure-testing assumptions
