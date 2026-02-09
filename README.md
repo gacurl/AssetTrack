@@ -104,3 +104,37 @@ Running without this bind mount will result in a container-local, disposable dat
 
 - USB barcode scanner operating in keyboard (HID) mode
 - Tested with common handheld scanners; no vendor-specific SDKs required
+
+---
+
+## Quick Start
+
+### Local (venv)
+
+```bash
+# from repo root
+python3 -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# run the intake UI
+python -m assettrack.intake.app
+```
+
+Then open <http://127.0.0.1:8000/>
+
+### Docker (with persistence)
+
+SQLite persistence requires a bind mount. **Without it**, the database will be **disposable**.
+
+```bash
+# build
+docker build -t assettrack:local .
+
+# run (persist ./data on the host)
+docker run --rm -p 8000:8000 -v "$(pwd)/data:/app/data" assettrack:local
+```
+
+Then open <http://127.0.0.1:8000/>
