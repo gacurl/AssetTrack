@@ -1,31 +1,19 @@
 <!-- docs/security/trivy.md -->
 
-# Trivy container scan
+# Trivy container scan (baseline)
 
-Date: 2026-02-07  
-Image: assettrack:local  
-Scanner: Trivy
+**Status:** Superseded
 
-## Result summary
+As of 2026-02-09, the authoritative Trivy security baseline for AssetTrack
+has been updated and is documented here:
 
-- HIGH: 2
-- CRITICAL: 0
-- Python package vulnerabilities: 0
+👉 `docs/security/trivy-full-scan.md`
 
-## What the findings are
+This change reflects:
+- a full-container Trivy scan
+- remediation of previously identified pip vulnerabilities
+- a clean baseline (0 CRITICAL / HIGH / MEDIUM / LOW)
 
-The findings are in the OS layer (Debian / glibc):
+The raw Trivy output supporting the baseline is preserved at:
 
-- libc-bin / libc6: CVE-2026-0861 (HIGH)
-
-No application-level Python package vulnerabilities were detected.
-
-## What we’re doing about it
-
-- We are recording this as the current baseline.
-- If/when Debian publishes a fixed version, we’ll rebuild the image and re-scan.
-- We are not chasing “zero CVEs” for this milestone. The goal is repeatable visibility and a documented baseline.
-
-## Raw report
-
-See the full Trivy report: [docs/security/trivy-image-report.txt](./trivy-image-report.txt
+`docs/security/trivy-image-full-report.txt`
