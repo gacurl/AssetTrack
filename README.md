@@ -70,3 +70,37 @@ For the authoritative description of current behavior, refer to:
 - **Features**
 
 ---
+
+## Requirements
+
+AssetTrack is intentionally minimal. The requirements below reflect the **current, supported runtime**.
+
+### Runtime
+
+- **Python:** 3.12
+- **Operating System:** macOS, Linux, or Windows (tested primarily on macOS and Linux)
+- **Database:** SQLite (local file-based storage)
+- **Shell:** POSIX-compatible shell recommended for setup commands
+
+### Python Dependencies
+
+All Python dependencies are defined in `requirements.txt`.
+
+No PDF generation libraries, GUI frameworks, or reporting toolkits are required or supported.
+
+### Docker (Optional)
+
+Docker is supported for packaging and deployment.
+
+**Important:**  
+SQLite persistence **requires** a host bind mount.
+
+- Host directory: `./data`
+- Container path: `/app/data`
+
+Running without this bind mount will result in a container-local, disposable database.
+
+### Hardware (Optional)
+
+- USB barcode scanner operating in keyboard (HID) mode
+- Tested with common handheld scanners; no vendor-specific SDKs required
