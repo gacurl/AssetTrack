@@ -75,6 +75,20 @@
     </div>
 
     <div class="card">
+      <h2>Stock-Out Holder</h2>
+      {% if selected_holder %}
+        <p>
+          <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
+          <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+          <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
+        </p>
+      {% else %}
+        <p>No holder selected.</p>
+      {% endif %}
+      <p><a href="/holders">Search/select holder</a></p>
+    </div>
+
+    <div class="card">
       <h2>Rows</h2>
       <table>
         <thead>

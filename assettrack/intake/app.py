@@ -21,6 +21,7 @@ from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.ingest.validator import validate_rows
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
+from assettrack.holders import get_holder, search_holders
 
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
@@ -126,6 +127,17 @@ def wants_json() -> bool:
     return (request.args.get("json") or "").strip() == "1"
 
 
+def _selected_holder_from_session() -> Optional[dict]:
+    holder_id = session.get("holder_id")
+    if holder_id is None:
+        return None
+
+    holder = get_holder(holder_id)
+    if holder is None:
+        session.pop("holder_id", None)
+    return holder
+
+
 # Routes
 
 @app.route("/", methods=["GET", "POST"])
@@ -149,6 +161,7 @@ def intake():
 
         if action == "clear":
             SCAN_QUEUE.clear()
+            session.pop("holder_id", None)
             touch_session()
         else:
             raw = request.form.get("scan_text", "")
@@ -209,6 +222,7 @@ def preview():
         valid=is_valid,
         validation=validation,
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+        selected_holder=_selected_holder_from_session(),
     )
 
 
@@ -235,6 +249,7 @@ def preview_discard():
 
     discarded = len(SCAN_QUEUE)
     SCAN_QUEUE.clear()
+    session.pop("holder_id", None)
 
     # Reset UI defaults back to laptop (same invariant as intake()).
     session["equipment_type"] = "laptop"
@@ -306,6 +321,7 @@ def preview_commit():
 
     # Clear queue ONLY after commit succeeds.
     SCAN_QUEUE.clear()
+    session.pop("holder_id", None)
     touch_session()
 
     if wants_json():
@@ -319,6 +335,60 @@ def preview_commit():
 def lock():
     set_authed(False)
     return redirect("/")
+
+
+@app.get("/holders")
+def holders_search():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    query = (request.args.get("q") or "").strip()
+    results = search_holders(query) if query else []
+
+    return render_template(
+        "holders_search.html",
+        query=query,
+        results=results,
+        selected_holder=_selected_holder_from_session(),
+    )
+
+
+@app.post("/holders/select")
+def holders_select():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    holder_id_raw = (request.form.get("holder_id") or "").strip()
+    if not holder_id_raw:
+        flash("Select a holder first.", "error")
+        return redirect(url_for("holders_search"))
+
+    holder = get_holder(holder_id_raw)
+    if holder is None:
+        flash("Selected holder not found.", "error")
+        return redirect(url_for("holders_search"))
+
+    session["holder_id"] = holder["id"]
+    touch_session()
+    flash(f"Selected holder: {holder['name']}", "success")
+    return redirect(url_for("holders_search"))
+
+
+@app.post("/holders/clear")
+def holders_clear():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    session.pop("holder_id", None)
+    touch_session()
+    flash("Cleared holder selection.", "success")
+    return redirect(url_for("holders_search"))
 
 
 if __name__ == "__main__":
