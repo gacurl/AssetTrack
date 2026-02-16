@@ -1,3 +1,4 @@
+# file: assettrack/db.py
 import sqlite3
 from pathlib import Path
 
@@ -59,5 +60,33 @@ def _create_schema(conn: sqlite3.Connection):
     """
     CREATE INDEX IF NOT EXISTS idx_slots_current_asset_tag
         ON slots(current_asset_tag);
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE TABLE IF NOT EXISTS holders (
+        id INTEGER PRIMARY KEY,
+        holder_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        identifier TEXT NULL,
+        contact_info TEXT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_holders_name
+        ON holders(name);
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_holders_identifier
+        ON holders(identifier);
     """
     )
