@@ -159,3 +159,39 @@ def list_slots_for_case(case_name: str) -> list[dict]:
         return [dict(row) for row in rows]
     finally:
         conn.close()
+
+
+def initialize_case_slots(case_name: str, slot_count: int) -> None:
+    normalized_case = (case_name or "").strip()
+    if not normalized_case:
+        raise ValueError("case_name is required")
+    if slot_count <= 0:
+        raise ValueError("slot_count must be > 0")
+
+    conn = get_connection()
+    try:
+        with conn: # atomic
+            existing = conn.execute(
+                """
+                SELECT 1 FROM slots
+                WHERE case_name = ?
+                LIMIT 1;
+                """,
+                (normalized_case,),
+            ).fetchone()
+            if existing:
+                raise ValueError(f"Slots already exist for case {normalized_case}")
+
+            rows = [
+                (normalized_case, position, None)
+                for position in range(1, slot_count + 1)
+            ]
+            conn.executemany(
+                """
+                INSERT INTO slots (case_name, slot_position, current_asset_tag)
+                VALUES (?, ?, ?);
+                """,
+                rows,
+            )
+    finally:
+        conn.close()
