@@ -41,4 +41,23 @@ def _create_schema(conn: sqlite3.Connection):
         payload TEXT
     );
     """
-)
+    )
+    
+    cursor.execute(
+    """
+    CREATE TABLE IF NOT EXISTS slots (
+        id INTEGER PRIMARY KEY,
+        case_name TEXT NOT NULL,
+        slot_position INTEGER NOT NULL,
+        current_asset_tag TEXT NULL,
+        UNIQUE(case_name, slot_position)
+    );
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_slots_current_asset_tag
+        ON slots(current_asset_tag);
+    """
+    )
