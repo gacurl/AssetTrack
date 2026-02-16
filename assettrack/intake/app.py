@@ -1,4 +1,4 @@
-# file: assettrack/intake/app.py
+# assettrack/intake/app.py
 """
 Issue 4-1+: Local Intake UI (Keyboard Wedge)
 
@@ -14,14 +14,19 @@ from __future__ import annotations
 import os
 import time
 from typing import Optional
+from datetime import datetime, timezone
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
-from assettrack.ingest.committer import BatchCommitError, commit_batch
+from assettrack.assets import get_asset_table_columns
+from assettrack.db import get_connection
 from assettrack.ingest.validator import validate_rows
+from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.holders import get_holder, search_holders
+from assettrack.slots import vacate_slot_by_asset_tag_in_tx
+
 
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
@@ -138,6 +143,150 @@ def _selected_holder_from_session() -> Optional[dict]:
     return holder
 
 
+def _queue_asset_tags() -> list[str]:
+    tags: list[str] = []
+    for s in SCAN_QUEUE:
+        tag = (s.asset_tag or "").strip()
+        if tag:
+            tags.append(tag)
+    return tags
+
+def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
+    if not asset_tags:
+        raise ValueError("No assets in the queue to stock out")
+
+    def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+        """
+        Accept either:
+          - exact tag match
+          - match where dashes are removed from DB value (common label format)
+        Returns the canonical DB row (including canonical asset_tag).
+        Hard-stops if multiple distinct matches.
+        """
+        t = (scan_tag or "").strip()
+        if not t:
+            return None
+
+        rows = conn.execute(
+            """
+            SELECT asset_tag, location_type
+            FROM assets
+            WHERE UPPER(asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+            LIMIT 2;
+            """,
+            (t, t),
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        # If we got 2 rows and the canonical tags differ, that's ambiguous.
+        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
+            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+
+        return dict(rows[0])
+
+    def _is_slotted(conn, canon_asset_tag: str) -> bool:
+        """
+        Slot may store dashed canonical tag. We accept either:
+          - exact match
+          - match where dashes are removed from slot value
+        """
+        t = (canon_asset_tag or "").strip()
+        if not t:
+            return False
+
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM slots
+            WHERE UPPER(current_asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+            LIMIT 1;
+            """,
+            (t, t),
+        ).fetchone()
+        return bool(row)
+
+    conn = get_connection()
+    try:
+        with conn:
+            asset_columns = get_asset_table_columns(conn)
+            required_columns = {"location_type", "current_holder_id"}
+            missing_columns = sorted(required_columns - asset_columns)
+            if missing_columns:
+                raise ValueError(f"Assets table missing columns: {', '.join(missing_columns)}")
+
+            unknown_tags: list[str] = []
+            not_storage: list[str] = []
+            not_slotted: list[str] = []
+
+            # Map scan tags -> canonical DB tags (so we update/vacate consistently)
+            canon_tags: list[str] = []
+
+            for scan_tag in asset_tags:
+                asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
+                if not asset_row:
+                    unknown_tags.append(scan_tag)
+                    continue
+
+                canon_tag = str(asset_row["asset_tag"])
+                canon_tags.append(canon_tag)
+
+                location_type = str(asset_row["location_type"] or "").strip().upper()
+                if location_type != "STORAGE":
+                    not_storage.append(canon_tag)
+
+                if not _is_slotted(conn, canon_tag):
+                    not_slotted.append(canon_tag)
+
+            if unknown_tags or not_storage or not_slotted:
+                parts: list[str] = []
+                if unknown_tags:
+                    parts.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
+                if not_storage:
+                    parts.append(f"Not in STORAGE: {', '.join(not_storage)}")
+                if not_slotted:
+                    parts.append(f"Not currently slotted: {', '.join(not_slotted)}")
+                raise ValueError("; ".join(parts))
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            for canon_tag in canon_tags:
+                conn.execute(
+                    """
+                    UPDATE assets
+                    SET location_type = ?, current_holder_id = ?
+                    WHERE UPPER(asset_tag) = UPPER(?)
+                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
+                    """,
+                    ("IN_CUSTODY", holder_id, canon_tag, canon_tag),
+                )
+
+                # Vacate uses canonical dashed form (what you put into slots).
+                vacate_slot_by_asset_tag_in_tx(conn, canon_tag)
+
+                conn.execute(
+                    """
+                    INSERT INTO asset_events (
+                        asset_tag,
+                        event_type,
+                        event_date,
+                        actor,
+                        notes,
+                        payload,
+                        holder_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (canon_tag, "STOCK_OUT", now_iso, "system", None, None, holder_id),
+                )
+
+            return len(canon_tags)
+    finally:
+        conn.close()
+
 # Routes
 
 @app.route("/", methods=["GET", "POST"])
@@ -214,7 +363,6 @@ def preview():
         rows = [r["data"] for r in parsed_rows]
         return {"count": len(rows), "valid": is_valid, "result": validation, "rows": rows}
 
-
     return render_template(
         "preview.html",
         row_count=len(parsed_rows),
@@ -223,6 +371,7 @@ def preview():
         validation=validation,
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
         selected_holder=_selected_holder_from_session(),
+        stock_out_mode=bool(session.get("stock_out_mode")),
     )
 
 
@@ -236,6 +385,23 @@ def preview_validate():
         "valid": bool(result.get("valid")) if isinstance(result, dict) else False,
         "result": result,
     }
+
+@app.post("/preview/mode")
+def preview_mode():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    enabled = (request.form.get("stock_out_mode") or "").strip().lower() in {"on", "true", "1", "yes"}
+    session["stock_out_mode"] = bool(enabled)
+
+    # If turning off stock-out mode, clear holder selection to avoid confusion.
+    if not enabled:
+        session.pop("holder_id", None)
+
+    touch_session()
+    return redirect(url_for("preview"))
 
 @app.post("/preview/discard")
 def preview_discard():
@@ -282,60 +448,93 @@ def preview_commit():
             }, 400
         flash("Please confirm you reviewed the batch before adding it.", "error")
         return redirect(url_for("preview"))
-    
-    parsed_rows = build_parsed_rows_from_queue()
 
-    # Validate first (commit boundary: reviewed + valid only).
-    validation = validate_rows(parsed_rows)
-    is_valid = bool(validation.get("valid")) if isinstance(validation, dict) else False
-    if not is_valid:
+    stock_out_mode = bool(session.get("stock_out_mode"))
+
+    # Normal intake commit mode
+
+    if not stock_out_mode:
+        parsed_rows = build_parsed_rows_from_queue()
+
+        validation = validate_rows(parsed_rows)
+        is_valid = bool(validation.get("valid")) if isinstance(validation, dict) else False
+        if not is_valid:
+            if wants_json():
+                return {
+                    "ok": False,
+                    "committed": 0,
+                    "error": "Validation failed",
+                    "result": validation,
+                }, 400
+            flash("Fix the batch before adding to the database.", "error")
+            return redirect(url_for("preview"))
+
+        equipment_type = (session.get("equipment_type") or "").strip()
+        if not equipment_type:
+            if wants_json():
+                return {
+                    "ok": False,
+                    "committed": 0,
+                    "error": "Equipment type is required to create new assets",
+                }, 400
+            flash("Equipment type is required before adding new assets to the database.", "error")
+            return redirect(url_for("preview"))
+
+        try:
+            result = commit_batch(parsed_rows)
+        except BatchCommitError as e:
+            if wants_json():
+                return {"ok": False, "committed": 0, "error": str(e)}, 400
+            flash(f"Could not add items to the database: {e}", "error")
+            return redirect(url_for("preview"))
+
+        SCAN_QUEUE.clear()
+        session.pop("holder_id", None)  # keep tidy; holder is only meaningful for stock-out
+        touch_session()
+
+        if wants_json():
+            return {"ok": True, "committed": result.committed_count}
+
+        flash(f"Added {result.committed_count} items to the database.", "success")
+        return redirect(url_for("intake"))
+
+    # Stock-out commit mode
+
+    holder = _selected_holder_from_session()
+    if holder is None:
         if wants_json():
             return {
                 "ok": False,
                 "committed": 0,
-                "error": "Validation failed",
-                "result": validation,
+                "error": "Select a holder before stock-out.",
             }, 400
-        flash("Fix the batch before adding to the database.", "error")
+        flash("Select a holder before stock-out.", "error")
         return redirect(url_for("preview"))
 
-    equipment_type = (session.get("equipment_type") or "").strip()
-    if not equipment_type:
-        if wants_json():
-            return {
-                "ok": False,
-                "committed": 0,
-                "error": "Equipment type is required to create new assets",
-            }, 400
-        flash("Equipment type is required before adding new assets to the database.", "error")
-        return redirect(url_for("preview"))
+    asset_tags = _queue_asset_tags()
 
-    # Commit atomically.
     try:
-        result = commit_batch(parsed_rows)
-    except BatchCommitError as e:
+        committed_count = _stock_out_batch(asset_tags, holder["id"])
+    except ValueError as e:
         if wants_json():
-            return {"ok": False, "committed": 0, "error": str(e)}, 500
-        flash(f"Could not add items to the database: {e}", "error")
+            return {"ok": False, "committed": 0, "error": str(e)}, 400
+        flash(f"Stock-out failed: {e}", "error")
         return redirect(url_for("preview"))
 
-    # Clear queue ONLY after commit succeeds.
     SCAN_QUEUE.clear()
     session.pop("holder_id", None)
     touch_session()
 
     if wants_json():
-        return {"ok": True, "committed": result.committed_count}
+        return {"ok": True, "committed": committed_count}
 
-    flash(f"Added {result.committed_count} items to the database.", "success")
+    flash(f"Stocked out {committed_count} items.", "success")
     return redirect(url_for("intake"))
-
 
 @app.get("/lock")
 def lock():
     set_authed(False)
     return redirect("/")
-
 
 @app.get("/holders")
 def holders_search():
@@ -353,7 +552,6 @@ def holders_search():
         results=results,
         selected_holder=_selected_holder_from_session(),
     )
-
 
 @app.post("/holders/select")
 def holders_select():

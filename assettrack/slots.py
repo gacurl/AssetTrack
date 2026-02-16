@@ -165,6 +165,30 @@ def vacate_slot_by_asset_tag(asset_tag: str, reason: Optional[str] = None) -> No
         conn.close()
 
 
+def vacate_slot_by_asset_tag_in_tx(
+    conn: sqlite3.Connection,
+    asset_tag: str,
+    reason: Optional[str] = None,
+) -> None:
+    normalized_tag = (asset_tag or "").strip()
+    if not normalized_tag:
+        raise ValueError("asset_tag is required")
+
+    if reason is not None:
+        _ = reason  # reserved for future audit trail
+
+    cursor = conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = NULL
+        WHERE current_asset_tag = ?;
+        """,
+        (normalized_tag,),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Asset {normalized_tag} is not assigned to any slot")
+
+
 def list_slots_for_case(case_name: str) -> list[dict]:
     normalized_case = (case_name or "").strip()
     if not normalized_case:

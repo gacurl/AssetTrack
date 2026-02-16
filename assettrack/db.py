@@ -2,6 +2,24 @@
 import sqlite3
 from pathlib import Path
 
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    cursor = conn.execute(
+        """
+        SELECT 1 FROM sqlite_master
+        WHERE type = 'table' AND name = ?
+        LIMIT 1;
+        """,
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    cursor = conn.execute(f"PRAGMA table_info({table_name});")
+    rows = cursor.fetchall()
+    return any(row[1] == column_name for row in rows)
+
 # Canonical DB location (local-only, gitignored)
 DB_PATH = Path("data/assettrack.db")
 
@@ -41,6 +59,21 @@ def _create_schema(conn: sqlite3.Connection):
         notes TEXT,
         payload TEXT
     );
+    """
+    )
+
+    if not _column_exists(conn, "asset_events", "holder_id"):
+        cursor.execute(
+        """
+        ALTER TABLE asset_events
+        ADD COLUMN holder_id INTEGER NULL;
+        """
+        )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_asset_events_holder_id
+        ON asset_events(holder_id);
     """
     )
     
@@ -90,3 +123,19 @@ def _create_schema(conn: sqlite3.Connection):
         ON holders(identifier);
     """
     )
+
+    if _table_exists(conn, "assets"):
+        if not _column_exists(conn, "assets", "location_type"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN location_type TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "current_holder_id"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN current_holder_id INTEGER NULL;
+            """
+            )
