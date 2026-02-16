@@ -1,4 +1,4 @@
-<!-- file: assettrack/intake/templates/preview.html -->
+<!-- assettrack/intake/templates/preview.html -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -75,18 +75,42 @@
     </div>
 
     <div class="card">
-      <h2>Stock-Out Holder</h2>
-      {% if selected_holder %}
-        <p>
-          <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
-          <strong>Name:</strong> {{ selected_holder["name"] }}<br />
-          <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
+      <h2>Mode</h2>
+
+      <form method="post" action="/preview/mode" style="margin-top: 10px;">
+        <label style="display:block; margin-bottom: 10px;">
+          <input type="checkbox" id="stock_out_mode" name="stock_out_mode" {% if stock_out_mode %}checked{% endif %}>
+          Stock-out mode (STORAGE → IN_CUSTODY)
+        </label>
+        <button type="submit">Update mode</button>
+      </form>
+
+      {% if stock_out_mode %}
+        <p style="margin-top: 10px;">
+          <strong>Stock-out is enabled.</strong> Select a holder, then commit to move assets to custody and vacate slots.
         </p>
       {% else %}
-        <p>No holder selected.</p>
+        <p style="margin-top: 10px;">
+          <strong>Normal intake is enabled.</strong> Commit will add/update assets based on the scanned batch.
+        </p>
       {% endif %}
-      <p><a href="/holders">Search/select holder</a></p>
     </div>
+
+    {% if stock_out_mode %}
+      <div class="card">
+        <h2>Stock-Out Holder</h2>
+        {% if selected_holder %}
+          <p>
+            <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
+            <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+            <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
+          </p>
+        {% else %}
+          <p>No holder selected.</p>
+        {% endif %}
+        <p><a href="/holders">Search/select holder</a></p>
+      </div>
+    {% endif %}
 
     <div class="card">
       <h2>Rows</h2>
