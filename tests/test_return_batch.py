@@ -55,7 +55,7 @@ class ReturnBatchTests(unittest.TestCase):
         )
         self.conn.commit()
 
-    def test_return_routes_block_and_commit(self) -> None:
+    def test_return_preview_and_commit_gating(self) -> None:
         self._insert_slot(10, "A", 1, None)
         self._insert_slot(20, "B", 2, None)
         self._insert_asset("TAG-VALID", location_type="IN_CUSTODY", holder_id=5, home_slot_id=10)
@@ -67,11 +67,24 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(render.status_code, 200)
         self.assertIn(b"Return Assets", render.data)
 
+        preview_render = self.client.get("/return/preview")
+        self.assertEqual(preview_render.status_code, 200)
+        self.assertIn(b"Return Assets Preview / Confirm", preview_render.data)
+
+        unreviewed = self.client.post("/return/commit?json=1")
+        self.assertEqual(unreviewed.status_code, 400)
+        self.assertFalse(unreviewed.json["ok"])
+        self.assertEqual(unreviewed.json["committed"], 0)
+        self.assertEqual(
+            unreviewed.json["error"],
+            "Please confirm you reviewed the batch before returning assets.",
+        )
+
         intake_app.SCAN_QUEUE.clear()
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-VALID", equipment_type="laptop"))
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="UNKNOWN", equipment_type="laptop"))
 
-        blocked = self.client.post("/return/commit?json=1")
+        blocked = self.client.post("/return/commit?json=1", data={"confirm_reviewed": "on"})
         self.assertEqual(blocked.status_code, 400)
         self.assertFalse(blocked.json["ok"])
         self.assertEqual(blocked.json["committed"], 0)
@@ -91,7 +104,7 @@ class ReturnBatchTests(unittest.TestCase):
         intake_app.SCAN_QUEUE.clear()
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-OK", equipment_type="laptop"))
 
-        success = self.client.post("/return/commit?json=1")
+        success = self.client.post("/return/commit?json=1", data={"confirm_reviewed": "on"})
         self.assertEqual(success.status_code, 200)
         self.assertTrue(success.json["ok"])
         self.assertEqual(success.json["committed"], 1)
