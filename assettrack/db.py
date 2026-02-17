@@ -139,3 +139,10 @@ def _create_schema(conn: sqlite3.Connection):
             ADD COLUMN current_holder_id INTEGER NULL;
             """
             )
+        if not _column_exists(conn, "assets", "home_slot_id"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN home_slot_id INTEGER NULL REFERENCES slots(id);
+            """
+            )

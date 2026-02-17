@@ -58,6 +58,7 @@ def assign_asset_to_slot(case_name: str, slot_position: int, asset_tag: str) -> 
     conn = get_connection()
     try:
         with conn:
+            destination_slot_id: int | None = None
             existing_slot = conn.execute(
                 """
                 SELECT * FROM slots
@@ -93,6 +94,8 @@ def assign_asset_to_slot(case_name: str, slot_position: int, asset_tag: str) -> 
                     )
 
                 if current_tag == normalized_tag:
+                    destination_slot_id = int(existing_slot["id"])
+                    _set_asset_home_slot_in_tx(conn, normalized_tag, destination_slot_id)
                     return
 
                 conn.execute(
@@ -103,14 +106,18 @@ def assign_asset_to_slot(case_name: str, slot_position: int, asset_tag: str) -> 
                     """,
                     (normalized_tag, normalized_case, slot_position),
                 )
+                destination_slot_id = int(existing_slot["id"])
             else:
-                conn.execute(
+                cursor = conn.execute(
                     """
                     INSERT INTO slots (case_name, slot_position, current_asset_tag)
                     VALUES (?, ?, ?);
                     """,
                     (normalized_case, slot_position, normalized_tag),
                 )
+                destination_slot_id = int(cursor.lastrowid)
+
+            _set_asset_home_slot_in_tx(conn, normalized_tag, destination_slot_id)
     finally:
         conn.close()
 
@@ -265,6 +272,7 @@ def move_asset_to_slot(
     conn = get_connection()
     try:
         with conn:
+            destination_slot_id: int | None = None
             current = conn.execute(
                 """
                 SELECT case_name, slot_position, current_asset_tag
@@ -278,7 +286,7 @@ def move_asset_to_slot(
 
             destination = conn.execute(
                 """
-                SELECT current_asset_tag
+                SELECT id, current_asset_tag
                 FROM slots
                 WHERE case_name = ? AND slot_position = ?;
                 """,
@@ -307,16 +315,40 @@ def move_asset_to_slot(
                     """,
                     (normalized_tag, normalized_case, to_slot_position),
                 )
+                destination_slot_id = int(destination["id"])
             else:
-                conn.execute(
+                cursor = conn.execute(
                     """
                     INSERT INTO slots (case_name, slot_position, current_asset_tag)
                     VALUES (?, ?, ?);
                     """,
                     (normalized_case, to_slot_position, normalized_tag),
                 )
+                destination_slot_id = int(cursor.lastrowid)
+
+            _set_asset_home_slot_in_tx(conn, normalized_tag, destination_slot_id)
     finally:
         conn.close()
+
+
+def _set_asset_home_slot_in_tx(conn: sqlite3.Connection, asset_tag: str, slot_id: Optional[int]) -> None:
+    if slot_id is None:
+        return
+
+    row = conn.execute("PRAGMA table_info(assets);").fetchall()
+    asset_columns = {r[1] for r in row}
+    if "home_slot_id" not in asset_columns:
+        return
+
+    conn.execute(
+        """
+        UPDATE assets
+        SET home_slot_id = ?
+        WHERE UPPER(asset_tag) = UPPER(?)
+           OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
+        """,
+        (slot_id, asset_tag, asset_tag),
+    )
 
 
 def is_asset_slotted(asset_tag: str) -> bool:
