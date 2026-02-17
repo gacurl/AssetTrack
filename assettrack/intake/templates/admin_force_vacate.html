@@ -1,0 +1,107 @@
+<!-- assettrack/intake/templates/admin_force_vacate.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Force Vacate Slot</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
+      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
+      .row { margin: 0.75rem 0; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+      input[type="text"], textarea { width: 100%; max-width: 720px; padding: 0.6rem; font-size: 1rem; }
+      textarea { min-height: 120px; }
+      button { padding: 0.6rem 1rem; font-size: 1rem; }
+      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
+      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
+      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
+      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
+      .warn { color: #8a1f11; font-weight: 700; }
+      .muted { color: #555; }
+      .check { display: flex; align-items: center; gap: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Admin: Force Vacate Slot</h1>
+    <p><a href="/">&larr; Back to intake</a></p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category|e }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="card">
+      <h2>Slot Detail</h2>
+      {% if slot %}
+        <div class="grid">
+          <div><strong>slot_id:</strong> <code>{{ slot.slot_id }}</code></div>
+          <div><strong>occupied:</strong> <code>{{ "yes" if slot.occupied else "no" }}</code></div>
+          <div><strong>case_number:</strong> <code>{{ slot.case_name }}</code></div>
+          <div><strong>slot_number:</strong> <code>{{ slot.slot_position }}</code></div>
+          <div><strong>building/room:</strong> {{ slot.asset.building_room if slot.asset and slot.asset.building_room is defined else "" }}</div>
+          <div><strong>legacy marker:</strong> <code>{{ slot.current_asset_tag or "" }}</code></div>
+        </div>
+      {% else %}
+        <p class="muted">Provide <code>slot_id</code> in query, e.g. <code>/admin/force-vacate?slot_id=1</code>.</p>
+      {% endif %}
+    </div>
+
+    {% if slot and slot.asset %}
+      <div class="card">
+        <h2>Occupied Asset</h2>
+        <div class="grid">
+          <div><strong>asset_tag:</strong> <code>{{ slot.asset.asset_tag }}</code></div>
+          <div><strong>location_type:</strong> <code>{{ slot.asset.location_type }}</code></div>
+          <div><strong>manufacturer:</strong> {{ slot.asset.manufacturer }}</div>
+          <div><strong>model:</strong> {{ slot.asset.model }}</div>
+          <div><strong>serial:</strong> {{ slot.asset.serial }}</div>
+          <div><strong>home_slot_id:</strong> {{ slot.asset.home_slot_id if slot.asset.home_slot_id is not none else "none" }}</div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if slot %}
+      <div class="card">
+        <h2>Force Vacate Confirmation</h2>
+        <p class="warn">Use only when you physically verified the slot is empty and database state is wrong.</p>
+
+        <form method="post" action="/admin/force-vacate">
+          <input type="hidden" name="slot_id" value="{{ slot.slot_id }}" />
+
+          <div class="row">
+            <label for="reason"><strong>Reason</strong> (required)</label><br />
+            <textarea
+              id="reason"
+              name="reason"
+              placeholder="Describe why this forced vacate is needed"
+              required
+            >{{ reason or '' }}</textarea>
+          </div>
+
+          <div class="row">
+            <label for="notes"><strong>Notes</strong> (optional)</label><br />
+            <input
+              type="text"
+              id="notes"
+              name="notes"
+              value="{{ notes or '' }}"
+              placeholder="Optional extra context"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="row check">
+            <input type="checkbox" id="confirm_empty" name="confirm_empty" {% if confirmed %}checked{% endif %} />
+            <label for="confirm_empty"><strong>I physically verified this slot is empty.</strong></label>
+          </div>
+
+          <button type="submit">Force Vacate Slot</button>
+        </form>
+      </div>
+    {% endif %}
+  </body>
+</html>
