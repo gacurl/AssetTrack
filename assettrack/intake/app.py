@@ -287,6 +287,88 @@ def _build_admin_slot_move_source_view(conn, slot_id: int) -> Optional[dict]:
     }
 
 
+def _build_admin_force_vacate_view(conn, slot_id: int) -> Optional[dict]:
+    slot_row = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE id = ?;
+        """,
+        (slot_id,),
+    ).fetchone()
+    if not slot_row:
+        return None
+
+    occupancy_row = conn.execute(
+        """
+        SELECT
+            so.asset_id,
+            a.asset_tag,
+            a.manufacturer,
+            a.model,
+            a.serial_number,
+            a.location_type,
+            a.home_slot_id,
+            a.building_room
+        FROM slot_occupancy so
+        JOIN assets a ON a.id = so.asset_id
+        WHERE so.slot_id = ?
+        LIMIT 1;
+        """,
+        (slot_id,),
+    ).fetchone()
+
+    occupied = occupancy_row is not None
+    asset_view: Optional[dict] = None
+    if occupancy_row:
+        asset_view = {
+            "asset_id": int(occupancy_row["asset_id"]),
+            "asset_tag": str(occupancy_row["asset_tag"] or ""),
+            "manufacturer": str(occupancy_row["manufacturer"] or ""),
+            "model": str(occupancy_row["model"] or ""),
+            "serial": str(occupancy_row["serial_number"] or ""),
+            "location_type": str(occupancy_row["location_type"] or ""),
+            "home_slot_id": occupancy_row["home_slot_id"],
+            "building_room": str(occupancy_row["building_room"] or ""),
+        }
+    else:
+        legacy_asset_tag = str(slot_row["current_asset_tag"] or "").strip()
+        if legacy_asset_tag:
+            occupied = True
+            legacy_asset = _find_asset_for_scan_tag(conn, legacy_asset_tag)
+            if legacy_asset:
+                asset_view = {
+                    "asset_id": int(legacy_asset["id"]),
+                    "asset_tag": str(legacy_asset.get("asset_tag") or legacy_asset_tag),
+                    "manufacturer": str(legacy_asset.get("manufacturer") or ""),
+                    "model": str(legacy_asset.get("model") or ""),
+                    "serial": str(legacy_asset.get("serial_number") or ""),
+                    "location_type": str(legacy_asset.get("location_type") or ""),
+                    "home_slot_id": legacy_asset.get("home_slot_id"),
+                    "building_room": str(legacy_asset.get("building_room") or ""),
+                }
+            else:
+                asset_view = {
+                    "asset_id": None,
+                    "asset_tag": legacy_asset_tag,
+                    "manufacturer": "",
+                    "model": "",
+                    "serial": "",
+                    "location_type": "",
+                    "home_slot_id": None,
+                    "building_room": "",
+                }
+
+    return {
+        "slot_id": int(slot_row["id"]),
+        "case_name": str(slot_row["case_name"] or ""),
+        "slot_position": int(slot_row["slot_position"]),
+        "occupied": occupied,
+        "current_asset_tag": str(slot_row["current_asset_tag"] or ""),
+        "asset": asset_view,
+    }
+
+
 def _selected_holder_from_session() -> Optional[dict]:
     holder_id = session.get("holder_id")
     if holder_id is None:
@@ -1886,6 +1968,251 @@ def admin_slot_move():
         case_number=case_number,
         slot_number=slot_number,
         notes=notes,
+    )
+
+
+@app.route("/admin/force-vacate", methods=["GET", "POST"])
+def admin_force_vacate():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    slot_id_raw = (request.args.get("slot_id") or request.form.get("slot_id") or "").strip()
+    slot_id: Optional[int] = None
+    slot_view: Optional[dict] = None
+    reason = ""
+    notes = ""
+    confirmed = False
+
+    if slot_id_raw:
+        try:
+            slot_id = int(slot_id_raw)
+        except ValueError:
+            flash("slot_id must be an integer.", "error")
+
+    conn = get_connection()
+    try:
+        if slot_id is not None:
+            slot_view = _build_admin_force_vacate_view(conn, slot_id)
+            if slot_view is None and request.method == "GET":
+                flash("Slot not found.", "error")
+        elif request.method == "GET":
+            flash("slot_id is required.", "error")
+
+        if request.method == "POST":
+            reason = (request.form.get("reason") or "").strip()
+            notes = (request.form.get("notes") or "").strip()
+            confirmed = (request.form.get("confirm_empty") or "").strip().lower() in {"on", "true", "1", "yes"}
+
+            if slot_id is None:
+                flash("slot_id is required.", "error")
+            if slot_view is None:
+                flash("Slot not found.", "error")
+            if slot_view and not slot_view.get("occupied"):
+                flash("Cannot force vacate an empty slot.", "error")
+
+            asset_for_view = (slot_view or {}).get("asset") if slot_view else None
+            if asset_for_view and str(asset_for_view.get("location_type") or "").strip().upper() == "IN_CUSTODY":
+                flash("Cannot force vacate: occupied asset is IN_CUSTODY.", "error")
+            if not reason:
+                flash("Reason is required.", "error")
+            if not confirmed:
+                flash("You must confirm physical verification before force vacate.", "error")
+
+            if (
+                slot_id is None
+                or slot_view is None
+                or not slot_view.get("occupied")
+                or not reason
+                or not confirmed
+                or (asset_for_view and str(asset_for_view.get("location_type") or "").strip().upper() == "IN_CUSTODY")
+            ):
+                return render_template(
+                    "admin_force_vacate.html",
+                    slot=slot_view,
+                    slot_id=slot_id_raw,
+                    reason=reason,
+                    notes=notes,
+                    confirmed=confirmed,
+                )
+
+            try:
+                conn.execute("BEGIN;")
+
+                locked = conn.execute(
+                    """
+                    SELECT
+                        s.id AS slot_id,
+                        s.case_name,
+                        s.slot_position,
+                        s.current_asset_tag,
+                        so.asset_id AS occupancy_asset_id,
+                        a.asset_tag AS occ_asset_tag,
+                        a.manufacturer AS occ_manufacturer,
+                        a.model AS occ_model,
+                        a.serial_number AS occ_serial,
+                        a.location_type AS occ_location_type,
+                        a.building_room AS occ_building_room
+                    FROM slots s
+                    LEFT JOIN slot_occupancy so ON so.slot_id = s.id
+                    LEFT JOIN assets a ON a.id = so.asset_id
+                    WHERE s.id = ?
+                    LIMIT 1;
+                    """,
+                    (slot_id,),
+                ).fetchone()
+
+                if not locked:
+                    raise ValueError("Slot not found.")
+
+                legacy_asset_tag = str(locked["current_asset_tag"] or "").strip()
+                occupied = locked["occupancy_asset_id"] is not None or bool(legacy_asset_tag)
+                if not occupied:
+                    raise ValueError("Cannot force vacate an empty slot.")
+
+                asset_id: Optional[int] = None
+                asset_tag = ""
+                asset_manufacturer = ""
+                asset_model = ""
+                asset_serial = ""
+                asset_location_type = ""
+                asset_building_room = ""
+
+                if locked["occupancy_asset_id"] is not None:
+                    asset_id = int(locked["occupancy_asset_id"])
+                    asset_tag = str(locked["occ_asset_tag"] or "")
+                    asset_manufacturer = str(locked["occ_manufacturer"] or "")
+                    asset_model = str(locked["occ_model"] or "")
+                    asset_serial = str(locked["occ_serial"] or "")
+                    asset_location_type = str(locked["occ_location_type"] or "").strip().upper()
+                    asset_building_room = str(locked["occ_building_room"] or "")
+                elif legacy_asset_tag:
+                    legacy_asset = _find_asset_for_scan_tag(conn, legacy_asset_tag)
+                    if legacy_asset:
+                        asset_id = int(legacy_asset["id"])
+                        asset_tag = str(legacy_asset.get("asset_tag") or legacy_asset_tag)
+                        asset_manufacturer = str(legacy_asset.get("manufacturer") or "")
+                        asset_model = str(legacy_asset.get("model") or "")
+                        asset_serial = str(legacy_asset.get("serial_number") or "")
+                        asset_location_type = str(legacy_asset.get("location_type") or "").strip().upper()
+                        asset_building_room = str(legacy_asset.get("building_room") or "")
+                    else:
+                        raise ValueError("Occupied asset record not found.")
+
+                if asset_location_type == "IN_CUSTODY":
+                    raise ValueError("Cannot force vacate: occupied asset is IN_CUSTODY.")
+
+                conn.execute(
+                    """
+                    DELETE FROM slot_occupancy
+                    WHERE slot_id = ?;
+                    """,
+                    (slot_id,),
+                )
+
+                conn.execute(
+                    """
+                    UPDATE slots
+                    SET current_asset_tag = NULL
+                    WHERE id = ?;
+                    """,
+                    (slot_id,),
+                )
+
+                now_iso = datetime.now(timezone.utc).isoformat()
+                if asset_id is not None:
+                    asset_columns = get_asset_table_columns(conn)
+                    update_clauses: list[str] = []
+                    update_values: list[object] = []
+                    if "home_slot_id" in asset_columns:
+                        update_clauses.append("home_slot_id = NULL")
+                    if "location_type" in asset_columns:
+                        update_clauses.append("location_type = ?")
+                        update_values.append("STORAGE")
+                    if "updated_date" in asset_columns:
+                        update_clauses.append("updated_date = ?")
+                        update_values.append(now_iso)
+                    if update_clauses:
+                        update_values.append(asset_id)
+                        conn.execute(
+                            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+                            tuple(update_values),
+                        )
+
+                payload = {
+                    "slot": {
+                        "slot_id": int(locked["slot_id"]),
+                        "building_room": asset_building_room,
+                        "case_number": str(locked["case_name"] or ""),
+                        "slot_number": int(locked["slot_position"]),
+                    },
+                    "asset": {
+                        "asset_id": asset_id,
+                        "asset_tag": asset_tag,
+                        "building_room": asset_building_room,
+                        "manufacturer": asset_manufacturer,
+                        "model": asset_model,
+                        "serial": asset_serial,
+                    },
+                    "reason": reason,
+                    "notes": notes or None,
+                }
+                conn.execute(
+                    """
+                    INSERT INTO asset_events (
+                        asset_tag,
+                        event_type,
+                        event_date,
+                        actor,
+                        notes,
+                        payload,
+                        holder_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        asset_tag,
+                        "FORCE_VACATE",
+                        now_iso,
+                        "admin",
+                        reason,
+                        json.dumps(payload),
+                        None,
+                    ),
+                )
+
+                conn.commit()
+            except ValueError as e:
+                conn.rollback()
+                flash(str(e), "error")
+                slot_view = _build_admin_force_vacate_view(conn, slot_id)
+                return render_template(
+                    "admin_force_vacate.html",
+                    slot=slot_view,
+                    slot_id=slot_id,
+                    reason=reason,
+                    notes=notes,
+                    confirmed=confirmed,
+                )
+            except Exception:
+                conn.rollback()
+                raise
+
+            flash(
+                f"Force vacated slot {locked['case_name']} slot {locked['slot_position']} for asset {asset_tag}.",
+                "success",
+            )
+            return redirect(url_for("admin_force_vacate", slot_id=slot_id))
+    finally:
+        conn.close()
+
+    return render_template(
+        "admin_force_vacate.html",
+        slot=slot_view,
+        slot_id=slot_id,
+        reason=reason,
+        notes=notes,
+        confirmed=confirmed,
     )
 
 
