@@ -292,6 +292,120 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         "holder_label": holder_label,
     }
 
+
+def _build_return_preview_state(asset_tags: list[str]) -> dict:
+    assets: list[dict] = []
+    unknown_tags: list[str] = []
+    not_in_custody: list[str] = []
+    no_home_slot: list[str] = []
+    occupied_home_slot: list[str] = []
+    blocking_issues: list[str] = []
+
+    if not asset_tags:
+        blocking_issues.append("Queue is empty. Scan assets before returning.")
+        return {"assets": assets, "ready_count": 0, "blocking_issues": blocking_issues}
+
+    def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+        t = (scan_tag or "").strip()
+        if not t:
+            return None
+
+        rows = conn.execute(
+            """
+            SELECT asset_tag, location_type, home_slot_id
+            FROM assets
+            WHERE UPPER(asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+            LIMIT 2;
+            """,
+            (t, t),
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
+            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+
+        return dict(rows[0])
+
+    conn = get_connection()
+    try:
+        asset_columns = get_asset_table_columns(conn)
+        required_columns = {"location_type", "current_holder_id", "home_slot_id"}
+        missing_columns = sorted(required_columns - asset_columns)
+        if missing_columns:
+            blocking_issues.append(f"Assets table missing columns: {', '.join(missing_columns)}")
+            return {"assets": assets, "ready_count": 0, "blocking_issues": blocking_issues}
+
+        for scan_tag in asset_tags:
+            row: dict = {
+                "scanned_tag": scan_tag,
+                "canonical_tag": None,
+                "home_slot": "unknown",
+                "ready": False,
+                "asset_issues": [],
+            }
+
+            asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
+            if not asset_row:
+                row["asset_issues"].append("Unknown asset tag")
+                unknown_tags.append(scan_tag)
+                assets.append(row)
+                continue
+
+            canon_tag = str(asset_row["asset_tag"])
+            row["canonical_tag"] = canon_tag
+
+            location_type = str(asset_row["location_type"] or "").strip().upper()
+            if location_type != "IN_CUSTODY":
+                row["asset_issues"].append("Asset is not in IN_CUSTODY")
+                not_in_custody.append(canon_tag)
+
+            home_slot_id = asset_row["home_slot_id"]
+            if home_slot_id is None:
+                row["asset_issues"].append("Asset has no home slot")
+                no_home_slot.append(canon_tag)
+                assets.append(row)
+                continue
+
+            slot = conn.execute(
+                """
+                SELECT id, case_name, slot_position, current_asset_tag
+                FROM slots
+                WHERE id = ?;
+                """,
+                (home_slot_id,),
+            ).fetchone()
+            if not slot:
+                row["asset_issues"].append("Home slot not found")
+                no_home_slot.append(canon_tag)
+                assets.append(row)
+                continue
+
+            row["home_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
+            if slot["current_asset_tag"] is not None:
+                row["asset_issues"].append(f"Home slot occupied by {slot['current_asset_tag']}")
+                occupied_home_slot.append(canon_tag)
+
+            row["ready"] = not row["asset_issues"]
+            assets.append(row)
+    finally:
+        conn.close()
+
+    if unknown_tags:
+        blocking_issues.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
+    if not_in_custody:
+        blocking_issues.append(f"Not in IN_CUSTODY: {', '.join(not_in_custody)}")
+    if no_home_slot:
+        blocking_issues.append(f"Missing home slot: {', '.join(no_home_slot)}")
+    if occupied_home_slot:
+        blocking_issues.append(f"Home slot occupied: {', '.join(occupied_home_slot)}")
+
+    ready_count = sum(1 for row in assets if row["ready"])
+    return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
+
+
 def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to stock out")
@@ -425,6 +539,143 @@ def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
                 )
 
             return len(canon_tags)
+    finally:
+        conn.close()
+
+
+def _stock_in_batch(asset_tags: list[str]) -> int:
+    if not asset_tags:
+        raise ValueError("No assets in the queue to return")
+
+    def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+        t = (scan_tag or "").strip()
+        if not t:
+            return None
+
+        rows = conn.execute(
+            """
+            SELECT asset_tag, location_type, home_slot_id
+            FROM assets
+            WHERE UPPER(asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+            LIMIT 2;
+            """,
+            (t, t),
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
+            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+
+        return dict(rows[0])
+
+    conn = get_connection()
+    try:
+        with conn:
+            asset_columns = get_asset_table_columns(conn)
+            required_columns = {"location_type", "current_holder_id", "home_slot_id"}
+            missing_columns = sorted(required_columns - asset_columns)
+            if missing_columns:
+                raise ValueError(f"Assets table missing columns: {', '.join(missing_columns)}")
+
+            unknown_tags: list[str] = []
+            not_in_custody: list[str] = []
+            no_home_slot: list[str] = []
+            occupied_home_slot: list[str] = []
+            validated_rows: list[dict] = []
+
+            for scan_tag in asset_tags:
+                asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
+                if not asset_row:
+                    unknown_tags.append(scan_tag)
+                    continue
+
+                canon_tag = str(asset_row["asset_tag"])
+
+                location_type = str(asset_row["location_type"] or "").strip().upper()
+                if location_type != "IN_CUSTODY":
+                    not_in_custody.append(canon_tag)
+
+                home_slot_id = asset_row["home_slot_id"]
+                if home_slot_id is None:
+                    no_home_slot.append(canon_tag)
+                    continue
+
+                slot = conn.execute(
+                    """
+                    SELECT id, case_name, slot_position, current_asset_tag
+                    FROM slots
+                    WHERE id = ?;
+                    """,
+                    (home_slot_id,),
+                ).fetchone()
+                if not slot:
+                    no_home_slot.append(canon_tag)
+                    continue
+
+                if slot["current_asset_tag"] is not None:
+                    occupied_home_slot.append(canon_tag)
+
+                validated_rows.append({"asset_tag": canon_tag, "home_slot_id": int(slot["id"])})
+
+            if unknown_tags or not_in_custody or no_home_slot or occupied_home_slot:
+                parts: list[str] = []
+                if unknown_tags:
+                    parts.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
+                if not_in_custody:
+                    parts.append(f"Not in IN_CUSTODY: {', '.join(not_in_custody)}")
+                if no_home_slot:
+                    parts.append(f"Missing home slot: {', '.join(no_home_slot)}")
+                if occupied_home_slot:
+                    parts.append(f"Home slot occupied: {', '.join(occupied_home_slot)}")
+                raise ValueError("; ".join(parts))
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            for row in validated_rows:
+                canon_tag = row["asset_tag"]
+                home_slot_id = row["home_slot_id"]
+
+                conn.execute(
+                    """
+                    UPDATE assets
+                    SET location_type = ?, current_holder_id = NULL
+                    WHERE UPPER(asset_tag) = UPPER(?)
+                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
+                    """,
+                    ("STORAGE", canon_tag, canon_tag),
+                )
+
+                cursor = conn.execute(
+                    """
+                    UPDATE slots
+                    SET current_asset_tag = ?
+                    WHERE id = ? AND current_asset_tag IS NULL;
+                    """,
+                    (canon_tag, home_slot_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError(f"Home slot became occupied for {canon_tag}")
+
+                conn.execute(
+                    """
+                    INSERT INTO asset_events (
+                        asset_tag,
+                        event_type,
+                        event_date,
+                        actor,
+                        notes,
+                        payload,
+                        holder_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (canon_tag, "STOCK_IN", now_iso, "system", None, None, None),
+                )
+
+            return len(validated_rows)
     finally:
         conn.close()
 
@@ -752,6 +1003,73 @@ def issue_commit():
         return {"ok": True, "committed": committed_count, "error": None}
 
     flash(f"Issued {committed_count} assets.", "success")
+    return redirect(url_for("intake"))
+
+
+@app.get("/return")
+def return_queue():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    asset_tags = _queue_asset_tags()
+    state = _build_return_preview_state(asset_tags)
+
+    if wants_json():
+        return {
+            "ok": len(state["blocking_issues"]) == 0,
+            "committed": 0,
+            "error": "; ".join(state["blocking_issues"]) if state["blocking_issues"] else None,
+            "queued": asset_tags,
+            "ready_count": state["ready_count"],
+            "items": state["assets"],
+        }
+
+    return render_template(
+        "return_queue.html",
+        queued_count=len(asset_tags),
+        assets=state["assets"],
+        ready_count=state["ready_count"],
+        blocking_issues=state["blocking_issues"],
+    )
+
+
+@app.post("/return/commit")
+def return_commit():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    asset_tags = _queue_asset_tags()
+    state = _build_return_preview_state(asset_tags)
+    if state["blocking_issues"]:
+        message = "; ".join(state["blocking_issues"])
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": message}, 400
+        flash(f"Return failed: {message}", "error")
+        return redirect(url_for("return_queue"))
+
+    try:
+        committed_count = _stock_in_batch(asset_tags)
+    except ValueError as e:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": str(e)}, 400
+        flash(f"Return failed: {e}", "error")
+        return redirect(url_for("return_queue"))
+
+    SCAN_QUEUE.clear()
+    touch_session()
+
+    if wants_json():
+        return {"ok": True, "committed": committed_count, "error": None}
+
+    flash(f"Returned {committed_count} assets.", "success")
     return redirect(url_for("intake"))
 
 @app.get("/lock")
