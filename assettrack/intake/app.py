@@ -11,6 +11,7 @@ Feynman-brief:
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import Optional
@@ -130,6 +131,116 @@ def wants_json() -> bool:
       /preview/commit?json=1 (POST)
     """
     return (request.args.get("json") or "").strip() == "1"
+
+
+def _require_admin_for_route():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    if auth_enabled():
+        touch_session()
+    return None
+
+
+def _find_asset_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+    t = (scan_tag or "").strip()
+    if not t:
+        return None
+
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM assets
+        WHERE UPPER(asset_tag) = UPPER(?)
+           OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+        LIMIT 2;
+        """,
+        (t, t),
+    ).fetchall()
+
+    if not rows:
+        return None
+
+    if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
+        raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+
+    return dict(rows[0])
+
+
+def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
+    occupancy_row = conn.execute(
+        """
+        SELECT s.id AS slot_id, s.case_name, s.slot_position
+        FROM slot_occupancy so
+        JOIN slots s ON s.id = so.slot_id
+        WHERE so.asset_id = ?
+        LIMIT 1;
+        """,
+        (asset_id,),
+    ).fetchone()
+    if occupancy_row:
+        return dict(occupancy_row)
+
+    legacy_row = conn.execute(
+        """
+        SELECT id AS slot_id, case_name, slot_position
+        FROM slots
+        WHERE UPPER(current_asset_tag) = UPPER(?)
+           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag, asset_tag),
+    ).fetchone()
+    return dict(legacy_row) if legacy_row else None
+
+
+def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
+    errors: list[str] = []
+    asset = _find_asset_for_scan_tag(conn, scan_tag)
+    if not asset:
+        return None, ["asset_tag not found"]
+
+    holder_label = "None"
+    holder_id = asset.get("current_holder_id")
+    if holder_id is not None:
+        holder = conn.execute(
+            """
+            SELECT id, name, identifier
+            FROM holders
+            WHERE id = ?;
+            """,
+            (holder_id,),
+        ).fetchone()
+        if holder:
+            identifier = (holder["identifier"] or "").strip()
+            holder_label = f"{holder['name']} ({identifier})" if identifier else str(holder["name"])
+        else:
+            holder_label = f"ID {holder_id}"
+
+    location_type = str(asset.get("location_type") or "").strip().upper()
+    if location_type != "STORAGE":
+        errors.append("Asset must be location_type=STORAGE.")
+    if location_type == "IN_CUSTODY":
+        errors.append("Asset is IN_CUSTODY and cannot be assigned to a slot.")
+
+    current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset["asset_tag"]))
+    if current_slot:
+        errors.append("Asset is already slotted.")
+
+    view = {
+        "id": int(asset["id"]),
+        "asset_tag": str(asset.get("asset_tag") or ""),
+        "manufacturer": str(asset.get("manufacturer") or ""),
+        "model": str(asset.get("model") or ""),
+        "serial": str(asset.get("serial_number") or ""),
+        "location_type": str(asset.get("location_type") or ""),
+        "current_holder": holder_label,
+        "current_slot": current_slot,
+        "home_slot_id": asset.get("home_slot_id"),
+    }
+    return view, errors
 
 
 def _selected_holder_from_session() -> Optional[dict]:
@@ -1183,6 +1294,263 @@ def holders_clear():
     touch_session()
     flash("Cleared holder selection.", "success")
     return redirect(url_for("holders_search"))
+
+
+@app.route("/admin/assign-slot", methods=["GET", "POST"])
+def admin_assign_slot():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    asset_tag = ""
+    building_room = ""
+    case_number = ""
+    slot_number = ""
+    notes = ""
+    asset_view: Optional[dict] = None
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "lookup").strip().lower()
+        asset_tag = (request.form.get("asset_tag") or "").strip()
+        building_room = (request.form.get("building_room") or "").strip()
+        case_number = (request.form.get("case_number") or "").strip().upper()
+        slot_number = (request.form.get("slot_number") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        conn = get_connection()
+        try:
+            asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
+
+            if action == "lookup":
+                if not asset_tag:
+                    flash("asset_tag is required.", "error")
+                elif blocking_errors:
+                    for msg in blocking_errors:
+                        flash(msg, "error")
+                else:
+                    flash(f"Asset {asset_view['asset_tag']} is eligible for slot assignment.", "success")
+            elif action == "assign":
+                if not asset_tag:
+                    flash("asset_tag is required.", "error")
+                if not building_room:
+                    flash("building/room is required.", "error")
+                if not case_number:
+                    flash("case_number is required.", "error")
+                if not slot_number:
+                    flash("slot_number is required.", "error")
+
+                if not asset_tag or not building_room or not case_number or not slot_number:
+                    return render_template(
+                        "admin_assign_slot.html",
+                        asset_tag=asset_tag,
+                        building_room=building_room,
+                        case_number=case_number,
+                        slot_number=slot_number,
+                        notes=notes,
+                        asset=asset_view,
+                    )
+
+                if blocking_errors:
+                    for msg in blocking_errors:
+                        flash(msg, "error")
+                    return render_template(
+                        "admin_assign_slot.html",
+                        asset_tag=asset_tag,
+                        building_room=building_room,
+                        case_number=case_number,
+                        slot_number=slot_number,
+                        notes=notes,
+                        asset=asset_view,
+                    )
+
+                try:
+                    slot_position = int(slot_number)
+                except ValueError:
+                    flash("slot_number must be an integer.", "error")
+                    return render_template(
+                        "admin_assign_slot.html",
+                        asset_tag=asset_tag,
+                        building_room=building_room,
+                        case_number=case_number,
+                        slot_number=slot_number,
+                        notes=notes,
+                        asset=asset_view,
+                    )
+
+                try:
+                    conn.execute("BEGIN;")
+
+                    asset_row = _find_asset_for_scan_tag(conn, asset_tag)
+                    if not asset_row:
+                        raise ValueError("asset_tag not found")
+
+                    location_type = str(asset_row.get("location_type") or "").strip().upper()
+                    if location_type != "STORAGE":
+                        raise ValueError("Asset must be location_type=STORAGE.")
+                    if location_type == "IN_CUSTODY":
+                        raise ValueError("Asset is IN_CUSTODY and cannot be assigned to a slot.")
+
+                    occupied_by_asset = conn.execute(
+                        """
+                        SELECT 1
+                        FROM slot_occupancy
+                        WHERE asset_id = ?
+                        LIMIT 1;
+                        """,
+                        (asset_row["id"],),
+                    ).fetchone()
+                    legacy_occupied_by_asset = conn.execute(
+                        """
+                        SELECT 1
+                        FROM slots
+                        WHERE UPPER(current_asset_tag) = UPPER(?)
+                           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+                        LIMIT 1;
+                        """,
+                        (asset_row["asset_tag"], asset_row["asset_tag"]),
+                    ).fetchone()
+                    if occupied_by_asset or legacy_occupied_by_asset:
+                        raise ValueError("Asset is already slotted.")
+
+                    slot = conn.execute(
+                        """
+                        SELECT id, case_name, slot_position, current_asset_tag
+                        FROM slots
+                        WHERE UPPER(case_name) = UPPER(?)
+                          AND slot_position = ?
+                        LIMIT 1;
+                        """,
+                        (case_number, slot_position),
+                    ).fetchone()
+                    if not slot:
+                        raise ValueError("Selected slot does not exist.")
+
+                    occupied_by_slot = conn.execute(
+                        """
+                        SELECT 1
+                        FROM slot_occupancy
+                        WHERE slot_id = ?
+                        LIMIT 1;
+                        """,
+                        (slot["id"],),
+                    ).fetchone()
+                    if occupied_by_slot:
+                        raise ValueError("Selected slot is already occupied.")
+                    legacy_slot_occupied = str(slot["current_asset_tag"] or "").strip()
+                    if legacy_slot_occupied:
+                        raise ValueError("Selected slot is already occupied.")
+
+                    now_iso = datetime.now(timezone.utc).isoformat()
+
+                    conn.execute(
+                        """
+                        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                        VALUES (?, ?, ?);
+                        """,
+                        (slot["id"], asset_row["id"], now_iso),
+                    )
+
+                    conn.execute(
+                        """
+                        UPDATE slots
+                        SET current_asset_tag = ?
+                        WHERE id = ?;
+                        """,
+                        (asset_row["asset_tag"], slot["id"]),
+                    )
+
+                    asset_columns = get_asset_table_columns(conn)
+                    update_clauses: list[str] = []
+                    update_values: list[object] = []
+                    if "home_slot_id" in asset_columns:
+                        update_clauses.append("home_slot_id = ?")
+                        update_values.append(slot["id"])
+                    if "building_room" in asset_columns:
+                        update_clauses.append("building_room = ?")
+                        update_values.append(building_room)
+                    if "case_number" in asset_columns:
+                        update_clauses.append("case_number = ?")
+                        update_values.append(case_number)
+                    if "slot_number" in asset_columns:
+                        update_clauses.append("slot_number = ?")
+                        update_values.append(str(slot_position))
+                    if "updated_date" in asset_columns:
+                        update_clauses.append("updated_date = ?")
+                        update_values.append(now_iso)
+                    if update_clauses:
+                        update_values.append(asset_row["id"])
+                        conn.execute(
+                            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+                            tuple(update_values),
+                        )
+
+                    payload = {
+                        "slot_id": int(slot["id"]),
+                        "building_room": building_room,
+                        "case_number": str(slot["case_name"]),
+                        "slot_number": int(slot["slot_position"]),
+                    }
+                    conn.execute(
+                        """
+                        INSERT INTO asset_events (
+                            asset_tag,
+                            event_type,
+                            event_date,
+                            actor,
+                            notes,
+                            payload,
+                            holder_id
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        (
+                            str(asset_row["asset_tag"]),
+                            "SLOT_ASSIGN",
+                            now_iso,
+                            "admin",
+                            notes or None,
+                            json.dumps(payload),
+                            None,
+                        ),
+                    )
+
+                    conn.commit()
+                except ValueError as e:
+                    conn.rollback()
+                    flash(str(e), "error")
+                    asset_view, _ = _build_admin_assign_asset_view(conn, asset_tag)
+                    return render_template(
+                        "admin_assign_slot.html",
+                        asset_tag=asset_tag,
+                        building_room=building_room,
+                        case_number=case_number,
+                        slot_number=slot_number,
+                        notes=notes,
+                        asset=asset_view,
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                flash(
+                    f"Assigned asset {asset_row['asset_tag']} to {slot['case_name']} slot {slot['slot_position']}.",
+                    "success",
+                )
+                return redirect(url_for("admin_assign_slot"))
+            else:
+                flash("Unknown action.", "error")
+        finally:
+            conn.close()
+
+    return render_template(
+        "admin_assign_slot.html",
+        asset_tag=asset_tag,
+        building_room=building_room,
+        case_number=case_number,
+        slot_number=slot_number,
+        notes=notes,
+        asset=asset_view,
+    )
 
 
 if __name__ == "__main__":

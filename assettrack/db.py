@@ -1,4 +1,4 @@
-# file: assettrack/db.py
+# assettrack/db.py
 import sqlite3
 from pathlib import Path
 
@@ -98,6 +98,33 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
     """
+    CREATE TABLE IF NOT EXISTS slot_occupancy (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slot_id INTEGER NOT NULL REFERENCES slots(id),
+        asset_id INTEGER NOT NULL REFERENCES assets(id),
+        assigned_at TEXT NOT NULL,
+        UNIQUE(slot_id),
+        UNIQUE(asset_id)
+    );
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_slot_occupancy_slot_id
+        ON slot_occupancy(slot_id);
+    """
+    )
+
+    cursor.execute(
+    """
+    CREATE INDEX IF NOT EXISTS idx_slot_occupancy_asset_id
+        ON slot_occupancy(asset_id);
+    """
+    )
+
+    cursor.execute(
+    """
     CREATE TABLE IF NOT EXISTS holders (
         id INTEGER PRIMARY KEY,
         holder_type TEXT NOT NULL,
@@ -146,3 +173,19 @@ def _create_schema(conn: sqlite3.Connection):
             ADD COLUMN home_slot_id INTEGER NULL REFERENCES slots(id);
             """
             )
+
+    if _table_exists(conn, "assets"):
+        cursor.execute(
+        """
+        INSERT OR IGNORE INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT s.id, a.id, '1970-01-01T00:00:00Z'
+        FROM slots s
+        JOIN assets a
+          ON UPPER(a.asset_tag) = UPPER(s.current_asset_tag)
+          OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(s.current_asset_tag)
+        WHERE s.current_asset_tag IS NOT NULL
+          AND TRIM(s.current_asset_tag) <> '';
+        """
+        )
+
+    conn.commit()
