@@ -312,7 +312,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type, home_slot_id
+            SELECT asset_tag, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -342,7 +342,13 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
             row: dict = {
                 "scanned_tag": scan_tag,
                 "canonical_tag": None,
-                "home_slot": "unknown",
+                "before_location_type": "UNKNOWN",
+                "after_location_type": "STORAGE",
+                "before_holder": "null",
+                "after_holder": "null",
+                "destination_slot": "unknown",
+                "before_slot_occupancy": "empty",
+                "after_slot_occupancy": "occupied",
                 "ready": False,
                 "asset_issues": [],
             }
@@ -358,9 +364,17 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
             row["canonical_tag"] = canon_tag
 
             location_type = str(asset_row["location_type"] or "").strip().upper()
+            row["before_location_type"] = location_type or "UNKNOWN"
             if location_type != "IN_CUSTODY":
                 row["asset_issues"].append("Asset is not in IN_CUSTODY")
                 not_in_custody.append(canon_tag)
+
+            current_holder_id = asset_row["current_holder_id"]
+            if current_holder_id is not None:
+                holder = get_holder(current_holder_id)
+                row["before_holder"] = (
+                    holder["name"] if holder is not None else f"holder_id {current_holder_id}"
+                )
 
             home_slot_id = asset_row["home_slot_id"]
             if home_slot_id is None:
@@ -383,10 +397,11 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 assets.append(row)
                 continue
 
-            row["home_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
+            row["destination_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
             if slot["current_asset_tag"] is not None:
                 row["asset_issues"].append(f"Home slot occupied by {slot['current_asset_tag']}")
                 occupied_home_slot.append(canon_tag)
+                row["before_slot_occupancy"] = "occupied"
 
             row["ready"] = not row["asset_issues"]
             assets.append(row)
@@ -1031,6 +1046,26 @@ def return_queue():
     return render_template(
         "return_queue.html",
         queued_count=len(asset_tags),
+        ready_count=state["ready_count"],
+        blocking_issues=state["blocking_issues"],
+    )
+
+
+@app.get("/return/preview")
+def return_preview():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    asset_tags = _queue_asset_tags()
+    state = _build_return_preview_state(asset_tags)
+
+    return render_template(
+        "return_preview.html",
+        queued_count=len(asset_tags),
         assets=state["assets"],
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
@@ -1046,6 +1081,17 @@ def return_commit():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    confirmed = (request.form.get("confirm_reviewed") or "").strip().lower() in {"on", "true", "1", "yes"}
+    if not confirmed:
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Please confirm you reviewed the batch before returning assets.",
+            }, 400
+        flash("Please confirm you reviewed the batch before returning assets.", "error")
+        return redirect(url_for("return_preview"))
+
     asset_tags = _queue_asset_tags()
     state = _build_return_preview_state(asset_tags)
     if state["blocking_issues"]:
@@ -1053,7 +1099,7 @@ def return_commit():
         if wants_json():
             return {"ok": False, "committed": 0, "error": message}, 400
         flash(f"Return failed: {message}", "error")
-        return redirect(url_for("return_queue"))
+        return redirect(url_for("return_preview"))
 
     try:
         committed_count = _stock_in_batch(asset_tags)
@@ -1061,7 +1107,7 @@ def return_commit():
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
         flash(f"Return failed: {e}", "error")
-        return redirect(url_for("return_queue"))
+        return redirect(url_for("return_preview"))
 
     SCAN_QUEUE.clear()
     touch_session()
