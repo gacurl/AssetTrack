@@ -151,6 +151,147 @@ def _queue_asset_tags() -> list[str]:
             tags.append(tag)
     return tags
 
+
+def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[dict]) -> dict:
+    holder_label = None
+    if selected_holder:
+        identifier = (selected_holder.get("identifier") or "").strip()
+        holder_label = selected_holder["name"] if not identifier else f"{selected_holder['name']} ({identifier})"
+
+    assets: list[dict] = []
+    unknown_tags: list[str] = []
+    not_storage: list[str] = []
+    not_slotted: list[str] = []
+    blocking_issues: list[str] = []
+
+    if not asset_tags:
+        blocking_issues.append("Queue is empty. Scan assets before committing.")
+        return {
+            "assets": assets,
+            "ready_count": 0,
+            "blocking_issues": blocking_issues,
+            "holder_label": holder_label,
+        }
+
+    if selected_holder is None:
+        blocking_issues.append("No holder selected. Select a holder before issuing assets.")
+
+    def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+        t = (scan_tag or "").strip()
+        if not t:
+            return None
+
+        rows = conn.execute(
+            """
+            SELECT asset_tag, location_type, current_holder_id
+            FROM assets
+            WHERE UPPER(asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+            LIMIT 2;
+            """,
+            (t, t),
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
+            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+
+        return dict(rows[0])
+
+    def _is_slotted(conn, canon_asset_tag: str) -> bool:
+        t = (canon_asset_tag or "").strip()
+        if not t:
+            return False
+
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM slots
+            WHERE UPPER(current_asset_tag) = UPPER(?)
+               OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+            LIMIT 1;
+            """,
+            (t, t),
+        ).fetchone()
+        return bool(row)
+
+    conn = get_connection()
+    try:
+        asset_columns = get_asset_table_columns(conn)
+        required_columns = {"location_type", "current_holder_id"}
+        missing_columns = sorted(required_columns - asset_columns)
+        if missing_columns:
+            blocking_issues.append(f"Assets table missing columns: {', '.join(missing_columns)}")
+            return {
+                "assets": assets,
+                "ready_count": 0,
+                "blocking_issues": blocking_issues,
+                "holder_label": holder_label,
+            }
+
+        for scan_tag in asset_tags:
+            row: dict = {
+                "scanned_tag": scan_tag,
+                "canonical_tag": None,
+                "before_location_type": "UNKNOWN",
+                "after_location_type": "IN_CUSTODY",
+                "before_holder": "null",
+                "after_holder": holder_label or "(select holder)",
+                "before_slot_occupancy": "unknown",
+                "after_slot_occupancy": "vacated",
+                "ready": False,
+                "asset_issues": [],
+            }
+
+            asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
+            if not asset_row:
+                row["asset_issues"].append("Unknown asset tag")
+                unknown_tags.append(scan_tag)
+                assets.append(row)
+                continue
+
+            canon_tag = str(asset_row["asset_tag"])
+            row["canonical_tag"] = canon_tag
+
+            before_location = str(asset_row["location_type"] or "").strip().upper()
+            row["before_location_type"] = before_location or "UNKNOWN"
+
+            before_holder_id = asset_row["current_holder_id"]
+            row["before_holder"] = "null" if before_holder_id is None else str(before_holder_id)
+
+            slotted = _is_slotted(conn, canon_tag)
+            row["before_slot_occupancy"] = "occupied" if slotted else "vacant"
+
+            if before_location != "STORAGE":
+                row["asset_issues"].append("Asset is not in STORAGE")
+                not_storage.append(canon_tag)
+
+            if not slotted:
+                row["asset_issues"].append("Asset is not currently slotted")
+                not_slotted.append(canon_tag)
+
+            row["ready"] = bool(selected_holder is not None and not row["asset_issues"])
+            assets.append(row)
+    finally:
+        conn.close()
+
+    if unknown_tags:
+        blocking_issues.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
+    if not_storage:
+        blocking_issues.append(f"Not in STORAGE: {', '.join(not_storage)}")
+    if not_slotted:
+        blocking_issues.append(f"Not currently slotted: {', '.join(not_slotted)}")
+
+    ready_count = sum(1 for row in assets if row["ready"])
+    return {
+        "assets": assets,
+        "ready_count": ready_count,
+        "blocking_issues": blocking_issues,
+        "holder_label": holder_label,
+    }
+
 def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to stock out")
@@ -529,6 +670,88 @@ def preview_commit():
         return {"ok": True, "committed": committed_count}
 
     flash(f"Stocked out {committed_count} items.", "success")
+    return redirect(url_for("intake"))
+
+
+@app.get("/issue/preview")
+def issue_preview():
+    stock_out_mode = bool(session.get("stock_out_mode"))
+    if not stock_out_mode:
+        flash("Enable stock-out mode before using Issue Assets.", "error")
+        return redirect(url_for("preview"))
+
+    selected_holder = _selected_holder_from_session()
+    asset_tags = _queue_asset_tags()
+    issue_preview_state = _build_issue_preview_state(asset_tags, selected_holder)
+
+    return render_template(
+        "issue_preview.html",
+        stock_out_mode=stock_out_mode,
+        selected_holder=selected_holder,
+        queued_count=len(asset_tags),
+        assets=issue_preview_state["assets"],
+        ready_count=issue_preview_state["ready_count"],
+        blocking_issues=issue_preview_state["blocking_issues"],
+    )
+
+
+@app.post("/issue/commit")
+def issue_commit():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    stock_out_mode = bool(session.get("stock_out_mode"))
+    if not stock_out_mode:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Issue mode is not enabled."}, 400
+        flash("Enable stock-out mode before issuing assets.", "error")
+        return redirect(url_for("preview"))
+
+    confirmed = (request.form.get("confirm_reviewed") or "").strip().lower() in {"on", "true", "1", "yes"}
+    if not confirmed:
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Please confirm you reviewed the batch before adding it.",
+            }, 400
+        flash("Please confirm you reviewed the batch before adding it.", "error")
+        return redirect(url_for("issue_preview"))
+
+    holder = _selected_holder_from_session()
+    if holder is None:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Select a holder before stock-out."}, 400
+        flash("Select a holder before stock-out.", "error")
+        return redirect(url_for("issue_preview"))
+
+    asset_tags = _queue_asset_tags()
+    if not asset_tags:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "No assets in the queue to stock out"}, 400
+        flash("No assets in the queue to stock out.", "error")
+        return redirect(url_for("issue_preview"))
+
+    try:
+        committed_count = _stock_out_batch(asset_tags, holder["id"])
+    except ValueError as e:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": str(e)}, 400
+        flash(f"Stock-out failed: {e}", "error")
+        return redirect(url_for("issue_preview"))
+
+    SCAN_QUEUE.clear()
+    session.pop("holder_id", None)
+    touch_session()
+
+    if wants_json():
+        return {"ok": True, "committed": committed_count, "error": None}
+
+    flash(f"Issued {committed_count} assets.", "success")
     return redirect(url_for("intake"))
 
 @app.get("/lock")

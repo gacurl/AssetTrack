@@ -89,6 +89,9 @@
         <p style="margin-top: 10px;">
           <strong>Stock-out is enabled.</strong> Select a holder, then commit to move assets to custody and vacate slots.
         </p>
+        <p style="margin-top: 10px;">
+          <a href="/issue/preview"><strong>Open Issue Assets Preview / Confirm</strong></a>
+        </p>
       {% else %}
         <p style="margin-top: 10px;">
           <strong>Normal intake is enabled.</strong> Commit will add/update assets based on the scanned batch.
@@ -105,6 +108,7 @@
             <strong>Name:</strong> {{ selected_holder["name"] }}<br />
             <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
           </p>
+          <p><a href="/issue/preview"><strong>Issue Assets</strong></a></p>
         {% else %}
           <p>No holder selected.</p>
         {% endif %}
