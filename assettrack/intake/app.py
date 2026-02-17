@@ -705,6 +705,9 @@ def intake():
         submitted_code = request.form.get("access_code")
         if auth_ok(submitted_code):
             set_authed(True)
+        return_to = (request.form.get("return_to") or "").strip()
+        if return_to.startswith("/"):
+            return redirect(return_to)
         return redirect("/")
 
     # Determine auth state and enforce timeout for authed sessions.
@@ -728,6 +731,9 @@ def intake():
 
                 existing = {s.asset_tag for s in SCAN_QUEUE}
                 if record.asset_tag in existing:
+                    return_to = (request.form.get("return_to") or "").strip()
+                    if return_to.startswith("/"):
+                        return redirect(return_to)
                     return redirect("/")
 
                 SCAN_QUEUE.append(record)
@@ -735,6 +741,9 @@ def intake():
                 session["equipment_type"] = "laptop"
                 touch_session()
 
+        return_to = (request.form.get("return_to") or "").strip()
+        if return_to.startswith("/"):
+            return redirect(return_to)
         return redirect("/")
 
     # View model for template.
@@ -1066,7 +1075,7 @@ def return_preview():
     return render_template(
         "return_preview.html",
         queued_count=len(asset_tags),
-        assets=state["assets"],
+        preview_rows=state["assets"],
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
     )
@@ -1116,7 +1125,7 @@ def return_commit():
         return {"ok": True, "committed": committed_count, "error": None}
 
     flash(f"Returned {committed_count} assets.", "success")
-    return redirect(url_for("intake"))
+    return redirect(url_for("return_queue"))
 
 @app.get("/lock")
 def lock():

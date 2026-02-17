@@ -1,10 +1,10 @@
-<!-- assettrack/intake/templates/return_preview.html -->
+<!-- file: assettrack/intake/templates/return_preview.html -->
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Return Assets Preview</title>
+    <title>Return Assets — Preview</title>
     <style>
       body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
       .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 1100px; }
@@ -19,21 +19,12 @@
       .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
       .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
       .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      ul { margin: 0.5rem 0 0 1.25rem; }
       a { text-decoration: none; }
     </style>
   </head>
   <body>
-    <h1>Return Assets Preview / Confirm</h1>
-    <p><a href="/return">← Back to Return Assets</a></p>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+    <h1>Return Assets — Preview / Confirm</h1>
+    <p><a href="/return">← Back to Return Queue</a></p>
 
     <div class="card">
       <h2>Validation Summary</h2>
@@ -49,48 +40,55 @@
           <span class="pill good">ready</span>
         {% endif %}
       </p>
+
       {% if blocking_issues %}
-        <p><strong>Conflicts must be resolved before returning assets.</strong></p>
-        <ul>
+        <div role="list" style="margin: 0.5rem 0 0 1.25rem;">
           {% for issue in blocking_issues %}
-            <li>{{ issue }}</li>
+            <div role="listitem">• {{ issue }}</div>
           {% endfor %}
-        </ul>
+        </div>
       {% endif %}
     </div>
 
     <div class="card">
-      <h2>Per-Asset Diff</h2>
-      {% if assets %}
+      <h2>Per-Asset Preview</h2>
+
+      {% if preview_rows %}
         <table>
           <thead>
             <tr>
-              <th style="width: 170px;">Scanned Tag</th>
-              <th style="width: 190px;">Canonical Tag</th>
-              <th style="width: 180px;">Location Type</th>
-              <th style="width: 220px;">Current Holder</th>
-              <th style="width: 220px;">Destination Slot</th>
-              <th style="width: 180px;">Slot Occupancy</th>
-              <th>Checks</th>
+              <th>Asset</th>
+              <th>Current State</th>
+              <th>After Return</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {% for row in assets %}
+            {% for row in preview_rows %}
               <tr>
-                <td><code>{{ row["scanned_tag"] }}</code></td>
-                <td><code>{{ row["canonical_tag"] or "n/a" }}</code></td>
-                <td><code>{{ row["before_location_type"] }}</code> → <code>{{ row["after_location_type"] }}</code></td>
-                <td><code>{{ row["before_holder"] }}</code> → <code>{{ row["after_holder"] }}</code></td>
-                <td><code>{{ row["destination_slot"] }}</code></td>
-                <td><code>{{ row["before_slot_occupancy"] }}</code> → <code>{{ row["after_slot_occupancy"] }}</code></td>
+                <td><code>{{ row.canonical_tag or row.scanned_tag }}</code></td>
+
                 <td>
-                  {% if row["asset_issues"] %}
+                  Location: {{ row.before_location_type }}<br />
+                  Holder: {{ row.before_holder if row.before_holder != "null" else "—" }}<br />
+                  Home Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                </td>
+
+                <td>
+                  Location: {{ row.after_location_type }}<br />
+                  Holder: —<br />
+                  Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                </td>
+
+                <td>
+                  {% if row.asset_issues %}
                     <span class="pill bad">blocked</span>
-                    <ul>
-                      {% for issue in row["asset_issues"] %}
-                        <li>{{ issue }}</li>
+
+                    <div role="list" style="margin: 0.5rem 0 0 1rem;">
+                      {% for issue in row.asset_issues %}
+                        <div role="listitem">• {{ issue }}</div>
                       {% endfor %}
-                    </ul>
+                    </div>
                   {% else %}
                     <span class="pill good">ready</span>
                   {% endif %}
@@ -105,29 +103,22 @@
     </div>
 
     <div class="card">
-      <h2>Confirm Commit</h2>
-      <form method="post" action="/return/commit">
-        <label style="display:block; margin-bottom: 10px;">
-          <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
-          I reviewed this batch and want to return these assets.
-        </label>
-        <button id="return_btn" type="submit" {% if blocking_issues %}disabled{% endif %}>Return assets</button>
-      </form>
-      {% if blocking_issues %}
-        <p style="margin-top: 10px;">Commit is disabled until all blocking issues are resolved.</p>
-      {% endif %}
-      <p style="margin-top: 10px;">JSON API: <code>/return/commit?json=1</code> (POST)</p>
-    </div>
+      <h2>Confirm Return</h2>
 
-    <script>
-      const cb = document.getElementById('confirm_reviewed');
-      const btn = document.getElementById('return_btn');
-      const blocked = {{ (blocking_issues|length > 0)|tojson }};
-      if (cb && btn) {
-        const sync = () => { btn.disabled = blocked || !cb.checked; };
-        cb.addEventListener('change', sync);
-        sync();
-      }
-    </script>
+      {% if not blocking_issues %}
+        <form method="post" action="/return/commit">
+          <label>
+            <input type="checkbox" name="confirm_reviewed" value="1" required />
+            I have reviewed the changes and confirm this return batch.
+          </label>
+          <br /><br />
+          <button type="submit">Commit Return</button>
+        </form>
+      {% else %}
+        <p class="flash error">
+          Conflicts must be resolved before committing this batch.
+        </p>
+      {% endif %}
+    </div>
   </body>
 </html>
