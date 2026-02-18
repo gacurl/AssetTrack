@@ -380,6 +380,237 @@ def _build_admin_force_vacate_view(conn, slot_id: int) -> Optional[dict]:
     }
 
 
+def _is_truthy(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _create_admin_asset_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    actor: str,
+    equipment_type: str,
+    serial_number: str,
+    manufacturer: str,
+    building: str,
+    room: str,
+    model: Optional[str],
+    model_code: Optional[str],
+    notes: Optional[str],
+    assign_case_number: Optional[str],
+    assign_slot_number: Optional[int],
+) -> dict:
+    existing_asset = conn.execute(
+        """
+        SELECT 1
+        FROM assets
+        WHERE UPPER(asset_tag) = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag,),
+    ).fetchone()
+    if existing_asset:
+        raise ValueError("asset_tag already exists.")
+
+    existing_serial = conn.execute(
+        """
+        SELECT 1
+        FROM assets
+        WHERE TRIM(COALESCE(serial_number, '')) <> ''
+          AND UPPER(serial_number) = UPPER(?)
+        LIMIT 1;
+        """,
+        (serial_number,),
+    ).fetchone()
+    if existing_serial:
+        raise ValueError("serial_number already exists.")
+
+    slot_row = None
+    if assign_case_number is not None and assign_slot_number is not None:
+        slot_row = conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            WHERE UPPER(case_name) = UPPER(?)
+              AND slot_position = ?
+            LIMIT 1;
+            """,
+            (assign_case_number, assign_slot_number),
+        ).fetchone()
+        if slot_row is None:
+            raise ValueError("Slot not found for case_number + slot_number.")
+
+        occupied_row = conn.execute(
+            """
+            SELECT 1
+            FROM slot_occupancy
+            WHERE slot_id = ?
+            LIMIT 1;
+            """,
+            (int(slot_row["id"]),),
+        ).fetchone()
+        if occupied_row:
+            raise ValueError("Selected slot is already occupied.")
+
+        if str(slot_row["current_asset_tag"] or "").strip():
+            raise ValueError("Selected slot is already occupied.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    created_date = now_iso.split("T", 1)[0]
+    building_room = f"{building}/{room}"
+
+    home_slot_id = int(slot_row["id"]) if slot_row else None
+    asset_columns = get_asset_table_columns(conn)
+    insert_values: dict[str, object] = {"asset_tag": asset_tag}
+
+    if "equipment_type" in asset_columns:
+        insert_values["equipment_type"] = equipment_type
+    if "serial_number" in asset_columns:
+        insert_values["serial_number"] = serial_number
+    if "manufacturer" in asset_columns:
+        insert_values["manufacturer"] = manufacturer
+    if "building" in asset_columns:
+        insert_values["building"] = building
+    if "room" in asset_columns:
+        insert_values["room"] = room
+    if "building_room" in asset_columns:
+        insert_values["building_room"] = building_room
+    if "model" in asset_columns:
+        insert_values["model"] = model
+    if "model_code" in asset_columns:
+        insert_values["model_code"] = model_code
+    if "notes" in asset_columns:
+        insert_values["notes"] = notes
+    if "case_number" in asset_columns and slot_row:
+        insert_values["case_number"] = str(slot_row["case_name"])
+    if "slot_number" in asset_columns and slot_row:
+        insert_values["slot_number"] = str(slot_row["slot_position"])
+    if "custody_state" in asset_columns:
+        insert_values["custody_state"] = "in_stock"
+    if "accountability_status" in asset_columns:
+        insert_values["accountability_status"] = "accountable"
+    if "condition" in asset_columns:
+        insert_values["condition"] = "serviceable"
+    if "retired" in asset_columns:
+        insert_values["retired"] = 0
+    if "created_date" in asset_columns:
+        insert_values["created_date"] = created_date
+    if "updated_date" in asset_columns:
+        insert_values["updated_date"] = now_iso
+    if "location_type" in asset_columns:
+        insert_values["location_type"] = "STORAGE"
+    if "current_holder_id" in asset_columns:
+        insert_values["current_holder_id"] = None
+    if "home_slot_id" in asset_columns:
+        insert_values["home_slot_id"] = home_slot_id
+
+    column_names = list(insert_values.keys())
+    placeholders = ", ".join("?" for _ in column_names)
+    cursor = conn.execute(
+        f"INSERT INTO assets ({', '.join(column_names)}) VALUES ({placeholders});",
+        tuple(insert_values[col] for col in column_names),
+    )
+    asset_id = int(cursor.lastrowid)
+
+    if slot_row:
+        conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, ?);
+            """,
+            (home_slot_id, asset_id, now_iso),
+        )
+        conn.execute(
+            """
+            UPDATE slots
+            SET current_asset_tag = ?
+            WHERE id = ?;
+            """,
+            (asset_tag, home_slot_id),
+        )
+
+    created_payload: dict[str, object] = {}
+    if equipment_type:
+        created_payload["equipment_type"] = equipment_type
+    if serial_number:
+        created_payload["serial_number"] = serial_number
+    if manufacturer:
+        created_payload["manufacturer"] = manufacturer
+    if building:
+        created_payload["building"] = building
+    if room:
+        created_payload["room"] = room
+    if model:
+        created_payload["model"] = model
+    if model_code:
+        created_payload["model_code"] = model_code
+
+    conn.execute(
+        """
+        INSERT INTO asset_events (
+            asset_tag,
+            event_type,
+            event_date,
+            actor,
+            notes,
+            payload,
+            holder_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            asset_tag,
+            "ASSET_CREATED",
+            now_iso,
+            actor,
+            notes,
+            json.dumps(created_payload) if created_payload else None,
+            None,
+        ),
+    )
+
+    if slot_row:
+        slot_payload = {
+            "slot_id": home_slot_id,
+            "case_number": str(slot_row["case_name"]),
+            "slot_number": int(slot_row["slot_position"]),
+            "building": building,
+            "room": room,
+            "equipment_type": equipment_type,
+        }
+        conn.execute(
+            """
+            INSERT INTO asset_events (
+                asset_tag,
+                event_type,
+                event_date,
+                actor,
+                notes,
+                payload,
+                holder_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                asset_tag,
+                "SLOT_ASSIGN",
+                now_iso,
+                actor,
+                notes,
+                json.dumps(slot_payload),
+                None,
+            ),
+        )
+
+    return {
+        "asset_id": asset_id,
+        "asset_tag": asset_tag,
+        "home_slot_id": home_slot_id,
+        "location_type": "STORAGE",
+        "current_holder_id": None,
+    }
+
+
 def _selected_holder_from_session() -> Optional[dict]:
     holder_id = session.get("holder_id")
     if holder_id is None:
@@ -1433,6 +1664,116 @@ def holders_clear():
     return redirect(url_for("holders_search"))
 
 
+@app.route("/admin/assets/new", methods=["GET", "POST"])
+def admin_new_asset():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    form_state = {
+        "asset_tag": "",
+        "serial_number": "",
+        "manufacturer": "",
+        "equipment_type": "laptop",
+        "building": "",
+        "room": "",
+        "model": "",
+        "model_code": "",
+        "notes": "",
+        "assign_now": "no",
+        "case_number": "",
+        "slot_number": "",
+    }
+    error_message: Optional[str] = None
+
+    if request.method == "POST":
+        form_state = {
+            "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
+            "serial_number": (request.form.get("serial_number") or "").strip(),
+            "manufacturer": (request.form.get("manufacturer") or "").strip(),
+            "equipment_type": (request.form.get("equipment_type") or "").strip() or "laptop",
+            "building": (request.form.get("building") or "").strip(),
+            "room": (request.form.get("room") or "").strip(),
+            "model": (request.form.get("model") or "").strip(),
+            "model_code": (request.form.get("model_code") or "").strip(),
+            "notes": (request.form.get("notes") or "").strip(),
+            "assign_now": "yes" if _is_truthy(request.form.get("assign_now")) else "no",
+            "case_number": (request.form.get("case_number") or "").strip().upper(),
+            "slot_number": (request.form.get("slot_number") or "").strip(),
+        }
+
+        errors: list[str] = []
+        if not form_state["asset_tag"]:
+            errors.append("asset_tag is required.")
+        if not form_state["serial_number"]:
+            errors.append("serial_number is required.")
+        if not form_state["manufacturer"]:
+            errors.append("manufacturer is required.")
+        if not form_state["equipment_type"]:
+            errors.append("equipment_type is required.")
+        if not form_state["building"]:
+            errors.append("building is required.")
+        if not form_state["room"]:
+            errors.append("room is required.")
+
+        assign_slot_number: Optional[int] = None
+        assign_case_number: Optional[str] = None
+        if form_state["assign_now"] == "yes":
+            if not form_state["case_number"]:
+                errors.append("case_number is required when assign_now is enabled.")
+            if not form_state["slot_number"]:
+                errors.append("slot_number is required when assign_now is enabled.")
+            if form_state["slot_number"]:
+                try:
+                    assign_slot_number = int(form_state["slot_number"])
+                except ValueError:
+                    errors.append("slot_number must be an integer.")
+            assign_case_number = form_state["case_number"] or None
+
+        if errors:
+            error_message = "; ".join(errors)
+            return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+
+        conn = get_connection()
+        try:
+            try:
+                conn.execute("BEGIN;")
+                _create_admin_asset_in_tx(
+                    conn,
+                    asset_tag=form_state["asset_tag"],
+                    actor="admin",
+                    equipment_type=form_state["equipment_type"],
+                    serial_number=form_state["serial_number"],
+                    manufacturer=form_state["manufacturer"],
+                    building=form_state["building"],
+                    room=form_state["room"],
+                    model=form_state["model"] or None,
+                    model_code=form_state["model_code"] or None,
+                    notes=form_state["notes"] or None,
+                    assign_case_number=assign_case_number,
+                    assign_slot_number=assign_slot_number,
+                )
+                conn.commit()
+            except ValueError as e:
+                conn.rollback()
+                error_message = str(e)
+                return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+            except sqlite3.IntegrityError as e:
+                conn.rollback()
+                error_message = f"create failed: {e}"
+                return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+            except Exception:
+                conn.rollback()
+                raise
+        finally:
+            conn.close()
+
+        flash(f"Created asset {form_state['asset_tag']}.", "success")
+        return redirect(url_for("admin_new_asset"))
+
+    return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+
+
 @app.post("/admin/assets/create")
 def admin_create_asset():
     guard_result = _require_admin_for_api()
@@ -1446,10 +1787,16 @@ def admin_create_asset():
     asset_tag = str(raw_data.get("asset_tag") or "").strip().upper()
     actor = str(raw_data.get("actor") or "").strip()
     equipment_type_raw = str(raw_data.get("equipment_type") or "").strip()
+    serial_number = str(raw_data.get("serial_number") or "").strip()
+    manufacturer = str(raw_data.get("manufacturer") or "").strip()
+    building = str(raw_data.get("building") or "").strip()
+    room = str(raw_data.get("room") or "").strip()
+    model = str(raw_data.get("model") or "").strip() or None
+    model_code = str(raw_data.get("model_code") or "").strip() or None
     notes_raw = str(raw_data.get("notes") or "").strip()
     home_slot_raw = raw_data.get("home_slot_id")
 
-    equipment_type = equipment_type_raw or None
+    equipment_type = equipment_type_raw or ""
     notes = notes_raw or None
 
     errors: list[str] = []
@@ -1472,24 +1819,12 @@ def admin_create_asset():
     try:
         try:
             conn.execute("BEGIN;")
-
-            existing_asset = conn.execute(
-                """
-                SELECT 1
-                FROM assets
-                WHERE UPPER(asset_tag) = UPPER(?)
-                LIMIT 1;
-                """,
-                (asset_tag,),
-            ).fetchone()
-            if existing_asset:
-                raise ValueError("asset_tag already exists.")
-
-            slot_row = None
+            assign_case_number: Optional[str] = None
+            assign_slot_number: Optional[int] = None
             if home_slot_id is not None:
                 slot_row = conn.execute(
                     """
-                    SELECT id, current_asset_tag
+                    SELECT id, case_name, slot_position
                     FROM slots
                     WHERE id = ?
                     LIMIT 1;
@@ -1498,104 +1833,23 @@ def admin_create_asset():
                 ).fetchone()
                 if slot_row is None:
                     raise ValueError("home_slot_id does not reference an existing slot.")
+                assign_case_number = str(slot_row["case_name"])
+                assign_slot_number = int(slot_row["slot_position"])
 
-                occupied_row = conn.execute(
-                    """
-                    SELECT 1
-                    FROM slot_occupancy
-                    WHERE slot_id = ?
-                    LIMIT 1;
-                    """,
-                    (home_slot_id,),
-                ).fetchone()
-                if occupied_row:
-                    raise ValueError("Selected home slot is already occupied.")
-
-                if str(slot_row["current_asset_tag"] or "").strip():
-                    raise ValueError("Selected home slot is already occupied.")
-
-            now_iso = datetime.now(timezone.utc).isoformat()
-            created_date = now_iso.split("T", 1)[0]
-
-            asset_columns = get_asset_table_columns(conn)
-            insert_values: dict[str, object] = {
-                "asset_tag": asset_tag,
-            }
-
-            if "equipment_type" in asset_columns:
-                insert_values["equipment_type"] = equipment_type if equipment_type is not None else ""
-            if "custody_state" in asset_columns and "custody_state" not in insert_values:
-                insert_values["custody_state"] = "in_stock"
-            if "accountability_status" in asset_columns and "accountability_status" not in insert_values:
-                insert_values["accountability_status"] = "accountable"
-            if "condition" in asset_columns and "condition" not in insert_values:
-                insert_values["condition"] = "serviceable"
-            if "retired" in asset_columns and "retired" not in insert_values:
-                insert_values["retired"] = 0
-            if "created_date" in asset_columns and "created_date" not in insert_values:
-                insert_values["created_date"] = created_date
-            if "updated_date" in asset_columns and "updated_date" not in insert_values:
-                insert_values["updated_date"] = now_iso
-            if "location_type" in asset_columns:
-                insert_values["location_type"] = "STORAGE"
-            if "current_holder_id" in asset_columns:
-                insert_values["current_holder_id"] = None
-            if "home_slot_id" in asset_columns:
-                insert_values["home_slot_id"] = home_slot_id
-
-            column_names = list(insert_values.keys())
-            placeholders = ", ".join("?" for _ in column_names)
-            cursor = conn.execute(
-                f"INSERT INTO assets ({', '.join(column_names)}) VALUES ({placeholders});",
-                tuple(insert_values[col] for col in column_names),
-            )
-            asset_id = int(cursor.lastrowid)
-
-            if home_slot_id is not None:
-                conn.execute(
-                    """
-                    INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
-                    VALUES (?, ?, ?);
-                    """,
-                    (home_slot_id, asset_id, now_iso),
-                )
-                conn.execute(
-                    """
-                    UPDATE slots
-                    SET current_asset_tag = ?
-                    WHERE id = ?;
-                    """,
-                    (asset_tag, home_slot_id),
-                )
-
-            payload: dict[str, object] = {}
-            if home_slot_id is not None:
-                payload["slot_id"] = home_slot_id
-            if equipment_type:
-                payload["equipment_type"] = equipment_type
-
-            conn.execute(
-                """
-                INSERT INTO asset_events (
-                    asset_tag,
-                    event_type,
-                    event_date,
-                    actor,
-                    notes,
-                    payload,
-                    holder_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    asset_tag,
-                    "ASSET_CREATED",
-                    now_iso,
-                    actor,
-                    notes,
-                    json.dumps(payload) if payload else None,
-                    None,
-                ),
+            created = _create_admin_asset_in_tx(
+                conn,
+                asset_tag=asset_tag,
+                actor=actor,
+                equipment_type=equipment_type,
+                serial_number=serial_number,
+                manufacturer=manufacturer,
+                building=building,
+                room=room,
+                model=model,
+                model_code=model_code,
+                notes=notes,
+                assign_case_number=assign_case_number,
+                assign_slot_number=assign_slot_number,
             )
 
             conn.commit()
@@ -1614,9 +1868,9 @@ def admin_create_asset():
     return {
         "ok": True,
         "asset_tag": asset_tag,
-        "location_type": "STORAGE",
-        "current_holder_id": None,
-        "home_slot_id": home_slot_id,
+        "location_type": str(created["location_type"]),
+        "current_holder_id": created["current_holder_id"],
+        "home_slot_id": created["home_slot_id"],
         "event_type": "ASSET_CREATED",
     }
 

@@ -173,6 +173,62 @@ def _create_schema(conn: sqlite3.Connection):
             ADD COLUMN home_slot_id INTEGER NULL REFERENCES slots(id);
             """
             )
+        if not _column_exists(conn, "assets", "serial_number"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN serial_number TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "manufacturer"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN manufacturer TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "model"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN model TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "model_code"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN model_code TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "notes"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN notes TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "building"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN building TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "room"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN room TEXT NULL;
+            """
+            )
+        if not _column_exists(conn, "assets", "building_room"):
+            cursor.execute(
+            """
+            ALTER TABLE assets
+            ADD COLUMN building_room TEXT NULL;
+            """
+            )
 
     if _table_exists(conn, "assets"):
         cursor.execute(

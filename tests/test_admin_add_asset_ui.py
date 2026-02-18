@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+import assettrack.db as db
+from assettrack.intake import app as intake_app
+
+
+class AdminAddAssetUiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        db.DB_PATH = Path(self.temp_dir.name) / "assettrack.db"
+        self.conn = db.get_connection()
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL UNIQUE,
+                serial_number TEXT NULL,
+                manufacturer TEXT NULL,
+                equipment_type TEXT NOT NULL,
+                building TEXT NULL,
+                room TEXT NULL,
+                model TEXT NULL,
+                model_code TEXT NULL,
+                notes TEXT NULL,
+                building_room TEXT NULL,
+                custody_state TEXT NOT NULL,
+                accountability_status TEXT NOT NULL,
+                condition TEXT NOT NULL,
+                created_date TEXT NOT NULL,
+                updated_date TEXT NULL,
+                location_type TEXT NULL,
+                current_holder_id INTEGER NULL,
+                home_slot_id INTEGER NULL
+            );
+            """
+        )
+        self.conn.commit()
+
+        self.orig_passcode = intake_app.INTAKE_PASSCODE
+        intake_app.INTAKE_PASSCODE = "test-admin-code"
+        intake_app.app.testing = True
+        self.client = intake_app.app.test_client()
+
+    def tearDown(self) -> None:
+        intake_app.INTAKE_PASSCODE = self.orig_passcode
+        self.conn.close()
+        self.temp_dir.cleanup()
+
+    def _set_admin_session(self) -> None:
+        with self.client.session_transaction() as sess:
+            sess["authed"] = True
+            sess["last_seen"] = intake_app.now_seconds()
+
+    def _insert_slot(self, slot_id: int, case_name: str, slot_position: int, *, current_asset_tag: str | None = None) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (?, ?, ?, ?);
+            """,
+            (slot_id, case_name, slot_position, current_asset_tag),
+        )
+        self.conn.commit()
+
+    def _insert_asset(self, asset_tag: str, serial_number: str) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO assets (
+                asset_tag,
+                serial_number,
+                manufacturer,
+                equipment_type,
+                building,
+                room,
+                building_room,
+                custody_state,
+                accountability_status,
+                condition,
+                created_date,
+                updated_date,
+                location_type,
+                current_holder_id,
+                home_slot_id
+            )
+            VALUES (?, ?, 'Dell', 'laptop', 'B1', '101', 'B1/101', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', 'STORAGE', NULL, NULL);
+            """,
+            (asset_tag, serial_number),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def test_get_admin_new_asset_route_blocks_non_admin_and_allows_admin(self) -> None:
+        blocked = self.client.get("/admin/assets/new")
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
+
+        self._set_admin_session()
+        allowed = self.client.get("/admin/assets/new")
+        self.assertEqual(allowed.status_code, 200)
+        self.assertIn(b"Admin: Add Asset", allowed.data)
+
+    def test_post_creates_unslotted_asset_and_enforces_serial_uniqueness(self) -> None:
+        self._set_admin_session()
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-500",
+                "serial_number": "SER-500",
+                "manufacturer": "Lenovo",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "120",
+                "model": "T14",
+                "model_code": "GEN5",
+                "notes": "new intake",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            """
+            SELECT asset_tag, serial_number, manufacturer, location_type, current_holder_id, home_slot_id
+            FROM assets
+            WHERE asset_tag = ?;
+            """,
+            ("AT-500",),
+        ).fetchone()
+        self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["serial_number"], "SER-500")
+        self.assertEqual(asset_row["manufacturer"], "Lenovo")
+        self.assertEqual(asset_row["location_type"], "STORAGE")
+        self.assertIsNone(asset_row["current_holder_id"])
+        self.assertIsNone(asset_row["home_slot_id"])
+
+        duplicate = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-501",
+                "serial_number": "SER-500",
+                "manufacturer": "Lenovo",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "121",
+            },
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertIn(b"serial_number already exists", duplicate.data)
+        missing = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-501",)).fetchone()
+        self.assertIsNone(missing)
+
+    def test_post_creates_slotted_asset_by_case_and_slot_and_writes_both_events(self) -> None:
+        self._set_admin_session()
+        self._insert_slot(101, "CASE-A", 7)
+
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-600",
+                "serial_number": "SER-600",
+                "manufacturer": "HP",
+                "equipment_type": "tablet",
+                "building": "HQ",
+                "room": "220",
+                "assign_now": "yes",
+                "case_number": "CASE-A",
+                "slot_number": "7",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            "SELECT id, home_slot_id FROM assets WHERE asset_tag = ?;",
+            ("AT-600",),
+        ).fetchone()
+        self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["home_slot_id"], 101)
+
+        occ = self.conn.execute(
+            "SELECT slot_id FROM slot_occupancy WHERE asset_id = ?;",
+            (asset_row["id"],),
+        ).fetchone()
+        self.assertIsNotNone(occ)
+        self.assertEqual(occ["slot_id"], 101)
+
+        slot = self.conn.execute("SELECT current_asset_tag FROM slots WHERE id = 101;").fetchone()
+        self.assertEqual(slot["current_asset_tag"], "AT-600")
+
+        events = self.conn.execute(
+            """
+            SELECT event_type
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id ASC;
+            """,
+            ("AT-600",),
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in events], ["ASSET_CREATED", "SLOT_ASSIGN"])
+
+    def test_post_duplicate_serial_number_rejected_with_rollback(self) -> None:
+        self._set_admin_session()
+        self._insert_asset("AT-700", "SER-DUP")
+        self._insert_slot(102, "CASE-B", 1)
+
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-701",
+                "serial_number": "SER-DUP",
+                "manufacturer": "Dell",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "330",
+                "assign_now": "yes",
+                "case_number": "CASE-B",
+                "slot_number": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"serial_number already exists", response.data)
+
+        created = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-701",)).fetchone()
+        self.assertIsNone(created)
+        slot = self.conn.execute("SELECT current_asset_tag FROM slots WHERE id = 102;").fetchone()
+        self.assertIsNone(slot["current_asset_tag"])
+
+    def test_post_assign_now_with_occupied_slot_rejected_with_rollback(self) -> None:
+        self._set_admin_session()
+        existing_id = self._insert_asset("AT-800", "SER-800")
+        self._insert_slot(103, "CASE-C", 9, current_asset_tag="AT-800")
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (103, ?, '2026-01-02T00:00:00Z');
+            """,
+            (existing_id,),
+        )
+        self.conn.commit()
+
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-801",
+                "serial_number": "SER-801",
+                "manufacturer": "Dell",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "331",
+                "assign_now": "yes",
+                "case_number": "CASE-C",
+                "slot_number": "9",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"already occupied", response.data)
+
+        created = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-801",)).fetchone()
+        self.assertIsNone(created)
+        event = self.conn.execute("SELECT 1 FROM asset_events WHERE asset_tag = ?;", ("AT-801",)).fetchone()
+        self.assertIsNone(event)
+
+
+if __name__ == "__main__":
+    unittest.main()
