@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 from typing import Optional
 from datetime import datetime, timezone
@@ -138,6 +139,16 @@ def _require_admin_for_route():
     if auth_enabled() and not authed:
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
+
+    if auth_enabled():
+        touch_session()
+    return None
+
+
+def _require_admin_for_api():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        return {"ok": False, "error": "Locked"}, 401
 
     if auth_enabled():
         touch_session()
@@ -1420,6 +1431,194 @@ def holders_clear():
     touch_session()
     flash("Cleared holder selection.", "success")
     return redirect(url_for("holders_search"))
+
+
+@app.post("/admin/assets/create")
+def admin_create_asset():
+    guard_result = _require_admin_for_api()
+    if guard_result:
+        return guard_result
+
+    raw_data = request.get_json(silent=True)
+    if not isinstance(raw_data, dict):
+        raw_data = request.form.to_dict()
+
+    asset_tag = str(raw_data.get("asset_tag") or "").strip().upper()
+    actor = str(raw_data.get("actor") or "").strip()
+    equipment_type_raw = str(raw_data.get("equipment_type") or "").strip()
+    notes_raw = str(raw_data.get("notes") or "").strip()
+    home_slot_raw = raw_data.get("home_slot_id")
+
+    equipment_type = equipment_type_raw or None
+    notes = notes_raw or None
+
+    errors: list[str] = []
+    if not asset_tag:
+        errors.append("asset_tag is required.")
+    if not actor:
+        errors.append("actor is required.")
+
+    home_slot_id: Optional[int] = None
+    if home_slot_raw is not None and str(home_slot_raw).strip() != "":
+        try:
+            home_slot_id = int(str(home_slot_raw).strip())
+        except ValueError:
+            errors.append("home_slot_id must be an integer.")
+
+    if errors:
+        return {"ok": False, "error": "; ".join(errors)}, 400
+
+    conn = get_connection()
+    try:
+        try:
+            conn.execute("BEGIN;")
+
+            existing_asset = conn.execute(
+                """
+                SELECT 1
+                FROM assets
+                WHERE UPPER(asset_tag) = UPPER(?)
+                LIMIT 1;
+                """,
+                (asset_tag,),
+            ).fetchone()
+            if existing_asset:
+                raise ValueError("asset_tag already exists.")
+
+            slot_row = None
+            if home_slot_id is not None:
+                slot_row = conn.execute(
+                    """
+                    SELECT id, current_asset_tag
+                    FROM slots
+                    WHERE id = ?
+                    LIMIT 1;
+                    """,
+                    (home_slot_id,),
+                ).fetchone()
+                if slot_row is None:
+                    raise ValueError("home_slot_id does not reference an existing slot.")
+
+                occupied_row = conn.execute(
+                    """
+                    SELECT 1
+                    FROM slot_occupancy
+                    WHERE slot_id = ?
+                    LIMIT 1;
+                    """,
+                    (home_slot_id,),
+                ).fetchone()
+                if occupied_row:
+                    raise ValueError("Selected home slot is already occupied.")
+
+                if str(slot_row["current_asset_tag"] or "").strip():
+                    raise ValueError("Selected home slot is already occupied.")
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            created_date = now_iso.split("T", 1)[0]
+
+            asset_columns = get_asset_table_columns(conn)
+            insert_values: dict[str, object] = {
+                "asset_tag": asset_tag,
+            }
+
+            if "equipment_type" in asset_columns:
+                insert_values["equipment_type"] = equipment_type if equipment_type is not None else ""
+            if "custody_state" in asset_columns and "custody_state" not in insert_values:
+                insert_values["custody_state"] = "in_stock"
+            if "accountability_status" in asset_columns and "accountability_status" not in insert_values:
+                insert_values["accountability_status"] = "accountable"
+            if "condition" in asset_columns and "condition" not in insert_values:
+                insert_values["condition"] = "serviceable"
+            if "retired" in asset_columns and "retired" not in insert_values:
+                insert_values["retired"] = 0
+            if "created_date" in asset_columns and "created_date" not in insert_values:
+                insert_values["created_date"] = created_date
+            if "updated_date" in asset_columns and "updated_date" not in insert_values:
+                insert_values["updated_date"] = now_iso
+            if "location_type" in asset_columns:
+                insert_values["location_type"] = "STORAGE"
+            if "current_holder_id" in asset_columns:
+                insert_values["current_holder_id"] = None
+            if "home_slot_id" in asset_columns:
+                insert_values["home_slot_id"] = home_slot_id
+
+            column_names = list(insert_values.keys())
+            placeholders = ", ".join("?" for _ in column_names)
+            cursor = conn.execute(
+                f"INSERT INTO assets ({', '.join(column_names)}) VALUES ({placeholders});",
+                tuple(insert_values[col] for col in column_names),
+            )
+            asset_id = int(cursor.lastrowid)
+
+            if home_slot_id is not None:
+                conn.execute(
+                    """
+                    INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                    VALUES (?, ?, ?);
+                    """,
+                    (home_slot_id, asset_id, now_iso),
+                )
+                conn.execute(
+                    """
+                    UPDATE slots
+                    SET current_asset_tag = ?
+                    WHERE id = ?;
+                    """,
+                    (asset_tag, home_slot_id),
+                )
+
+            payload: dict[str, object] = {}
+            if home_slot_id is not None:
+                payload["slot_id"] = home_slot_id
+            if equipment_type:
+                payload["equipment_type"] = equipment_type
+
+            conn.execute(
+                """
+                INSERT INTO asset_events (
+                    asset_tag,
+                    event_type,
+                    event_date,
+                    actor,
+                    notes,
+                    payload,
+                    holder_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    asset_tag,
+                    "ASSET_CREATED",
+                    now_iso,
+                    actor,
+                    notes,
+                    json.dumps(payload) if payload else None,
+                    None,
+                ),
+            )
+
+            conn.commit()
+        except ValueError as e:
+            conn.rollback()
+            return {"ok": False, "error": str(e)}, 400
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            return {"ok": False, "error": f"create failed: {e}"}, 400
+        except Exception:
+            conn.rollback()
+            raise
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "asset_tag": asset_tag,
+        "location_type": "STORAGE",
+        "current_holder_id": None,
+        "home_slot_id": home_slot_id,
+        "event_type": "ASSET_CREATED",
+    }
 
 
 @app.route("/admin/assign-slot", methods=["GET", "POST"])
