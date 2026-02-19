@@ -38,6 +38,9 @@ SCAN_QUEUE: list[Scan] = []
 
 INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
+TERMINAL_LOCATION_TYPE = "DISPOSED"
+TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
+RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 
 
 # Helpers
@@ -132,6 +135,14 @@ def wants_json() -> bool:
       /preview/commit?json=1 (POST)
     """
     return (request.args.get("json") or "").strip() == "1"
+
+
+def _normalize_location_type(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _is_terminal_location_type(value: object) -> bool:
+    return _normalize_location_type(value) in TERMINAL_LOCATION_TYPES
 
 
 def _require_admin_for_route():
@@ -230,7 +241,9 @@ def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
         else:
             holder_label = f"ID {holder_id}"
 
-    location_type = str(asset.get("location_type") or "").strip().upper()
+    location_type = _normalize_location_type(asset.get("location_type"))
+    if _is_terminal_location_type(location_type):
+        errors.append("Asset is retired/disposed and cannot be assigned to a slot.")
     if location_type != "STORAGE":
         errors.append("Asset must be location_type=STORAGE.")
     if location_type == "IN_CUSTODY":
@@ -296,6 +309,51 @@ def _build_admin_slot_move_source_view(conn, slot_id: int) -> Optional[dict]:
         "occupied": occupied,
         "asset": asset_view,
     }
+
+
+def _build_admin_retire_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
+    asset = _find_asset_for_scan_tag(conn, scan_tag)
+    if not asset:
+        return None, ["asset_tag not found"]
+
+    location_type = _normalize_location_type(asset.get("location_type"))
+    errors: list[str] = []
+    if _is_terminal_location_type(location_type):
+        errors.append("Asset is already retired/disposed.")
+    if location_type not in {"STORAGE", "IN_CUSTODY"}:
+        errors.append("Asset must be in STORAGE or IN_CUSTODY to retire.")
+
+    holder_label = "None"
+    holder_id = asset.get("current_holder_id")
+    if holder_id is not None:
+        holder = conn.execute(
+            """
+            SELECT id, name, identifier
+            FROM holders
+            WHERE id = ?;
+            """,
+            (holder_id,),
+        ).fetchone()
+        if holder:
+            identifier = str(holder["identifier"] or "").strip()
+            holder_label = f"{holder['name']} ({identifier})" if identifier else str(holder["name"])
+        else:
+            holder_label = f"ID {holder_id}"
+
+    current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset["asset_tag"]))
+    view = {
+        "id": int(asset["id"]),
+        "asset_tag": str(asset.get("asset_tag") or ""),
+        "location_type": location_type,
+        "serial_number": str(asset.get("serial_number") or ""),
+        "manufacturer": str(asset.get("manufacturer") or ""),
+        "model": str(asset.get("model") or ""),
+        "current_holder": holder_label,
+        "current_holder_id": holder_id,
+        "home_slot_id": asset.get("home_slot_id"),
+        "current_slot": current_slot,
+    }
+    return view, errors
 
 
 def _build_admin_force_vacate_view(conn, slot_id: int) -> Optional[dict]:
@@ -611,6 +669,121 @@ def _create_admin_asset_in_tx(
     }
 
 
+def _retire_admin_asset_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    asset_id: int,
+    asset_tag: str,
+    failure_type: str,
+    notes: str,
+    actor: str,
+) -> dict:
+    locked_row = conn.execute(
+        """
+        SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
+        FROM assets
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (asset_id,),
+    ).fetchone()
+    if not locked_row:
+        raise ValueError("asset_tag not found")
+
+    origin_location = _normalize_location_type(locked_row["location_type"])
+    if _is_terminal_location_type(origin_location):
+        raise ValueError("Asset is already retired/disposed.")
+    if origin_location not in {"STORAGE", "IN_CUSTODY"}:
+        raise ValueError("Asset must be in STORAGE or IN_CUSTODY to retire.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    event_type = "ASSET_RETIRED_IN_FIELD" if origin_location == "IN_CUSTODY" else "ASSET_RETIRED"
+
+    occupied_slots = conn.execute(
+        """
+        SELECT slot_id
+        FROM slot_occupancy
+        WHERE asset_id = ?;
+        """,
+        (asset_id,),
+    ).fetchall()
+    cleared_slot_ids = [int(row["slot_id"]) for row in occupied_slots]
+
+    conn.execute(
+        """
+        DELETE FROM slot_occupancy
+        WHERE asset_id = ?;
+        """,
+        (asset_id,),
+    )
+    conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = NULL
+        WHERE UPPER(current_asset_tag) = UPPER(?)
+           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?);
+        """,
+        (asset_tag, asset_tag),
+    )
+
+    asset_columns = get_asset_table_columns(conn)
+    update_clauses = [
+        "location_type = ?",
+        "current_holder_id = NULL",
+        "home_slot_id = NULL",
+    ]
+    update_values: list[object] = [TERMINAL_LOCATION_TYPE]
+    if "updated_date" in asset_columns:
+        update_clauses.append("updated_date = ?")
+        update_values.append(now_iso)
+
+    update_values.append(asset_id)
+    conn.execute(
+        f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+        tuple(update_values),
+    )
+
+    payload = {
+        "failure_type": failure_type,
+        "notes": notes,
+        "from_location_type": origin_location,
+        "to_location_type": TERMINAL_LOCATION_TYPE,
+        "cleared_slot_ids": cleared_slot_ids,
+        "previous_holder_id": locked_row["current_holder_id"],
+        "previous_home_slot_id": locked_row["home_slot_id"],
+    }
+    conn.execute(
+        """
+        INSERT INTO asset_events (
+            asset_tag,
+            event_type,
+            event_date,
+            actor,
+            notes,
+            payload,
+            holder_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            str(locked_row["asset_tag"]),
+            event_type,
+            now_iso,
+            actor,
+            notes,
+            json.dumps(payload),
+            locked_row["current_holder_id"],
+        ),
+    )
+
+    return {
+        "asset_tag": str(locked_row["asset_tag"]),
+        "event_type": event_type,
+        "from_location_type": origin_location,
+        "to_location_type": TERMINAL_LOCATION_TYPE,
+    }
+
+
 def _selected_holder_from_session() -> Optional[dict]:
     holder_id = session.get("holder_id")
     if holder_id is None:
@@ -640,6 +813,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
     assets: list[dict] = []
     unknown_tags: list[str] = []
     not_storage: list[str] = []
+    retired_assets: list[str] = []
     not_slotted: list[str] = []
     blocking_issues: list[str] = []
 
@@ -736,6 +910,9 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
             before_location = str(asset_row["location_type"] or "").strip().upper()
             row["before_location_type"] = before_location or "UNKNOWN"
+            if _is_terminal_location_type(before_location):
+                row["asset_issues"].append("Asset is retired/disposed")
+                retired_assets.append(canon_tag)
 
             before_holder_id = asset_row["current_holder_id"]
             row["before_holder"] = "null" if before_holder_id is None else str(before_holder_id)
@@ -760,6 +937,8 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         blocking_issues.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
     if not_storage:
         blocking_issues.append(f"Not in STORAGE: {', '.join(not_storage)}")
+    if retired_assets:
+        blocking_issues.append(f"Retired/disposed: {', '.join(retired_assets)}")
     if not_slotted:
         blocking_issues.append(f"Not currently slotted: {', '.join(not_slotted)}")
 
@@ -776,6 +955,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     assets: list[dict] = []
     unknown_tags: list[str] = []
     not_in_custody: list[str] = []
+    retired_assets: list[str] = []
     no_home_slot: list[str] = []
     occupied_home_slot: list[str] = []
     blocking_issues: list[str] = []
@@ -844,6 +1024,9 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
             location_type = str(asset_row["location_type"] or "").strip().upper()
             row["before_location_type"] = location_type or "UNKNOWN"
+            if _is_terminal_location_type(location_type):
+                row["asset_issues"].append("Asset is retired/disposed")
+                retired_assets.append(canon_tag)
             if location_type != "IN_CUSTODY":
                 row["asset_issues"].append("Asset is not in IN_CUSTODY")
                 not_in_custody.append(canon_tag)
@@ -891,6 +1074,8 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
         blocking_issues.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
     if not_in_custody:
         blocking_issues.append(f"Not in IN_CUSTODY: {', '.join(not_in_custody)}")
+    if retired_assets:
+        blocking_issues.append(f"Retired/disposed: {', '.join(retired_assets)}")
     if no_home_slot:
         blocking_issues.append(f"Missing home slot: {', '.join(no_home_slot)}")
     if occupied_home_slot:
@@ -969,6 +1154,7 @@ def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
 
             unknown_tags: list[str] = []
             not_storage: list[str] = []
+            retired_assets: list[str] = []
             not_slotted: list[str] = []
 
             # Map scan tags -> canonical DB tags (so we update/vacate consistently)
@@ -984,18 +1170,22 @@ def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
                 canon_tags.append(canon_tag)
 
                 location_type = str(asset_row["location_type"] or "").strip().upper()
+                if _is_terminal_location_type(location_type):
+                    retired_assets.append(canon_tag)
                 if location_type != "STORAGE":
                     not_storage.append(canon_tag)
 
                 if not _is_slotted(conn, canon_tag):
                     not_slotted.append(canon_tag)
 
-            if unknown_tags or not_storage or not_slotted:
+            if unknown_tags or not_storage or retired_assets or not_slotted:
                 parts: list[str] = []
                 if unknown_tags:
                     parts.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
                 if not_storage:
                     parts.append(f"Not in STORAGE: {', '.join(not_storage)}")
+                if retired_assets:
+                    parts.append(f"Retired/disposed: {', '.join(retired_assets)}")
                 if not_slotted:
                     parts.append(f"Not currently slotted: {', '.join(not_slotted)}")
                 raise ValueError("; ".join(parts))
@@ -1076,6 +1266,7 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
 
             unknown_tags: list[str] = []
             not_in_custody: list[str] = []
+            retired_assets: list[str] = []
             no_home_slot: list[str] = []
             occupied_home_slot: list[str] = []
             validated_rows: list[dict] = []
@@ -1089,6 +1280,8 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
                 canon_tag = str(asset_row["asset_tag"])
 
                 location_type = str(asset_row["location_type"] or "").strip().upper()
+                if _is_terminal_location_type(location_type):
+                    retired_assets.append(canon_tag)
                 if location_type != "IN_CUSTODY":
                     not_in_custody.append(canon_tag)
 
@@ -1114,12 +1307,14 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
 
                 validated_rows.append({"asset_tag": canon_tag, "home_slot_id": int(slot["id"])})
 
-            if unknown_tags or not_in_custody or no_home_slot or occupied_home_slot:
+            if unknown_tags or not_in_custody or retired_assets or no_home_slot or occupied_home_slot:
                 parts: list[str] = []
                 if unknown_tags:
                     parts.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
                 if not_in_custody:
                     parts.append(f"Not in IN_CUSTODY: {', '.join(not_in_custody)}")
+                if retired_assets:
+                    parts.append(f"Retired/disposed: {', '.join(retired_assets)}")
                 if no_home_slot:
                     parts.append(f"Missing home slot: {', '.join(no_home_slot)}")
                 if occupied_home_slot:
@@ -1774,6 +1969,122 @@ def admin_new_asset():
     return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
 
 
+@app.route("/admin/assets/retire", methods=["GET", "POST"])
+def admin_retire_asset():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    form_state = {
+        "asset_tag": "",
+        "failure_type": "",
+        "notes": "",
+        "confirm_physical": False,
+        "confirm_in_field": False,
+    }
+    asset_view: Optional[dict] = None
+    error_message: Optional[str] = None
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "lookup").strip().lower()
+        form_state = {
+            "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
+            "failure_type": (request.form.get("failure_type") or "").strip().upper(),
+            "notes": (request.form.get("notes") or "").strip(),
+            "confirm_physical": _is_truthy(request.form.get("confirm_physical")),
+            "confirm_in_field": _is_truthy(request.form.get("confirm_in_field")),
+        }
+
+        conn = get_connection()
+        try:
+            asset_view, blocking_errors = _build_admin_retire_asset_view(conn, form_state["asset_tag"])
+            if action == "lookup":
+                if not form_state["asset_tag"]:
+                    error_message = "asset_tag is required."
+                elif blocking_errors:
+                    error_message = "; ".join(blocking_errors)
+            elif action == "retire":
+                errors: list[str] = []
+                if not form_state["asset_tag"]:
+                    errors.append("asset_tag is required.")
+                if not form_state["failure_type"]:
+                    errors.append("failure_type is required.")
+                elif form_state["failure_type"] not in RETIRE_FAILURE_TYPES:
+                    errors.append(
+                        f"failure_type must be one of: {', '.join(sorted(RETIRE_FAILURE_TYPES))}."
+                    )
+                if not form_state["notes"]:
+                    errors.append("notes is required.")
+                if not form_state["confirm_physical"]:
+                    errors.append("You must confirm physical reality before retiring.")
+                if asset_view and asset_view["location_type"] == "IN_CUSTODY" and not form_state["confirm_in_field"]:
+                    errors.append("You must confirm the in-custody asset is not recoverable.")
+                if blocking_errors:
+                    errors.extend(blocking_errors)
+                if errors:
+                    error_message = "; ".join(errors)
+                    return render_template(
+                        "admin_retire_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+
+                try:
+                    conn.execute("BEGIN;")
+                    result = _retire_admin_asset_in_tx(
+                        conn,
+                        asset_id=int(asset_view["id"]),
+                        asset_tag=str(asset_view["asset_tag"]),
+                        failure_type=form_state["failure_type"],
+                        notes=form_state["notes"],
+                        actor="admin",
+                    )
+                    conn.commit()
+                except ValueError as e:
+                    conn.rollback()
+                    error_message = str(e)
+                    return render_template(
+                        "admin_retire_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    error_message = f"retire failed: {e}"
+                    return render_template(
+                        "admin_retire_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                flash(
+                    f"Retired asset {result['asset_tag']} with status {result['to_location_type']}.",
+                    "success",
+                )
+                return redirect(url_for("admin_retire_asset"))
+            else:
+                error_message = "Unknown action."
+        finally:
+            conn.close()
+
+    return render_template(
+        "admin_retire_asset.html",
+        form=form_state,
+        asset=asset_view,
+        error_message=error_message,
+        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+    )
+
+
 @app.post("/admin/assets/create")
 def admin_create_asset():
     guard_result = _require_admin_for_api()
@@ -1963,7 +2274,9 @@ def admin_assign_slot():
                     if not asset_row:
                         raise ValueError("asset_tag not found")
 
-                    location_type = str(asset_row.get("location_type") or "").strip().upper()
+                    location_type = _normalize_location_type(asset_row.get("location_type"))
+                    if _is_terminal_location_type(location_type):
+                        raise ValueError("Asset is retired/disposed and cannot be assigned to a slot.")
                     if location_type != "STORAGE":
                         raise ValueError("Asset must be location_type=STORAGE.")
                     if location_type == "IN_CUSTODY":
@@ -2239,7 +2552,9 @@ def admin_slot_move():
 
                 asset_id = int(source_slot_locked["asset_id"])
                 asset_tag = str(source_slot_locked["asset_tag"] or "")
-                location_type = str(source_slot_locked["location_type"] or "").strip().upper()
+                location_type = _normalize_location_type(source_slot_locked["location_type"])
+                if _is_terminal_location_type(location_type):
+                    raise ValueError("Asset is retired/disposed and cannot be moved.")
                 if location_type != "STORAGE":
                     raise ValueError("Asset must be location_type=STORAGE.")
                 if location_type == "IN_CUSTODY":
@@ -2465,8 +2780,10 @@ def admin_force_vacate():
                 flash("Cannot force vacate an empty slot.", "error")
 
             asset_for_view = (slot_view or {}).get("asset") if slot_view else None
-            if asset_for_view and str(asset_for_view.get("location_type") or "").strip().upper() == "IN_CUSTODY":
+            if asset_for_view and _normalize_location_type(asset_for_view.get("location_type")) == "IN_CUSTODY":
                 flash("Cannot force vacate: occupied asset is IN_CUSTODY.", "error")
+            if asset_for_view and _is_terminal_location_type(asset_for_view.get("location_type")):
+                flash("Cannot force vacate: occupied asset is retired/disposed.", "error")
             if not reason:
                 flash("Reason is required.", "error")
             if not confirmed:
@@ -2478,7 +2795,8 @@ def admin_force_vacate():
                 or not slot_view.get("occupied")
                 or not reason
                 or not confirmed
-                or (asset_for_view and str(asset_for_view.get("location_type") or "").strip().upper() == "IN_CUSTODY")
+                or (asset_for_view and _normalize_location_type(asset_for_view.get("location_type")) == "IN_CUSTODY")
+                or (asset_for_view and _is_terminal_location_type(asset_for_view.get("location_type")))
             ):
                 return render_template(
                     "admin_force_vacate.html",
@@ -2552,6 +2870,8 @@ def admin_force_vacate():
                     else:
                         raise ValueError("Occupied asset record not found.")
 
+                if _is_terminal_location_type(asset_location_type):
+                    raise ValueError("Cannot force vacate: occupied asset is retired/disposed.")
                 if asset_location_type == "IN_CUSTODY":
                     raise ValueError("Cannot force vacate: occupied asset is IN_CUSTODY.")
 
