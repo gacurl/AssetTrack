@@ -356,6 +356,140 @@ def _build_admin_retire_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
     return view, errors
 
 
+def _resolve_replacement_target_slot(
+    conn: sqlite3.Connection,
+    *,
+    failed_asset_id: int,
+    failed_asset_tag: str,
+    failed_home_slot_id: Optional[int],
+) -> tuple[int, dict]:
+    occupancy_slot = conn.execute(
+        """
+        SELECT s.id, s.case_name, s.slot_position, s.current_asset_tag
+        FROM slot_occupancy so
+        JOIN slots s ON s.id = so.slot_id
+        WHERE so.asset_id = ?
+        LIMIT 1;
+        """,
+        (failed_asset_id,),
+    ).fetchone()
+    if occupancy_slot:
+        return int(occupancy_slot["id"]), dict(occupancy_slot)
+
+    if failed_home_slot_id is None:
+        raise ValueError("Asset has no slot. Assign a slot first.")
+
+    home_slot = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (failed_home_slot_id,),
+    ).fetchone()
+    if not home_slot:
+        raise ValueError("Target slot does not exist.")
+
+    return int(home_slot["id"]), dict(home_slot)
+
+
+def _validate_swap_target_slot_integrity(
+    conn: sqlite3.Connection,
+    *,
+    target_slot_id: int,
+    failed_asset_id: int,
+    failed_asset_tag: str,
+) -> None:
+    occupied = conn.execute(
+        """
+        SELECT asset_id
+        FROM slot_occupancy
+        WHERE slot_id = ?
+        LIMIT 1;
+        """,
+        (target_slot_id,),
+    ).fetchone()
+    if occupied and int(occupied["asset_id"]) != failed_asset_id:
+        raise ValueError("Target slot is occupied by another asset.")
+
+    slot_row = conn.execute(
+        """
+        SELECT current_asset_tag
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (target_slot_id,),
+    ).fetchone()
+    if not slot_row:
+        raise ValueError("Target slot does not exist.")
+
+    marker = str(slot_row["current_asset_tag"] or "").strip()
+    if marker:
+        is_failed_asset_marker = marker.upper() == failed_asset_tag.upper() or marker.upper() == failed_asset_tag.upper().replace("-", "")
+        if not is_failed_asset_marker:
+            raise ValueError("Target slot is occupied by another asset.")
+
+
+def _build_admin_replace_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
+    asset = _find_asset_for_scan_tag(conn, scan_tag)
+    if not asset:
+        return None, ["asset_tag not found"]
+
+    location_type = _normalize_location_type(asset.get("location_type"))
+    errors: list[str] = []
+    if _is_terminal_location_type(location_type):
+        errors.append("Asset is already retired/disposed.")
+    if location_type not in {"STORAGE", "IN_CUSTODY"}:
+        errors.append("Asset must be in STORAGE or IN_CUSTODY to replace.")
+
+    holder_label = "None"
+    holder_id = asset.get("current_holder_id")
+    if holder_id is not None:
+        holder = conn.execute(
+            """
+            SELECT id, name, identifier
+            FROM holders
+            WHERE id = ?;
+            """,
+            (holder_id,),
+        ).fetchone()
+        if holder:
+            identifier = str(holder["identifier"] or "").strip()
+            holder_label = f"{holder['name']} ({identifier})" if identifier else str(holder["name"])
+        else:
+            holder_label = f"ID {holder_id}"
+
+    target_slot_id = None
+    target_slot = None
+    try:
+        target_slot_id, target_slot = _resolve_replacement_target_slot(
+            conn,
+            failed_asset_id=int(asset["id"]),
+            failed_asset_tag=str(asset["asset_tag"]),
+            failed_home_slot_id=asset.get("home_slot_id"),
+        )
+    except ValueError as e:
+        errors.append(str(e))
+
+    view = {
+        "id": int(asset["id"]),
+        "asset_tag": str(asset.get("asset_tag") or ""),
+        "location_type": location_type,
+        "serial_number": str(asset.get("serial_number") or ""),
+        "manufacturer": str(asset.get("manufacturer") or ""),
+        "model": str(asset.get("model") or ""),
+        "building_room": str(asset.get("building_room") or ""),
+        "current_holder": holder_label,
+        "current_holder_id": holder_id,
+        "home_slot_id": asset.get("home_slot_id"),
+        "target_slot_id": target_slot_id,
+        "target_slot": target_slot,
+    }
+    return view, errors
+
+
 def _build_admin_force_vacate_view(conn, slot_id: int) -> Optional[dict]:
     slot_row = conn.execute(
         """
@@ -2080,6 +2214,221 @@ def admin_retire_asset():
         "admin_retire_asset.html",
         form=form_state,
         asset=asset_view,
+        error_message=error_message,
+        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+    )
+
+
+@app.route("/admin/assets/replace", methods=["GET", "POST"])
+def admin_replace_asset():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    form_state = {
+        "failed_asset_tag": "",
+        "failure_type": "",
+        "failure_notes": "",
+        "replacement_asset_tag": "",
+        "replacement_serial_number": "",
+        "replacement_manufacturer": "",
+        "replacement_equipment_type": "laptop",
+        "replacement_model": "",
+        "replacement_model_code": "",
+        "replacement_notes": "",
+        "confirm_retire": False,
+        "confirm_slot": False,
+    }
+    failed_asset_view: Optional[dict] = None
+    error_message: Optional[str] = None
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "lookup").strip().lower()
+        form_state = {
+            "failed_asset_tag": (request.form.get("failed_asset_tag") or "").strip().upper(),
+            "failure_type": (request.form.get("failure_type") or "").strip().upper(),
+            "failure_notes": (request.form.get("failure_notes") or "").strip(),
+            "replacement_asset_tag": (request.form.get("replacement_asset_tag") or "").strip().upper(),
+            "replacement_serial_number": (request.form.get("replacement_serial_number") or "").strip(),
+            "replacement_manufacturer": (request.form.get("replacement_manufacturer") or "").strip(),
+            "replacement_equipment_type": (request.form.get("replacement_equipment_type") or "").strip() or "laptop",
+            "replacement_model": (request.form.get("replacement_model") or "").strip(),
+            "replacement_model_code": (request.form.get("replacement_model_code") or "").strip(),
+            "replacement_notes": (request.form.get("replacement_notes") or "").strip(),
+            "confirm_retire": _is_truthy(request.form.get("confirm_retire")),
+            "confirm_slot": _is_truthy(request.form.get("confirm_slot")),
+        }
+
+        conn = get_connection()
+        try:
+            failed_asset_view, blocking_errors = _build_admin_replace_asset_view(conn, form_state["failed_asset_tag"])
+            if action == "lookup":
+                if not form_state["failed_asset_tag"]:
+                    error_message = "failed asset_tag is required."
+                elif blocking_errors:
+                    error_message = "; ".join(blocking_errors)
+            elif action == "replace":
+                errors: list[str] = []
+                if not form_state["failed_asset_tag"]:
+                    errors.append("failed asset_tag is required.")
+                if not form_state["failure_type"]:
+                    errors.append("failure_type is required.")
+                elif form_state["failure_type"] not in RETIRE_FAILURE_TYPES:
+                    errors.append(
+                        f"failure_type must be one of: {', '.join(sorted(RETIRE_FAILURE_TYPES))}."
+                    )
+                if not form_state["failure_notes"]:
+                    errors.append("failure notes are required.")
+                if not form_state["replacement_asset_tag"]:
+                    errors.append("replacement asset_tag is required.")
+                if not form_state["replacement_serial_number"]:
+                    errors.append("replacement serial_number is required.")
+                if not form_state["replacement_manufacturer"]:
+                    errors.append("replacement manufacturer is required.")
+                if not form_state["replacement_equipment_type"]:
+                    errors.append("replacement equipment_type is required.")
+                if not form_state["confirm_retire"]:
+                    errors.append("You must confirm the failed asset is being retired.")
+                if not form_state["confirm_slot"]:
+                    errors.append("You must confirm the replacement will go into the target slot.")
+                if blocking_errors:
+                    errors.extend(blocking_errors)
+                if errors:
+                    error_message = "; ".join(errors)
+                    return render_template(
+                        "admin_replace_asset.html",
+                        form=form_state,
+                        failed_asset=failed_asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+
+                try:
+                    conn.execute("BEGIN;")
+                    locked_failed = conn.execute(
+                        """
+                        SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
+                        FROM assets
+                        WHERE id = ?
+                        LIMIT 1;
+                        """,
+                        (int(failed_asset_view["id"]),),
+                    ).fetchone()
+                    if not locked_failed:
+                        raise ValueError("failed asset_tag not found.")
+
+                    locked_location = _normalize_location_type(locked_failed["location_type"])
+                    if _is_terminal_location_type(locked_location):
+                        raise ValueError("Failed asset is already retired/disposed.")
+                    if locked_location not in {"STORAGE", "IN_CUSTODY"}:
+                        raise ValueError("Failed asset must be in STORAGE or IN_CUSTODY.")
+
+                    target_slot_id, target_slot = _resolve_replacement_target_slot(
+                        conn,
+                        failed_asset_id=int(locked_failed["id"]),
+                        failed_asset_tag=str(locked_failed["asset_tag"]),
+                        failed_home_slot_id=locked_failed["home_slot_id"],
+                    )
+
+                    replacement_tag_exists = conn.execute(
+                        """
+                        SELECT 1
+                        FROM assets
+                        WHERE UPPER(asset_tag) = UPPER(?)
+                        LIMIT 1;
+                        """,
+                        (form_state["replacement_asset_tag"],),
+                    ).fetchone()
+                    if replacement_tag_exists:
+                        raise ValueError("replacement asset_tag already exists.")
+
+                    replacement_serial_exists = conn.execute(
+                        """
+                        SELECT 1
+                        FROM assets
+                        WHERE TRIM(COALESCE(serial_number, '')) <> ''
+                          AND UPPER(serial_number) = UPPER(?)
+                        LIMIT 1;
+                        """,
+                        (form_state["replacement_serial_number"],),
+                    ).fetchone()
+                    if replacement_serial_exists:
+                        raise ValueError("replacement serial_number already exists.")
+
+                    _validate_swap_target_slot_integrity(
+                        conn,
+                        target_slot_id=target_slot_id,
+                        failed_asset_id=int(locked_failed["id"]),
+                        failed_asset_tag=str(locked_failed["asset_tag"]),
+                    )
+
+                    _retire_admin_asset_in_tx(
+                        conn,
+                        asset_id=int(locked_failed["id"]),
+                        asset_tag=str(locked_failed["asset_tag"]),
+                        failure_type=form_state["failure_type"],
+                        notes=form_state["failure_notes"],
+                        actor="admin",
+                    )
+
+                    _create_admin_asset_in_tx(
+                        conn,
+                        asset_tag=form_state["replacement_asset_tag"],
+                        actor="admin",
+                        equipment_type=form_state["replacement_equipment_type"],
+                        serial_number=form_state["replacement_serial_number"],
+                        manufacturer=form_state["replacement_manufacturer"],
+                        building=str(failed_asset_view.get("building_room") or "").split("/", 1)[0],
+                        room=str(failed_asset_view.get("building_room") or "").split("/", 1)[1]
+                        if "/" in str(failed_asset_view.get("building_room") or "")
+                        else "",
+                        model=form_state["replacement_model"] or None,
+                        model_code=form_state["replacement_model_code"] or None,
+                        notes=form_state["replacement_notes"] or None,
+                        assign_case_number=str(target_slot["case_name"]),
+                        assign_slot_number=int(target_slot["slot_position"]),
+                    )
+
+                    conn.commit()
+                except ValueError as e:
+                    conn.rollback()
+                    error_message = str(e)
+                    return render_template(
+                        "admin_replace_asset.html",
+                        form=form_state,
+                        failed_asset=failed_asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    error_message = f"replace failed: {e}"
+                    return render_template(
+                        "admin_replace_asset.html",
+                        form=form_state,
+                        failed_asset=failed_asset_view,
+                        error_message=error_message,
+                        failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                flash(
+                    f"Replaced {form_state['failed_asset_tag']} with {form_state['replacement_asset_tag']} "
+                    f"in case {target_slot['case_name']} slot {target_slot['slot_position']}.",
+                    "success",
+                )
+                return redirect(url_for("admin_replace_asset"))
+            else:
+                error_message = "Unknown action."
+        finally:
+            conn.close()
+
+    return render_template(
+        "admin_replace_asset.html",
+        form=form_state,
+        failed_asset=failed_asset_view,
         error_message=error_message,
         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
     )
