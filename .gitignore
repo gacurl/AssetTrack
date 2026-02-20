@@ -17,6 +17,7 @@ ENV/
 # IDE/editor settings
 .vscode/
 .idea/
+.local/
 
 # Local database & JSON configs
 inventory.db
