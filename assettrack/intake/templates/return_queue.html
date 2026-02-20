@@ -1,87 +1,75 @@
 <!-- file: assettrack/intake/templates/return_queue.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Return Assets</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 1100px; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 1100px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; border-bottom: 1px solid #eee; padding: 0.5rem; vertical-align: top; }
-      th { background: #fafafa; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; }
-      .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
-      .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
-      .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      ul { margin: 0.5rem 0 0 1.25rem; }
-      a { text-decoration: none; }
-      input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
-    </style>
-  </head>
-  <body>
-    <h1>Return Assets</h1>
-    <p><a href="/">← Back to intake</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}Return Assets{% endblock %}
+{% block page_heading %}Return Assets{% endblock %}
 
-    <div class="card">
-      <h2>Scan returns</h2>
-      <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
+{% block extra_head %}
+  <style>
+    .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
+    .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
+    .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+    ul { margin: 0.5rem 0 0 1.25rem; }
+    input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
+  </style>
+{% endblock %}
 
-      <form method="post" action="/" style="margin-top: 10px;">
-        <input type="hidden" name="return_to" value="/return" />
-        <input
-          type="text"
-          name="scan_text"
-          placeholder="Scan here..."
-          autofocus
-        />
-        <button type="submit">Submit</button>
-      </form>
+{% block content %}
+  <p><a href="/">← Back to intake</a></p>
 
-      <form method="post" action="/queue/clear" style="margin-top: 10px;">
-        <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
-      </form>
-    </div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
 
-    <div class="card">
-      <h2>Validation Summary</h2>
-      <p>
-        <strong>Queued assets:</strong> {{ queued_count }}
-        &nbsp;|&nbsp;
-        <strong>Ready:</strong> {{ ready_count }}
-        &nbsp;|&nbsp;
-        <strong>Status:</strong>
-        {% if blocking_issues %}
-          <span class="pill bad">blocked</span>
-        {% else %}
-          <span class="pill good">ready</span>
-        {% endif %}
-      </p>
+  <div class="card">
+    <h2>Scan returns</h2>
+    <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
+
+    <form method="post" action="/" style="margin-top: 10px;">
+      <input type="hidden" name="return_to" value="/return" />
+      <input
+        type="text"
+        name="scan_text"
+        placeholder="Scan here..."
+        autofocus
+      />
+      <button type="submit">Submit</button>
+    </form>
+
+    <form method="post" action="/queue/clear" style="margin-top: 10px;">
+      <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Validation Summary</h2>
+    <p>
+      <strong>Queued assets:</strong> {{ queued_count }}
+      &nbsp;|&nbsp;
+      <strong>Ready:</strong> {{ ready_count }}
+      &nbsp;|&nbsp;
+      <strong>Status:</strong>
       {% if blocking_issues %}
-        <div role="list" style="margin: 0.5rem 0 0 1.25rem;">
-          {% for issue in blocking_issues %}
-            <div role="listitem">• <span>{{ issue }}</span></div>
-          {% endfor %}
-        </div>
+        <span class="pill bad">blocked</span>
+      {% else %}
+        <span class="pill good">ready</span>
       {% endif %}
-    </div>
+    </p>
+    {% if blocking_issues %}
+      <div role="list" style="margin: 0.5rem 0 0 1.25rem;">
+        {% for issue in blocking_issues %}
+          <div role="listitem">• <span>{{ issue }}</span></div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
 
-    <div class="card">
-      <h2>Next Step</h2>
-      <p><a href="/return/preview"><strong>Open Return Assets Preview / Confirm</strong></a></p>
-    </div>
-  </body>
-</html>
+  <div class="card">
+    <h2>Next Step</h2>
+    <p><a href="/return/preview"><strong>Open Return Assets Preview / Confirm</strong></a></p>
+  </div>
+{% endblock %}

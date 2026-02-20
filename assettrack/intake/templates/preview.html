@@ -1,176 +1,150 @@
 <!-- assettrack/intake/templates/preview.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AssetTrack Preview</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; border-bottom: 1px solid #eee; padding: 0.5rem; vertical-align: top; }
-      th { background: #fafafa; }
-      .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
-      .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
-      .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      pre { white-space: pre-wrap; word-break: break-word; }
-      .row { margin: 0.75rem 0; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; }
-      a { text-decoration: none; }
-    </style>
-  </head>
+{% extends "base.html" %}
 
-  <body>
-    <h1>Batch Preview</h1>
+{% block title %}AssetTrack Preview{% endblock %}
+{% block page_heading %}Batch Preview{% endblock %}
 
-    <div class="row">
-      <a href="/">← Back to intake</a>
-    </div>
+{% block extra_head %}
+  <style>
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
+    .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
+    .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+  </style>
+{% endblock %}
 
-    <!-- Flash messages (commit/validate errors) -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block content %}
+  <div class="row">
+    <a href="/">← Back to intake</a>
+  </div>
 
-    <div class="card">
-      <p>
-        <strong>Rows:</strong> {{ row_count }}
-        &nbsp;|&nbsp;
-        <strong>Equipment type (session):</strong> <code>{{ equipment_type or "" }}</code>
-        &nbsp;|&nbsp;
-        <strong>Status:</strong>
-        {% if valid %}
-          <span class="pill good">valid</span>
-        {% else %}
-          <span class="pill bad">not valid</span>
-        {% endif %}
-      </p>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
 
-      <form method="post" action="/preview/commit" style="margin-top: 10px;">
-        <label style="display:block; margin-bottom: 10px;">
-          <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
-          I reviewed this batch and want to add it to the database.
-        </label>
-
-        <button id="add_btn" type="submit" disabled>Add to database</button>
-      </form>
-
-      <form method="post" action="/preview/discard" style="margin-top: 10px;"
-            onsubmit="return confirm('Discard this batch? This clears the queue.');">
-        <button type="submit">Discard batch</button>
-      </form>
-
-      <p style="margin-top: 10px;">
-        Tip: for raw JSON, open <code>/preview?json=1</code> or <code>/preview/validate</code>.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>Mode</h2>
-
-      <form method="post" action="/preview/mode" style="margin-top: 10px;">
-        <label style="display:block; margin-bottom: 10px;">
-          <input type="checkbox" id="stock_out_mode" name="stock_out_mode" {% if stock_out_mode %}checked{% endif %}>
-          Stock-out mode (STORAGE → IN_CUSTODY)
-        </label>
-        <button type="submit">Update mode</button>
-      </form>
-
-      {% if stock_out_mode %}
-        <p style="margin-top: 10px;">
-          <strong>Stock-out is enabled.</strong> Select a holder, then commit to move assets to custody and vacate slots.
-        </p>
-        <p style="margin-top: 10px;">
-          <a href="/issue/preview"><strong>Open Issue Assets Preview / Confirm</strong></a>
-        </p>
+  <div class="card">
+    <p>
+      <strong>Rows:</strong> {{ row_count }}
+      &nbsp;|&nbsp;
+      <strong>Equipment type (session):</strong> <code>{{ equipment_type or "" }}</code>
+      &nbsp;|&nbsp;
+      <strong>Status:</strong>
+      {% if valid %}
+        <span class="pill good">valid</span>
       {% else %}
-        <p style="margin-top: 10px;">
-          <strong>Normal intake is enabled.</strong> Commit will add/update assets based on the scanned batch.
-        </p>
+        <span class="pill bad">not valid</span>
       {% endif %}
-    </div>
+    </p>
+
+    <form method="post" action="/preview/commit" style="margin-top: 10px;">
+      <label style="display:block; margin-bottom: 10px;">
+        <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
+        I reviewed this batch and want to add it to the database.
+      </label>
+
+      <button id="add_btn" type="submit" disabled>Add to database</button>
+    </form>
+
+    <form method="post" action="/preview/discard" style="margin-top: 10px;"
+          onsubmit="return confirm('Discard this batch? This clears the queue.');">
+      <button type="submit">Discard batch</button>
+    </form>
+
+    <p style="margin-top: 10px;">
+      Tip: for raw JSON, open <code>/preview?json=1</code> or <code>/preview/validate</code>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Mode</h2>
+
+    <form method="post" action="/preview/mode" style="margin-top: 10px;">
+      <label>
+        <input type="checkbox" name="stock_out_mode" value="on" {% if stock_out_mode %}checked{% endif %} />
+        Enable stock-out mode (issue assets to a selected holder)
+      </label>
+      <br /><br />
+      <button type="submit">Save mode</button>
+    </form>
 
     {% if stock_out_mode %}
-      <div class="card">
-        <h2>Stock-Out Holder</h2>
-        {% if selected_holder %}
-          <p>
-            <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
-            <strong>Name:</strong> {{ selected_holder["name"] }}<br />
-            <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
-          </p>
-          <p><a href="/issue/preview"><strong>Issue Assets</strong></a></p>
-        {% else %}
-          <p>No holder selected.</p>
-        {% endif %}
-        <p><a href="/holders">Search/select holder</a></p>
-      </div>
+      <p style="margin-top: 12px;"><strong>Stock-out mode:</strong> ON</p>
+      {% if selected_holder %}
+        <p>
+          <strong>Selected holder:</strong>
+          {{ selected_holder["name"] }}
+          {% if selected_holder["identifier"] %}
+            ({{ selected_holder["identifier"] }})
+          {% endif %}
+        </p>
+      {% else %}
+        <p><strong>No holder selected.</strong></p>
+      {% endif %}
+      <p><a href="/holders">Search/select holder</a></p>
+      <p><a href="/issue/preview">Open Issue Assets Preview / Confirm</a></p>
+    {% else %}
+      <p style="margin-top: 12px;"><strong>Stock-out mode:</strong> OFF</p>
     {% endif %}
+  </div>
 
-    <div class="card">
-      <h2>Rows</h2>
-      <table>
-        <thead>
+  <div class="card">
+    <h2>Parsed rows</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>asset_tag</th>
+          <th>timestamp</th>
+          <th>fields</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in parsed_rows %}
+          {% set d = r["data"] %}
           <tr>
-            <th style="width: 70px;">#</th>
-            <th style="width: 120px;">Event</th>
-            <th style="width: 220px;">Asset tag</th>
-            <th style="width: 160px;">Timestamp</th>
-            <th>Details</th>
+            <td>{{ r["row_number"] }}</td>
+            <td><code>{{ d.get("asset_tag", "") }}</code></td>
+            <td><code>{{ d.get("timestamp", "") }}</code></td>
+            <td>
+              <code>operator_id</code>: <code>{{ d.get("operator_id", "") }}</code>
+              {% if d.get("equipment_type") %}
+                <br /><code>equipment_type</code>: <code>{{ d.get("equipment_type") }}</code>
+              {% endif %}
+              {% if d.get("case_number") or d.get("slot_number") %}
+                <br /><code>case</code>/<code>slot</code>:
+                <code>{{ d.get("case_number","") }}</code>/<code>{{ d.get("slot_number","") }}</code>
+              {% endif %}
+              {% if d.get("issued_to_name") %}
+                <br /><code>issued_to_name</code>: <code>{{ d.get("issued_to_name") }}</code>
+              {% endif %}
+              {% if d.get("notes") %}
+                <br /><code>notes</code>: <code>{{ d.get("notes") }}</code>
+              {% endif %}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% for r in parsed_rows %}
-            {% set d = r["data"] %}
-            <tr>
-              <td><code>{{ r["row_number"] }}</code></td>
-              <td><code>{{ d.get("event_type", "") }}</code></td>
-              <td><code>{{ d.get("asset_tag", "") }}</code></td>
-              <td><code>{{ d.get("timestamp", "") }}</code></td>
-              <td>
-                <code>operator_id</code>: <code>{{ d.get("operator_id", "") }}</code>
-                {% if d.get("equipment_type") %}
-                  <br /><code>equipment_type</code>: <code>{{ d.get("equipment_type") }}</code>
-                {% endif %}
-                {% if d.get("case_number") or d.get("slot_number") %}
-                  <br /><code>case</code>/<code>slot</code>:
-                  <code>{{ d.get("case_number","") }}</code>/<code>{{ d.get("slot_number","") }}</code>
-                {% endif %}
-                {% if d.get("issued_to_name") %}
-                  <br /><code>issued_to_name</code>: <code>{{ d.get("issued_to_name") }}</code>
-                {% endif %}
-                {% if d.get("notes") %}
-                  <br /><code>notes</code>: <code>{{ d.get("notes") }}</code>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-    <div class="card">
-      <h2>Validation result</h2>
-      <pre>{{ validation | tojson(indent=2) }}</pre>
-    </div>
+  <div class="card">
+    <h2>Validation result</h2>
+    <pre>{{ validation | tojson(indent=2) }}</pre>
+  </div>
+{% endblock %}
 
-    <script>
-      const cb = document.getElementById('confirm_reviewed');
-      const btn = document.getElementById('add_btn');
-      if (cb && btn) {
-        const sync = () => { btn.disabled = !cb.checked; };
-        cb.addEventListener('change', sync);
-        sync();
-      }
-    </script>
-  </body>
-</html>
+{% block extra_scripts %}
+  <script>
+    const cb = document.getElementById('confirm_reviewed');
+    const btn = document.getElementById('add_btn');
+    if (cb && btn) {
+      const sync = () => { btn.disabled = !cb.checked; };
+      cb.addEventListener('change', sync);
+      sync();
+    }
+  </script>
+{% endblock %}

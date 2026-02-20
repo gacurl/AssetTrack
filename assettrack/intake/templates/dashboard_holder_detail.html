@@ -1,67 +1,51 @@
 <!-- file: assettrack/intake/templates/dashboard_holder_detail.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Holder Detail</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 0; color: #12202f; background: #f7f9fc; }
-      a { color: #134e8a; text-decoration: none; }
-      a:hover { text-decoration: underline; }
-      .page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
-      .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-      .chip { display: inline-flex; align-items: center; padding: 0.4rem 0.6rem; border-radius: 999px; background: #eef3fb; border: 1px solid #d7deea; font-weight: 600; }
-      .card { background: #fff; border: 1px solid #d7deea; border-radius: 10px; padding: 1rem; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .table-wrap { background: #fff; border: 1px solid #d7deea; border-radius: 10px; overflow: hidden; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid #e8edf6; }
-      th { background: #eef3fb; }
-      tr:last-child td { border-bottom: 0; }
-    </style>
-  </head>
-  <body>
-    <div class="page">
-      <h1>Holder Detail: {{ holder.holder_name }}</h1>
-      <nav class="actions" aria-label="Dashboard navigation">
-        <a class="chip" href="/dashboard">Back to Dashboard</a>
-        <a class="chip" href="/dashboard/holders">Back to Holders</a>
-      </nav>
+{% extends "base.html" %}
 
-      <section class="card">
-        <h2>Current Custody Assets</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Asset Tag</th>
-                <th>Equipment Type</th>
-                <th>Manufacturer</th>
-                <th>Model</th>
-                <th>Days Out</th>
-                <th>Last Issued Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in holder.assets %}
-                <tr>
-                  <td class="mono">{{ row.asset_tag }}</td>
-                  <td>{{ row.equipment_type or "" }}</td>
-                  <td>{{ row.manufacturer or "" }}</td>
-                  <td>{{ row.model or "" }}</td>
-                  <td>{{ row.days_out if row.days_out is not none else "Unknown" }}</td>
-                  <td>{{ row.last_issued_date if row.last_issued_date else "Unknown" }}</td>
-                </tr>
-              {% else %}
-                <tr>
-                  <td colspan="6">None</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  </body>
-</html>
+{% block title %}Holder Detail{% endblock %}
+{% block page_heading %}Holder Detail: {{ holder.holder_name }}{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="actions" aria-label="Dashboard navigation">
+    <a class="chip" href="/dashboard">Back to Dashboard</a>
+    <a class="chip" href="/dashboard/holders">Back to Holders</a>
+  </nav>
+
+  <section class="card">
+    <h2>Current Custody Assets</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Asset Tag</th>
+          <th>Equipment Type</th>
+          <th>Manufacturer</th>
+          <th>Model</th>
+          <th>Days Out</th>
+          <th>Last Issued Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in holder.assets %}
+          <tr>
+            <td class="mono">{{ row.asset_tag }}</td>
+            <td>{{ row.equipment_type or "" }}</td>
+            <td>{{ row.manufacturer or "" }}</td>
+            <td>{{ row.model or "" }}</td>
+            <td>{{ row.days_out if row.days_out is not none else "Unknown" }}</td>
+            <td>{{ row.last_issued_date if row.last_issued_date else "Unknown" }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6">None</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

@@ -1,101 +1,91 @@
 <!-- file: assettrack/intake/templates/holders_search.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AssetTrack Holders</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .row { margin: 0.75rem 0; }
-      input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; margin-left: 0.25rem; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; border-bottom: 1px solid #eee; padding: 0.5rem; vertical-align: top; }
-      th { background: #fafafa; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-    </style>
-  </head>
-  <body>
-    <h1>Holders</h1>
-    <p><a href="/preview">← Back to preview</a> | <a href="/issue/preview">Issue Assets preview</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}AssetTrack Holders{% endblock %}
+{% block page_heading %}Holders{% endblock %}
 
-    <div class="card">
-      <form method="get" action="/holders">
-        <label for="q"><strong>Search by name or identifier</strong></label><br />
-        <input
-          type="text"
-          id="q"
-          name="q"
-          placeholder="e.g. Jane Doe or ID123"
-          value="{{ query or '' }}"
-          autocomplete="off"
-        />
-        <button type="submit">Search</button>
+{% block extra_head %}
+  <style>
+    input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    button { margin-left: 0.25rem; }
+    th, td { border-bottom: 1px solid #eee; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="/preview">← Back to preview</a> | <a href="/issue/preview">Issue Assets preview</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <form method="get" action="/holders">
+      <label for="q"><strong>Search by name or identifier</strong></label><br />
+      <input
+        type="text"
+        id="q"
+        name="q"
+        placeholder="e.g. Jane Doe or ID123"
+        value="{{ query or '' }}"
+        autocomplete="off"
+      />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Selected Holder</h2>
+    {% if selected_holder %}
+      <p>
+        <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
+        <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+        <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
+      </p>
+      <form method="post" action="/holders/clear">
+        <button type="submit">Clear selection</button>
       </form>
-    </div>
+    {% else %}
+      <p>No holder selected.</p>
+    {% endif %}
+  </div>
 
-    <div class="card">
-      <h2>Selected Holder</h2>
-      {% if selected_holder %}
-        <p>
-          <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
-          <strong>Name:</strong> {{ selected_holder["name"] }}<br />
-          <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
-        </p>
-        <form method="post" action="/holders/clear">
-          <button type="submit">Clear selection</button>
-        </form>
-      {% else %}
-        <p>No holder selected.</p>
-      {% endif %}
-    </div>
-
-    <div class="card">
-      <h2>Results</h2>
-      {% if results %}
-        <table>
-          <thead>
+  <div class="card">
+    <h2>Results</h2>
+    {% if results %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 120px;">Type</th>
+            <th style="width: 220px;">Name</th>
+            <th style="width: 180px;">Identifier</th>
+            <th>Contact</th>
+            <th style="width: 120px;">Select</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in results %}
             <tr>
-              <th style="width: 120px;">Type</th>
-              <th style="width: 220px;">Name</th>
-              <th style="width: 180px;">Identifier</th>
-              <th>Contact</th>
-              <th style="width: 120px;">Select</th>
+              <td>{{ h["holder_type"] }}</td>
+              <td>{{ h["name"] }}</td>
+              <td><code>{{ h["identifier"] or "" }}</code></td>
+              <td>{{ h["contact_info"] or "" }}</td>
+              <td>
+                <form method="post" action="/holders/select">
+                  <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
+                  <button type="submit">Select</button>
+                </form>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {% for h in results %}
-              <tr>
-                <td>{{ h["holder_type"] }}</td>
-                <td>{{ h["name"] }}</td>
-                <td><code>{{ h["identifier"] or "" }}</code></td>
-                <td>{{ h["contact_info"] or "" }}</td>
-                <td>
-                  <form method="post" action="/holders/select">
-                    <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
-                    <button type="submit">Select</button>
-                  </form>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      {% else %}
-        <p>No results.</p>
-      {% endif %}
-    </div>
-  </body>
-</html>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No results.</p>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,139 +1,129 @@
 <!-- assettrack/intake/templates/admin_assign_slot.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Assign Slot</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .row { margin: 0.75rem 0; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-      input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; margin-right: 0.35rem; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      .muted { color: #555; }
-    </style>
-  </head>
-  <body>
-    <h1>Admin: Assign Slot to Unslotted Asset</h1>
-    <p><a href="/">&larr; Back to intake</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}Admin Assign Slot{% endblock %}
+{% block page_heading %}Admin: Assign Slot to Unslotted Asset{% endblock %}
 
+{% block extra_head %}
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="/">&larr; Back to intake</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>1) Scan or Enter Asset Tag</h2>
+    <p class="muted">Scanner-first flow: scan into asset_tag and submit lookup.</p>
+    <form method="post" action="/admin/assign-slot">
+      <input type="hidden" name="action" value="lookup" />
+      <div class="row">
+        <label for="asset_tag"><strong>asset_tag</strong></label><br />
+        <input
+          type="text"
+          id="asset_tag"
+          name="asset_tag"
+          value="{{ asset_tag or '' }}"
+          placeholder="Scan asset tag"
+          autocomplete="off"
+          autofocus
+        />
+      </div>
+      <button type="submit">Lookup Asset</button>
+    </form>
+  </div>
+
+  {% if asset %}
     <div class="card">
-      <h2>1) Scan or Enter Asset Tag</h2>
-      <p class="muted">Scanner-first flow: scan into asset_tag and submit lookup.</p>
-      <form method="post" action="/admin/assign-slot">
-        <input type="hidden" name="action" value="lookup" />
-        <div class="row">
-          <label for="asset_tag"><strong>asset_tag</strong></label><br />
-          <input
-            type="text"
-            id="asset_tag"
-            name="asset_tag"
-            value="{{ asset_tag or '' }}"
-            placeholder="Scan asset tag"
-            autocomplete="off"
-            autofocus
-          />
+      <h2>2) Asset Details</h2>
+      <div class="grid">
+        <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
+        <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
+        <div><strong>model:</strong> {{ asset.model or "" }}</div>
+        <div><strong>serial:</strong> {{ asset.serial or "" }}</div>
+        <div><strong>location_type:</strong> <code>{{ asset.location_type or "" }}</code></div>
+        <div><strong>current_holder:</strong> {{ asset.current_holder }}</div>
+        <div>
+          <strong>current slot:</strong>
+          {% if asset.current_slot %}
+            <code>{{ asset.current_slot.case_name }} / {{ asset.current_slot.slot_position }} (id {{ asset.current_slot.slot_id }})</code>
+          {% else %}
+            none
+          {% endif %}
         </div>
-        <button type="submit">Lookup Asset</button>
-      </form>
+        <div><strong>home_slot_id:</strong> {{ asset.home_slot_id if asset.home_slot_id is not none else "none" }}</div>
+      </div>
     </div>
 
-    {% if asset %}
-      <div class="card">
-        <h2>2) Asset Details</h2>
-        <div class="grid">
-          <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
-          <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
-          <div><strong>model:</strong> {{ asset.model or "" }}</div>
-          <div><strong>serial:</strong> {{ asset.serial or "" }}</div>
-          <div><strong>location_type:</strong> <code>{{ asset.location_type or "" }}</code></div>
-          <div><strong>current_holder:</strong> {{ asset.current_holder }}</div>
-          <div>
-            <strong>current slot:</strong>
-            {% if asset.current_slot %}
-              <code>{{ asset.current_slot.case_name }} / {{ asset.current_slot.slot_position }} (id {{ asset.current_slot.slot_id }})</code>
-            {% else %}
-              none
-            {% endif %}
-          </div>
-          <div><strong>home_slot_id:</strong> {{ asset.home_slot_id if asset.home_slot_id is not none else "none" }}</div>
+    <div class="card">
+      <h2>3) Assign Slot</h2>
+      <form method="post" action="/admin/assign-slot">
+        <input type="hidden" name="action" value="assign" />
+        <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+
+        <div class="row">
+          <label for="building_room"><strong>building/room</strong> (required)</label><br />
+          <input
+            type="text"
+            id="building_room"
+            name="building_room"
+            value="{{ building_room or '' }}"
+            placeholder="e.g. BQ26-101"
+            autocomplete="off"
+            required
+          />
         </div>
-      </div>
 
-      <div class="card">
-        <h2>3) Assign Slot</h2>
-        <form method="post" action="/admin/assign-slot">
-          <input type="hidden" name="action" value="assign" />
-          <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+        <div class="row">
+          <label for="case_number"><strong>case_number</strong> (required)</label><br />
+          <input
+            type="text"
+            id="case_number"
+            name="case_number"
+            value="{{ case_number or '' }}"
+            placeholder="e.g. CASE-01"
+            autocomplete="off"
+            required
+          />
+        </div>
 
-          <div class="row">
-            <label for="building_room"><strong>building/room</strong> (required)</label><br />
-            <input
-              type="text"
-              id="building_room"
-              name="building_room"
-              value="{{ building_room or '' }}"
-              placeholder="e.g. BQ26-101"
-              autocomplete="off"
-              required
-            />
-          </div>
+        <div class="row">
+          <label for="slot_number"><strong>slot_number</strong> (required)</label><br />
+          <input
+            type="text"
+            id="slot_number"
+            name="slot_number"
+            value="{{ slot_number or '' }}"
+            placeholder="e.g. 2"
+            autocomplete="off"
+            required
+          />
+        </div>
 
-          <div class="row">
-            <label for="case_number"><strong>case_number</strong> (required)</label><br />
-            <input
-              type="text"
-              id="case_number"
-              name="case_number"
-              value="{{ case_number or '' }}"
-              placeholder="e.g. CASE-01"
-              autocomplete="off"
-              required
-            />
-          </div>
+        <div class="row">
+          <label for="notes"><strong>notes</strong> (optional)</label><br />
+          <input
+            type="text"
+            id="notes"
+            name="notes"
+            value="{{ notes or '' }}"
+            placeholder="Optional assignment note"
+            autocomplete="off"
+          />
+        </div>
 
-          <div class="row">
-            <label for="slot_number"><strong>slot_number</strong> (required)</label><br />
-            <input
-              type="text"
-              id="slot_number"
-              name="slot_number"
-              value="{{ slot_number or '' }}"
-              placeholder="e.g. 2"
-              autocomplete="off"
-              required
-            />
-          </div>
-
-          <div class="row">
-            <label for="notes"><strong>notes</strong> (optional)</label><br />
-            <input
-              type="text"
-              id="notes"
-              name="notes"
-              value="{{ notes or '' }}"
-              placeholder="Optional assignment note"
-              autocomplete="off"
-            />
-          </div>
-
-          <button type="submit">Assign Slot</button>
-        </form>
-      </div>
-    {% endif %}
-  </body>
-</html>
+        <button type="submit">Assign Slot</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}
