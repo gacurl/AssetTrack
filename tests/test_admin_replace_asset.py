@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,11 +41,17 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.conn.commit()
 
         self.orig_passcode = intake_app.INTAKE_PASSCODE
+        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
+        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
         intake_app.INTAKE_PASSCODE = "test-admin-code"
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
 
     def tearDown(self) -> None:
+        if self.orig_admin_users is None:
+            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
+        else:
+            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
         intake_app.INTAKE_PASSCODE = self.orig_passcode
         self.conn.close()
         self.temp_dir.cleanup()
@@ -115,13 +123,17 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", (asset_tag, slot_id))
         self.conn.commit()
 
+    def _admin_headers(self) -> dict[str, str]:
+        token = base64.b64encode(b"admin:test-pass").decode("ascii")
+        return {"Authorization": f"Basic {token}"}
+
     def test_get_replace_route_admin_only(self) -> None:
-        blocked = self.client.get("/admin/assets/replace")
+        blocked = self.client.get("/admin/assets/replace", headers=self._admin_headers())
         self.assertEqual(blocked.status_code, 302)
         self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
 
         self._set_admin_session()
-        allowed = self.client.get("/admin/assets/replace")
+        allowed = self.client.get("/admin/assets/replace", headers=self._admin_headers())
         self.assertEqual(allowed.status_code, 200)
         self.assertIn(b"Admin: Replace Failed Asset", allowed.data)
 
@@ -139,6 +151,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-100",
@@ -223,6 +236,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-200",
@@ -279,6 +293,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-300",
@@ -319,6 +334,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-400",
@@ -365,6 +381,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         duplicate_tag = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-500",
@@ -383,6 +400,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         duplicate_serial = self.client.post(
             "/admin/assets/replace",
+            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-500",
