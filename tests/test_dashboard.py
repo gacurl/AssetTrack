@@ -195,3 +195,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(overdue_rows[0]["asset_tag"], "AT-OLD")
         self.assertEqual(overdue_rows[0]["days_out"], 50)
 
+    def test_root_redirects_to_dashboard(self):
+        resp = self.client.get("/", follow_redirects=False)
+        self.assertIn(resp.status_code, (301, 302))
+        self.assertTrue(resp.headers["Location"].endswith("/dashboard"))
+
