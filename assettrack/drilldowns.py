@@ -1,9 +1,11 @@
+# file: assettrack/drilldowns.py
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import sqlite3
 
 from assettrack.assets import get_asset_table_columns
+from assettrack.audit import ACTIVE_EVENTS_WHERE
 
 
 def _parse_utc_timestamp(value: object) -> datetime | None:
@@ -108,11 +110,14 @@ def get_holder_custody_detail(
     current_utc = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
     asset_tags = [asset["asset_tag"] for asset in assets]
     placeholders = ", ".join("?" for _ in asset_tags)
+
+    # Important: ignore superseded events (Issue 12-2)
     event_rows = conn.execute(
         f"""
         SELECT id, asset_tag, event_date
         FROM asset_events
         WHERE event_type = 'STOCK_OUT'
+          AND {ACTIVE_EVENTS_WHERE}
           AND asset_tag IN ({placeholders})
         ORDER BY asset_tag ASC, id ASC;
         """,

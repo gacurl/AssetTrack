@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from assettrack.audit import ACTIVE_EVENTS_WHERE
+
 from datetime import datetime, timezone
 import sqlite3
 
@@ -228,7 +230,8 @@ def _in_custody_days_out(conn: sqlite3.Connection, *, now_utc: datetime) -> list
         SELECT asset_tag, event_date, id
         FROM asset_events
         WHERE event_type = 'STOCK_OUT'
-          AND asset_tag IN ({placeholders})
+        AND {ACTIVE_EVENTS_WHERE}
+        AND asset_tag IN ({placeholders})
         ORDER BY asset_tag ASC, id ASC;
         """,
         tuple(asset_tags),
