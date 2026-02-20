@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +34,8 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.conn.commit()
 
         self.orig_passcode = intake_app.INTAKE_PASSCODE
+        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
+        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
         intake_app.INTAKE_PASSCODE = "test-admin-code"
         intake_app.app.testing = True
         intake_app.SCAN_QUEUE.clear()
@@ -39,6 +43,10 @@ class AdminRetireAssetTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         intake_app.SCAN_QUEUE.clear()
+        if self.orig_admin_users is None:
+            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
+        else:
+            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
         intake_app.INTAKE_PASSCODE = self.orig_passcode
         self.conn.close()
         self.temp_dir.cleanup()
@@ -85,13 +93,17 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.conn.commit()
         return int(cursor.lastrowid)
 
+    def _admin_headers(self) -> dict[str, str]:
+        token = base64.b64encode(b"admin:test-pass").decode("ascii")
+        return {"Authorization": f"Basic {token}"}
+
     def test_get_retire_route_admin_only(self) -> None:
-        blocked = self.client.get("/admin/assets/retire")
+        blocked = self.client.get("/admin/assets/retire", headers=self._admin_headers())
         self.assertEqual(blocked.status_code, 302)
         self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
 
         self._set_admin_session()
-        allowed = self.client.get("/admin/assets/retire")
+        allowed = self.client.get("/admin/assets/retire", headers=self._admin_headers())
         self.assertEqual(allowed.status_code, 200)
         self.assertIn(b"Admin: Retire Asset", allowed.data)
 
@@ -110,6 +122,7 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/retire",
+            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-100",
@@ -158,6 +171,7 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         missing_confirm = self.client.post(
             "/admin/assets/retire",
+            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-200",
@@ -171,6 +185,7 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         ok = self.client.post(
             "/admin/assets/retire",
+            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-200",
@@ -223,6 +238,7 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assign-slot",
+            headers=self._admin_headers(),
             data={
                 "action": "lookup",
                 "asset_tag": "RET-400",

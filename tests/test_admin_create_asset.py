@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,10 +34,16 @@ class AdminCreateAssetTests(unittest.TestCase):
             """
         )
         self.conn.commit()
+        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
+        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
 
     def tearDown(self) -> None:
+        if self.orig_admin_users is None:
+            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
+        else:
+            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
         self.conn.close()
         self.temp_dir.cleanup()
 
@@ -69,9 +77,14 @@ class AdminCreateAssetTests(unittest.TestCase):
         )
         self.conn.commit()
 
+    def _admin_headers(self) -> dict[str, str]:
+        token = base64.b64encode(b"admin:test-pass").decode("ascii")
+        return {"Authorization": f"Basic {token}"}
+
     def test_create_asset_unslotted_success(self) -> None:
         response = self.client.post(
             "/admin/assets/create",
+            headers=self._admin_headers(),
             json={
                 "asset_tag": "AT-100",
                 "actor": "admin-user",
@@ -118,6 +131,7 @@ class AdminCreateAssetTests(unittest.TestCase):
     def test_create_asset_allows_missing_equipment_type(self) -> None:
         response = self.client.post(
             "/admin/assets/create",
+            headers=self._admin_headers(),
             json={
                 "asset_tag": "AT-101",
                 "actor": "admin-user",
@@ -151,6 +165,7 @@ class AdminCreateAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/create",
+            headers=self._admin_headers(),
             json={
                 "asset_tag": "AT-200",
                 "actor": "admin-user",
@@ -208,6 +223,7 @@ class AdminCreateAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/create",
+            headers=self._admin_headers(),
             json={
                 "asset_tag": "AT-DUP",
                 "actor": "admin-user",
@@ -225,6 +241,7 @@ class AdminCreateAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/create",
+            headers=self._admin_headers(),
             json={
                 "asset_tag": "AT-300",
                 "actor": "admin-user",
