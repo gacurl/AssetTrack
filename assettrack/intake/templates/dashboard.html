@@ -1,0 +1,323 @@
+<!-- file: assettrack/intake/templates/dashboard.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AssetTrack Dashboard</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 0; color: #12202f; background: #f7f9fc; }
+      h1, h2, h3 { margin: 0 0 0.5rem 0; }
+      a { color: #134e8a; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
+      .muted { color: #5b6878; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+      .topbar { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
+      .subtitle { margin: 0; }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.75rem 0 1rem 0;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.6rem;
+        border-radius: 999px;
+        background: #eef3fb;
+        border: 1px solid #d7deea;
+        font-weight: 600;
+        font-size: 0.95rem;
+        white-space: nowrap;
+      }
+      .chip.secondary { background: #fff; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1rem; }
+      .card { background: #fff; border: 1px solid #d7deea; border-radius: 10px; padding: 1rem; }
+      .metric { margin: 0.35rem 0; }
+      .section { margin-top: 1rem; }
+
+      .table-wrap { background: #fff; border: 1px solid #d7deea; border-radius: 10px; overflow: hidden; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid #e8edf6; }
+      th { background: #eef3fb; }
+      tr:last-child td { border-bottom: 0; }
+
+      /* Collapsible sections (no JS) */
+      details.collapsible {
+        background: #fff;
+        border: 1px solid #d7deea;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 0.75rem;
+      }
+      details.collapsible summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 0.8rem 1rem;
+        background: #f3f7ff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-weight: 700;
+      }
+      details.collapsible summary::-webkit-details-marker { display: none; }
+      .summary-hint { font-weight: 500; font-size: 0.9rem; color: #5b6878; }
+      .collapsible-body { padding: 0.75rem 1rem 1rem 1rem; }
+      .collapsible-body .table-wrap { margin-top: 0.25rem; }
+
+      /* Visual hierarchy helpers */
+      .section-title { margin-top: 1.25rem; }
+      .accent {
+        height: 3px;
+        width: 64px;
+        background: #134e8a;
+        border-radius: 999px;
+        margin: 0.35rem 0 0.75rem 0;
+      }
+
+      @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="topbar">
+        <h1>Dashboard Summary Metrics</h1>
+        <p class="muted subtitle">Operational + Accountability Command View</p>
+      </div>
+
+      <!-- Quick actions: safe navigation (wiring/redirect happens with auth in Issue 11-3) -->
+      <nav class="actions" aria-label="Quick actions">
+        <a class="chip" href="/issue/preview">Issue (Checkout)</a>
+        <a class="chip" href="/return">Return (Check-in)</a>
+        <a class="chip secondary" href="/">Intake</a>
+        <a class="chip secondary" href="/dashboard">Dashboard</a>
+      </nav>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Inventory Summary</h2>
+          <div class="accent"></div>
+          <p class="metric">Total Assets: <strong>{{ dashboard.summary.inventory.total_assets }}</strong></p>
+          <p class="metric">Active Assets: <strong>{{ dashboard.summary.inventory.active_assets }}</strong></p>
+          <p class="metric">Disposed Assets: <strong>{{ dashboard.summary.inventory.disposed_assets }}</strong></p>
+          <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
+          <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
+          <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
+        </section>
+
+        <section class="card">
+          <h2>Slot Summary</h2>
+          <div class="accent"></div>
+          <p class="metric">Total Slots: <strong>{{ dashboard.summary.slots.total_slots }}</strong></p>
+          <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
+          <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
+          <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
+        </section>
+
+        <section class="card">
+          <h2>Custody Summary</h2>
+          <div class="accent"></div>
+          <p class="metric">Unique Holders: <strong>{{ dashboard.summary.custody.unique_holders }}</strong></p>
+          <p class="metric">
+            Top Holder:
+            {% if dashboard.summary.custody.top_holder %}
+              <strong>{{ dashboard.summary.custody.top_holder.holder_name }} ({{ dashboard.summary.custody.top_holder.asset_count }})</strong>
+            {% else %}
+              <strong>None</strong>
+            {% endif %}
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>Exceptions Summary</h2>
+          <div class="accent"></div>
+          <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
+          <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
+          <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
+        </section>
+      </div>
+
+      <h2 class="section-title">Snapshots</h2>
+      <p class="muted">Collapsed by default to keep the command view clean. Expand only when needed.</p>
+
+      <!-- Top Custody Holders -->
+      <details class="collapsible">
+        <summary>
+          <span>Top Custody Holders (Top 5)</span>
+          <span class="summary-hint">click to expand</span>
+        </summary>
+        <div class="collapsible-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Holder Name</th>
+                  <th>Count In Custody</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in dashboard.snapshots.top_custody_holders %}
+                  <tr>
+                    <td>{{ row.holder_name }}</td>
+                    <td>{{ row.asset_count }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="2">None</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <!-- Case Utilization -->
+      <details class="collapsible">
+        <summary>
+          <span>Case Utilization (Top 5 by Occupied Slots)</span>
+          <span class="summary-hint">click to expand</span>
+        </summary>
+        <div class="collapsible-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Case Name</th>
+                  <th>Occupied / Total</th>
+                  <th>Utilization %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in dashboard.snapshots.case_utilization %}
+                  <tr>
+                    <td>{{ row.case_name }}</td>
+                    <td>{{ row.occupied_slots }} / {{ row.total_slots }}</td>
+                    <td>{{ row.utilization_percent }}%</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="3">None</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <!-- Exceptions Preview -->
+      <details class="collapsible">
+        <summary>
+          <span>Exceptions Preview</span>
+          <span class="summary-hint">click to expand</span>
+        </summary>
+        <div class="collapsible-body">
+
+          <details class="collapsible">
+            <summary>
+              <span>Unslotted Assets (Top 10)</span>
+              <span class="summary-hint">click to expand</span>
+            </summary>
+            <div class="collapsible-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Asset Tag</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for asset_tag in dashboard.snapshots.exceptions.unslotted_assets %}
+                      <tr>
+                        <td class="mono">{{ asset_tag }}</td>
+                      </tr>
+                    {% else %}
+                      <tr>
+                        <td>None</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="collapsible">
+            <summary>
+              <span>In Custody &gt; {{ custody_days_threshold }} Days (Top 10)</span>
+              <span class="summary-hint">click to expand</span>
+            </summary>
+            <div class="collapsible-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Asset Tag</th>
+                      <th>Days Out</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in dashboard.snapshots.exceptions.in_custody_over_threshold %}
+                      <tr>
+                        <td class="mono">{{ row.asset_tag }}</td>
+                        <td>{{ row.days_out }}</td>
+                      </tr>
+                    {% else %}
+                      <tr>
+                        <td colspan="2">None</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="collapsible">
+            <summary>
+              <span>Slot Conflicts (Top 10)</span>
+              <span class="summary-hint">click to expand</span>
+            </summary>
+            <div class="collapsible-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Slot ID</th>
+                      <th>Case Name</th>
+                      <th>Slot Position</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in dashboard.snapshots.exceptions.slot_conflicts %}
+                      <tr>
+                        <td>{{ row.slot_id }}</td>
+                        <td>{{ row.case_name or "None" }}</td>
+                        <td>{{ row.slot_position if row.slot_position is not none else "None" }}</td>
+                      </tr>
+                    {% else %}
+                      <tr>
+                        <td colspan="3">None</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </details>
+
+    </div>
+  </body>
+</html>

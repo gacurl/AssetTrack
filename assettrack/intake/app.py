@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
 from assettrack.assets import get_asset_table_columns
+from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import get_connection
 from assettrack.ingest.validator import validate_rows
 from assettrack.ingest.committer import BatchCommitError, commit_batch
@@ -1574,6 +1575,29 @@ def intake():
         timeout_seconds=timeout_seconds,
         last_seen_age_seconds=last_seen_age_seconds,
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+    )
+
+
+@app.get("/dashboard")
+def dashboard():
+    threshold_days = get_custody_days_threshold(
+        os.getenv("ASSETTRACK_CUSTODY_DAYS_THRESHOLD"),
+        default=30,
+    )
+
+    conn = get_connection()
+    try:
+        dashboard_data = build_dashboard_data(
+            conn,
+            custody_days_threshold=threshold_days,
+        )
+    finally:
+        conn.close()
+
+    return render_template(
+        "dashboard.html",
+        dashboard=dashboard_data,
+        custody_days_threshold=threshold_days,
     )
 
 
