@@ -1940,12 +1940,15 @@ def preview_commit():
 
 
 @app.get("/issue/preview")
-@require_admin
 def issue_preview():
     stock_out_mode = bool(session.get("stock_out_mode"))
     if not stock_out_mode:
         flash("Enable stock-out mode before using Issue Assets.", "error")
-        return redirect(url_for("preview"))
+        return render_template(
+            "issue_preview.html",
+            blocking_issues=[],
+            assets=[],
+        )
 
     selected_holder = _selected_holder_from_session()
     asset_tags = _queue_asset_tags()
