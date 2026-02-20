@@ -1,85 +1,78 @@
 <!-- assettrack/intake/templates/admin_replace_asset.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Replace Asset</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .row { margin: 0.75rem 0; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-      input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
-      textarea { min-height: 100px; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; margin-right: 0.35rem; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      .check { display: flex; align-items: center; gap: 0.5rem; }
-      .warn { color: #8a1f11; font-weight: 700; }
-    </style>
-  </head>
-  <body>
-    <h1>Admin: Replace Failed Asset</h1>
-    <p><a href="/">&larr; Back to intake</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}Admin Replace Asset{% endblock %}
+{% block page_heading %}Admin: Replace Failed Asset{% endblock %}
 
-    {% if error_message %}
-      <div class="flash error">{{ error_message }}</div>
+{% block extra_head %}
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
+    textarea { min-height: 100px; }
+    .check { display: flex; align-items: center; gap: 0.5rem; }
+    .warn { color: #8a1f11; font-weight: 700; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="/">&larr; Back to intake</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
     {% endif %}
+  {% endwith %}
 
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>1) Lookup Failed Asset</h2>
+    <form method="post" action="/admin/assets/replace">
+      <input type="hidden" name="action" value="lookup" />
+      <div class="row">
+        <label for="failed_asset_tag"><strong>failed asset_tag</strong> (required)</label><br />
+        <input type="text" id="failed_asset_tag" name="failed_asset_tag" value="{{ form.failed_asset_tag or '' }}" required autofocus />
+      </div>
+      <button type="submit">Lookup Asset</button>
+    </form>
+  </div>
+
+  {% if failed_asset %}
     <div class="card">
-      <h2>1) Lookup Failed Asset</h2>
-      <form method="post" action="/admin/assets/replace">
-        <input type="hidden" name="action" value="lookup" />
-        <div class="row">
-          <label for="failed_asset_tag"><strong>failed asset_tag</strong> (required)</label><br />
-          <input type="text" id="failed_asset_tag" name="failed_asset_tag" value="{{ form.failed_asset_tag or '' }}" required autofocus />
-        </div>
-        <button type="submit">Lookup Asset</button>
-      </form>
-    </div>
-
-    {% if failed_asset %}
-      <div class="card">
-        <h2>2) Failed Asset + Target Slot</h2>
-        <div class="grid">
-          <div><strong>asset_tag:</strong> <code>{{ failed_asset.asset_tag }}</code></div>
-          <div><strong>location_type:</strong> <code>{{ failed_asset.location_type }}</code></div>
-          <div><strong>manufacturer:</strong> {{ failed_asset.manufacturer or "" }}</div>
-          <div><strong>model:</strong> {{ failed_asset.model or "" }}</div>
-          <div><strong>serial_number:</strong> {{ failed_asset.serial_number or "" }}</div>
-          <div><strong>current_holder:</strong> {{ failed_asset.current_holder }}</div>
-          <div><strong>building/room:</strong> {{ failed_asset.building_room or "" }}</div>
-          <div><strong>home_slot_id:</strong> {{ failed_asset.home_slot_id if failed_asset.home_slot_id is not none else "none" }}</div>
-          <div><strong>target_slot_id:</strong> <code>{{ failed_asset.target_slot_id if failed_asset.target_slot_id is not none else "none" }}</code></div>
-          <div>
-            <strong>target case/slot:</strong>
-            {% if failed_asset.target_slot %}
-              <code>{{ failed_asset.target_slot.case_name }} / {{ failed_asset.target_slot.slot_position }}</code>
-            {% else %}
-              none
-            {% endif %}
-          </div>
+      <h2>2) Failed Asset + Target Slot</h2>
+      <div class="grid">
+        <div><strong>asset_tag:</strong> <code>{{ failed_asset.asset_tag }}</code></div>
+        <div><strong>location_type:</strong> <code>{{ failed_asset.location_type }}</code></div>
+        <div><strong>manufacturer:</strong> {{ failed_asset.manufacturer or "" }}</div>
+        <div><strong>model:</strong> {{ failed_asset.model or "" }}</div>
+        <div><strong>serial_number:</strong> {{ failed_asset.serial_number or "" }}</div>
+        <div><strong>current_holder:</strong> {{ failed_asset.current_holder }}</div>
+        <div><strong>building/room:</strong> {{ failed_asset.building_room or "" }}</div>
+        <div><strong>home_slot_id:</strong> {{ failed_asset.home_slot_id if failed_asset.home_slot_id is not none else "none" }}</div>
+        <div><strong>target_slot_id:</strong> <code>{{ failed_asset.target_slot_id if failed_asset.target_slot_id is not none else "none" }}</code></div>
+        <div>
+          <strong>target case/slot:</strong>
+          {% if failed_asset.target_slot %}
+            <code>{{ failed_asset.target_slot.case_name }} / {{ failed_asset.target_slot.slot_position }}</code>
+          {% else %}
+            none
+          {% endif %}
         </div>
       </div>
+    </div>
 
-      <div class="card">
-        <h2>3) Replacement + Failure Details</h2>
-        <p class="warn">This is one atomic operation: retire failed asset, create replacement, assign replacement to target slot.</p>
-        <form method="post" action="/admin/assets/replace">
-          <input type="hidden" name="action" value="replace" />
-          <input type="hidden" name="failed_asset_tag" value="{{ failed_asset.asset_tag }}" />
+    <div class="card">
+      <h2>3) Replacement + Failure Details</h2>
+      <p class="warn">This is one atomic operation: retire failed asset, create replacement, assign replacement to target slot.</p>
+      <form method="post" action="/admin/assets/replace">
+        <input type="hidden" name="action" value="replace" />
+        <input type="hidden" name="failed_asset_tag" value="{{ failed_asset.asset_tag }}" />
 
+        <div class="grid">
           <div class="row">
             <label for="failure_type"><strong>failure_type</strong> (required)</label><br />
             <select id="failure_type" name="failure_type" required>
@@ -90,60 +83,56 @@
             </select>
           </div>
           <div class="row">
-            <label for="failure_notes"><strong>failure notes</strong> (required)</label><br />
+            <label for="failure_notes"><strong>failure_notes</strong> (required)</label><br />
             <textarea id="failure_notes" name="failure_notes" required>{{ form.failure_notes or '' }}</textarea>
           </div>
-
-          <h3>Replacement Asset</h3>
-          <div class="grid">
-            <div class="row">
-              <label for="replacement_asset_tag"><strong>asset_tag</strong> (required)</label><br />
-              <input type="text" id="replacement_asset_tag" name="replacement_asset_tag" value="{{ form.replacement_asset_tag or '' }}" required />
-            </div>
-            <div class="row">
-              <label for="replacement_serial_number"><strong>serial_number</strong> (required)</label><br />
-              <input type="text" id="replacement_serial_number" name="replacement_serial_number" value="{{ form.replacement_serial_number or '' }}" required />
-            </div>
-            <div class="row">
-              <label for="replacement_manufacturer"><strong>manufacturer</strong> (required)</label><br />
-              <input type="text" id="replacement_manufacturer" name="replacement_manufacturer" value="{{ form.replacement_manufacturer or '' }}" required />
-            </div>
-            <div class="row">
-              <label for="replacement_equipment_type"><strong>equipment_type</strong> (required)</label><br />
-              <input type="text" id="replacement_equipment_type" name="replacement_equipment_type" value="{{ form.replacement_equipment_type or 'laptop' }}" required />
-            </div>
-            <div class="row">
-              <label for="replacement_model"><strong>model</strong> (optional)</label><br />
-              <input type="text" id="replacement_model" name="replacement_model" value="{{ form.replacement_model or '' }}" />
-            </div>
-            <div class="row">
-              <label for="replacement_model_code"><strong>model_code</strong> (optional)</label><br />
-              <input type="text" id="replacement_model_code" name="replacement_model_code" value="{{ form.replacement_model_code or '' }}" />
-            </div>
-            <div class="row">
-              <label for="replacement_notes"><strong>notes</strong> (optional)</label><br />
-              <input type="text" id="replacement_notes" name="replacement_notes" value="{{ form.replacement_notes or '' }}" />
-            </div>
+          <div class="row">
+            <label for="replacement_asset_tag"><strong>replacement asset_tag</strong> (required)</label><br />
+            <input type="text" id="replacement_asset_tag" name="replacement_asset_tag" value="{{ form.replacement_asset_tag or '' }}" required />
           </div>
-
-          <div class="row check">
-            <input type="checkbox" id="confirm_retire" name="confirm_retire" value="yes" {% if form.confirm_retire %}checked{% endif %} />
-            <label for="confirm_retire"><strong>I confirm the failed asset is being retired.</strong></label>
+          <div class="row">
+            <label for="replacement_serial_number"><strong>serial_number</strong> (required)</label><br />
+            <input type="text" id="replacement_serial_number" name="replacement_serial_number" value="{{ form.replacement_serial_number or '' }}" required />
           </div>
-
-          <div class="row check">
-            <input type="checkbox" id="confirm_slot" name="confirm_slot" value="yes" {% if form.confirm_slot %}checked{% endif %} />
-            <label for="confirm_slot">
-              <strong>
-                I confirm the replacement laptop is going into Case {{ failed_asset.target_slot.case_name if failed_asset.target_slot else "?" }}
-                Slot {{ failed_asset.target_slot.slot_position if failed_asset.target_slot else "?" }}.
-              </strong>
-            </label>
+          <div class="row">
+            <label for="replacement_manufacturer"><strong>manufacturer</strong> (required)</label><br />
+            <input type="text" id="replacement_manufacturer" name="replacement_manufacturer" value="{{ form.replacement_manufacturer or '' }}" required />
           </div>
+          <div class="row">
+            <label for="replacement_equipment_type"><strong>equipment_type</strong> (required)</label><br />
+            <input type="text" id="replacement_equipment_type" name="replacement_equipment_type" value="{{ form.replacement_equipment_type or 'laptop' }}" required />
+          </div>
+          <div class="row">
+            <label for="replacement_model"><strong>model</strong> (optional)</label><br />
+            <input type="text" id="replacement_model" name="replacement_model" value="{{ form.replacement_model or '' }}" />
+          </div>
+          <div class="row">
+            <label for="replacement_model_code"><strong>model_code</strong> (optional)</label><br />
+            <input type="text" id="replacement_model_code" name="replacement_model_code" value="{{ form.replacement_model_code or '' }}" />
+          </div>
+          <div class="row">
+            <label for="replacement_notes"><strong>notes</strong> (optional)</label><br />
+            <input type="text" id="replacement_notes" name="replacement_notes" value="{{ form.replacement_notes or '' }}" />
+          </div>
+        </div>
 
-          <button type="submit">Replace Asset</button>
-        </form>
-      </div>
-    {% endif %}
-  </body>
-</html>
+        <div class="row check">
+          <input type="checkbox" id="confirm_retire" name="confirm_retire" value="yes" {% if form.confirm_retire %}checked{% endif %} />
+          <label for="confirm_retire"><strong>I confirm the failed asset is being retired.</strong></label>
+        </div>
+
+        <div class="row check">
+          <input type="checkbox" id="confirm_slot" name="confirm_slot" value="yes" {% if form.confirm_slot %}checked{% endif %} />
+          <label for="confirm_slot">
+            <strong>
+              I confirm the replacement laptop is going into Case {{ failed_asset.target_slot.case_name if failed_asset.target_slot else "?" }}
+              Slot {{ failed_asset.target_slot.slot_position if failed_asset.target_slot else "?" }}.
+            </strong>
+          </label>
+        </div>
+
+        <button type="submit">Replace Asset</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}

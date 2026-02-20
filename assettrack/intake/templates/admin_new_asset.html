@@ -1,118 +1,111 @@
 <!-- assettrack/intake/templates/admin_new_asset.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Add Asset</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .row { margin: 0.75rem 0; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-      input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      .muted { color: #555; }
-      .hidden { display: none; }
-    </style>
-  </head>
-  <body>
-    <h1>Admin: Add Asset</h1>
-    <p><a href="/">&larr; Back to intake</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}Admin Add Asset{% endblock %}
+{% block page_heading %}Admin: Add Asset{% endblock %}
 
-    {% if error_message %}
-      <div class="flash error">{{ error_message }}</div>
+{% block extra_head %}
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    .hidden { display: none; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="/">&larr; Back to intake</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
     {% endif %}
+  {% endwith %}
 
-    <div class="card">
-      <h2>New Asset</h2>
-      <p class="muted">Required fields must be provided before save.</p>
-      <form method="post" action="/admin/assets/new">
-        <div class="grid">
-          <div class="row">
-            <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
-            <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
-          </div>
-          <div class="row">
-            <label for="serial_number"><strong>serial_number</strong> (required)</label><br />
-            <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
-          </div>
-          <div class="row">
-            <label for="manufacturer"><strong>manufacturer</strong> (required)</label><br />
-            <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
-          </div>
-          <div class="row">
-            <label for="equipment_type"><strong>equipment_type</strong> (required)</label><br />
-            <input type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or 'laptop' }}" required />
-          </div>
-          <div class="row">
-            <label for="building"><strong>building</strong> (required)</label><br />
-            <input type="text" id="building" name="building" value="{{ form.building or '' }}" required />
-          </div>
-          <div class="row">
-            <label for="room"><strong>room</strong> (required)</label><br />
-            <input type="text" id="room" name="room" value="{{ form.room or '' }}" required />
-          </div>
-          <div class="row">
-            <label for="model"><strong>model</strong> (optional)</label><br />
-            <input type="text" id="model" name="model" value="{{ form.model or '' }}" />
-          </div>
-          <div class="row">
-            <label for="model_code"><strong>model_code</strong> (optional)</label><br />
-            <input type="text" id="model_code" name="model_code" value="{{ form.model_code or '' }}" />
-          </div>
-          <div class="row">
-            <label for="notes"><strong>notes</strong> (optional)</label><br />
-            <input type="text" id="notes" name="notes" value="{{ form.notes or '' }}" />
-          </div>
-        </div>
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
 
+  <div class="card">
+    <h2>New Asset</h2>
+    <p class="muted">Required fields must be provided before save.</p>
+    <form method="post" action="/admin/assets/new">
+      <div class="grid">
         <div class="row">
-          <label for="assign_now"><strong>Assign to slot now?</strong></label><br />
-          <input type="checkbox" id="assign_now" name="assign_now" value="yes" {% if form.assign_now == "yes" %}checked{% endif %} />
+          <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
+          <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
         </div>
-
-        <div id="assign-fields" class="{% if form.assign_now != 'yes' %}hidden{% endif %}">
-          <div class="row">
-            <label for="case_number"><strong>case_number</strong> (required when assigning)</label><br />
-            <input type="text" id="case_number" name="case_number" value="{{ form.case_number or '' }}" />
-          </div>
-          <div class="row">
-            <label for="slot_number"><strong>slot_number</strong> (required when assigning)</label><br />
-            <input type="text" id="slot_number" name="slot_number" value="{{ form.slot_number or '' }}" />
-          </div>
+        <div class="row">
+          <label for="serial_number"><strong>serial_number</strong> (required)</label><br />
+          <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
         </div>
+        <div class="row">
+          <label for="manufacturer"><strong>manufacturer</strong> (required)</label><br />
+          <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
+        </div>
+        <div class="row">
+          <label for="equipment_type"><strong>equipment_type</strong> (required)</label><br />
+          <input type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or 'laptop' }}" required />
+        </div>
+        <div class="row">
+          <label for="building"><strong>building</strong> (required)</label><br />
+          <input type="text" id="building" name="building" value="{{ form.building or '' }}" required />
+        </div>
+        <div class="row">
+          <label for="room"><strong>room</strong> (required)</label><br />
+          <input type="text" id="room" name="room" value="{{ form.room or '' }}" required />
+        </div>
+        <div class="row">
+          <label for="model"><strong>model</strong> (optional)</label><br />
+          <input type="text" id="model" name="model" value="{{ form.model or '' }}" />
+        </div>
+        <div class="row">
+          <label for="model_code"><strong>model_code</strong> (optional)</label><br />
+          <input type="text" id="model_code" name="model_code" value="{{ form.model_code or '' }}" />
+        </div>
+        <div class="row">
+          <label for="notes"><strong>notes</strong> (optional)</label><br />
+          <input type="text" id="notes" name="notes" value="{{ form.notes or '' }}" />
+        </div>
+      </div>
 
-        <button type="submit">Create Asset</button>
-      </form>
-    </div>
+      <div class="row">
+        <label for="assign_now"><strong>Assign to slot now?</strong></label><br />
+        <input type="checkbox" id="assign_now" name="assign_now" value="yes" {% if form.assign_now == "yes" %}checked{% endif %} />
+      </div>
 
-    <script>
-      const assignNow = document.getElementById("assign_now");
-      const assignFields = document.getElementById("assign-fields");
-      const caseNumber = document.getElementById("case_number");
-      const slotNumber = document.getElementById("slot_number");
+      <div id="assign-fields" class="{% if form.assign_now != 'yes' %}hidden{% endif %}">
+        <div class="row">
+          <label for="case_number"><strong>case_number</strong> (required when assigning)</label><br />
+          <input type="text" id="case_number" name="case_number" value="{{ form.case_number or '' }}" />
+        </div>
+        <div class="row">
+          <label for="slot_number"><strong>slot_number</strong> (required when assigning)</label><br />
+          <input type="text" id="slot_number" name="slot_number" value="{{ form.slot_number or '' }}" />
+        </div>
+      </div>
 
-      function syncAssignFields() {
-        const enabled = assignNow.checked;
-        assignFields.classList.toggle("hidden", !enabled);
-        caseNumber.required = enabled;
-        slotNumber.required = enabled;
-      }
+      <button type="submit">Create Asset</button>
+    </form>
+  </div>
+{% endblock %}
 
-      assignNow.addEventListener("change", syncAssignFields);
-      syncAssignFields();
-    </script>
-  </body>
-</html>
+{% block extra_scripts %}
+  <script>
+    const assignNow = document.getElementById("assign_now");
+    const assignFields = document.getElementById("assign-fields");
+    const caseNumber = document.getElementById("case_number");
+    const slotNumber = document.getElementById("slot_number");
+
+    function syncAssignFields() {
+      const enabled = assignNow.checked;
+      assignFields.classList.toggle("hidden", !enabled);
+      caseNumber.required = enabled;
+      slotNumber.required = enabled;
+    }
+
+    assignNow.addEventListener("change", syncAssignFields);
+    syncAssignFields();
+  </script>
+{% endblock %}

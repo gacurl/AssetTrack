@@ -1,113 +1,104 @@
 <!-- assettrack/intake/templates/admin_retire_asset.html -->
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Retire Asset</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 2rem; }
-      .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; max-width: 980px; }
-      .row { margin: 0.75rem 0; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-      input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
-      textarea { min-height: 120px; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; margin-right: 0.35rem; }
-      .flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0.75rem 0; max-width: 980px; }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      .warn { color: #8a1f11; font-weight: 700; }
-      .check { display: flex; align-items: center; gap: 0.5rem; }
-    </style>
-  </head>
-  <body>
-    <h1>Admin: Retire Asset</h1>
-    <p><a href="/">&larr; Back to intake</a></p>
+{% extends "base.html" %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block title %}Admin Retire Asset{% endblock %}
+{% block page_heading %}Admin: Retire Asset{% endblock %}
 
-    {% if error_message %}
-      <div class="flash error">{{ error_message }}</div>
+{% block extra_head %}
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
+    textarea { min-height: 120px; }
+    .warn { color: #8a1f11; font-weight: 700; }
+    .check { display: flex; align-items: center; gap: 0.5rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="/">&larr; Back to intake</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
     {% endif %}
+  {% endwith %}
 
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>1) Lookup Asset</h2>
+    <form method="post" action="/admin/assets/retire">
+      <input type="hidden" name="action" value="lookup" />
+      <div class="row">
+        <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
+        <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
+      </div>
+      <button type="submit">Lookup Asset</button>
+    </form>
+  </div>
+
+  {% if asset %}
     <div class="card">
-      <h2>1) Lookup Asset</h2>
-      <form method="post" action="/admin/assets/retire">
-        <input type="hidden" name="action" value="lookup" />
-        <div class="row">
-          <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
-          <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
+      <h2>2) Current Asset State</h2>
+      <div class="grid">
+        <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
+        <div><strong>location_type:</strong> <code>{{ asset.location_type }}</code></div>
+        <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
+        <div><strong>model:</strong> {{ asset.model or "" }}</div>
+        <div><strong>serial_number:</strong> {{ asset.serial_number or "" }}</div>
+        <div><strong>current_holder:</strong> {{ asset.current_holder }}</div>
+        <div>
+          <strong>current slot:</strong>
+          {% if asset.current_slot %}
+            <code>{{ asset.current_slot.case_name }} / {{ asset.current_slot.slot_position }} (id {{ asset.current_slot.slot_id }})</code>
+          {% else %}
+            none
+          {% endif %}
         </div>
-        <button type="submit">Lookup Asset</button>
-      </form>
+        <div><strong>home_slot_id:</strong> {{ asset.home_slot_id if asset.home_slot_id is not none else "none" }}</div>
+      </div>
     </div>
 
-    {% if asset %}
-      <div class="card">
-        <h2>2) Current Asset State</h2>
-        <div class="grid">
-          <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
-          <div><strong>location_type:</strong> <code>{{ asset.location_type }}</code></div>
-          <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
-          <div><strong>model:</strong> {{ asset.model or "" }}</div>
-          <div><strong>serial_number:</strong> {{ asset.serial_number or "" }}</div>
-          <div><strong>current_holder:</strong> {{ asset.current_holder }}</div>
-          <div>
-            <strong>current slot:</strong>
-            {% if asset.current_slot %}
-              <code>{{ asset.current_slot.case_name }} / {{ asset.current_slot.slot_position }} (id {{ asset.current_slot.slot_id }})</code>
-            {% else %}
-              none
-            {% endif %}
-          </div>
-          <div><strong>home_slot_id:</strong> {{ asset.home_slot_id if asset.home_slot_id is not none else "none" }}</div>
+    <div class="card">
+      <h2>3) Retire Asset</h2>
+      <p class="warn">Retirement is terminal. This action marks the asset as DISPOSED.</p>
+      <form method="post" action="/admin/assets/retire">
+        <input type="hidden" name="action" value="retire" />
+        <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+
+        <div class="row">
+          <label for="failure_type"><strong>failure_type</strong> (required)</label><br />
+          <select id="failure_type" name="failure_type" required>
+            <option value="">-- select failure type --</option>
+            {% for option in failure_type_options %}
+              <option value="{{ option }}" {% if form.failure_type == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>3) Retire Asset</h2>
-        <p class="warn">Retirement is terminal. This action marks the asset as DISPOSED.</p>
-        <form method="post" action="/admin/assets/retire">
-          <input type="hidden" name="action" value="retire" />
-          <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+        <div class="row">
+          <label for="notes"><strong>notes</strong> (required)</label><br />
+          <textarea id="notes" name="notes" required>{{ form.notes or '' }}</textarea>
+        </div>
 
-          <div class="row">
-            <label for="failure_type"><strong>failure_type</strong> (required)</label><br />
-            <select id="failure_type" name="failure_type" required>
-              <option value="">-- select failure type --</option>
-              {% for option in failure_type_options %}
-                <option value="{{ option }}" {% if form.failure_type == option %}selected{% endif %}>{{ option }}</option>
-              {% endfor %}
-            </select>
-          </div>
+        <div class="row check">
+          <input type="checkbox" id="confirm_physical" name="confirm_physical" value="yes" {% if form.confirm_physical %}checked{% endif %} />
+          <label for="confirm_physical"><strong>I confirm this reflects physical reality.</strong></label>
+        </div>
 
-          <div class="row">
-            <label for="notes"><strong>notes</strong> (required)</label><br />
-            <textarea id="notes" name="notes" required>{{ form.notes or '' }}</textarea>
-          </div>
-
+        {% if asset.location_type == "IN_CUSTODY" %}
           <div class="row check">
-            <input type="checkbox" id="confirm_physical" name="confirm_physical" value="yes" {% if form.confirm_physical %}checked{% endif %} />
-            <label for="confirm_physical"><strong>I confirm this reflects physical reality.</strong></label>
+            <input type="checkbox" id="confirm_in_field" name="confirm_in_field" value="yes" {% if form.confirm_in_field %}checked{% endif %} />
+            <label for="confirm_in_field"><strong>I confirm the asset is not recoverable / no longer returning.</strong></label>
           </div>
+        {% endif %}
 
-          {% if asset.location_type == "IN_CUSTODY" %}
-            <div class="row check">
-              <input type="checkbox" id="confirm_in_field" name="confirm_in_field" value="yes" {% if form.confirm_in_field %}checked{% endif %} />
-              <label for="confirm_in_field"><strong>I confirm the asset is not recoverable / no longer returning.</strong></label>
-            </div>
-          {% endif %}
-
-          <button type="submit">Retire Asset</button>
-        </form>
-      </div>
-    {% endif %}
-  </body>
-</html>
+        <button type="submit">Retire Asset</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}

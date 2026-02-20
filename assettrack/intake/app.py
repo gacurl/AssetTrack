@@ -1598,6 +1598,9 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
 
 @app.route("/", methods=["GET", "POST"])
 def intake():
+    if request.method == "GET":
+        return redirect(url_for("dashboard"))
+    
     latest = ""
 
     # Handle unlock attempt first (works even when currently locked).
