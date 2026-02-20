@@ -22,7 +22,7 @@ import time
 from typing import Optional
 from datetime import datetime, timezone
 
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 
 from assettrack.assets import get_asset_table_columns
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
@@ -39,6 +39,7 @@ from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.holders import get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
+from assettrack.audit import record_event
 
 
 app = Flask(__name__)
@@ -176,6 +177,39 @@ def _require_admin_for_api():
     if auth_enabled():
         touch_session()
     return None
+
+def _get_event_by_id(conn: sqlite3.Connection, event_id: int) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT
+            id,
+            asset_tag,
+            event_type,
+            event_date,
+            actor,
+            notes,
+            payload,
+            supersedes_event_id,
+            correction_reason
+        FROM asset_events
+        WHERE id = ?;
+        """,
+        (event_id,),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def _event_already_superseded(conn: sqlite3.Connection, event_id: int) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM asset_events
+        WHERE supersedes_event_id = ?
+        LIMIT 1;
+        """,
+        (event_id,),
+    ).fetchone()
+    return row is not None
 
 
 def _find_asset_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
@@ -2625,6 +2659,99 @@ def admin_replace_asset():
         error_message=error_message,
         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
     )
+
+
+@app.post("/admin/events/correct")
+@require_admin
+def admin_correct_event():
+    guard_result = _require_admin_for_api()
+    if guard_result:
+        return guard_result
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "JSON body must be an object"}, 400
+
+    raw_supersedes = data.get("supersedes_event_id")
+    correction_reason = str(data.get("correction_reason") or "").strip()
+
+    try:
+        supersedes_event_id = int(str(raw_supersedes).strip())
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "supersedes_event_id must be an integer"}, 400
+
+    if not correction_reason:
+        return {"ok": False, "error": "correction_reason is required"}, 400
+
+    conn = get_connection()
+    try:
+        original = _get_event_by_id(conn, supersedes_event_id)
+        if original is None:
+            return {"ok": False, "error": f"event {supersedes_event_id} not found"}, 404
+
+        if _event_already_superseded(conn, supersedes_event_id):
+            return {"ok": False, "error": f"event {supersedes_event_id} is already superseded"}, 409
+
+        # Copy-from-original defaults, with explicit override support
+        asset_tag = str(data.get("asset_tag") or original.get("asset_tag") or "").strip()
+        event_type = str(data.get("event_type") or original.get("event_type") or "").strip()
+        event_date = str(data.get("event_date") or original.get("event_date") or "").strip()
+        actor = str(data.get("actor") or original.get("actor") or "admin").strip()
+
+        notes_value = data.get("notes", None)
+        if notes_value is None:
+            notes_value = original.get("notes")
+        notes = str(notes_value) if notes_value is not None else None
+
+        payload = data.get("payload", None)
+        if payload is None:
+            try:
+                payload = json.loads(original.get("payload") or "null")
+            except (TypeError, ValueError):
+                payload = None
+
+        if not asset_tag:
+            return {"ok": False, "error": "asset_tag is required"}, 400
+        if not event_type:
+            return {"ok": False, "error": "event_type is required"}, 400
+        if not event_date:
+            return {"ok": False, "error": "event_date is required"}, 400
+
+        # Keep payload predictable: only dicts become JSON; everything else => None
+        payload_dict = payload if isinstance(payload, dict) else None
+
+        try:
+            conn.execute("BEGIN;")
+            record_event(
+                conn,
+                asset_tag=asset_tag,
+                event_type=event_type,
+                event_date=event_date,
+                actor=actor or "admin",
+                notes=notes,
+                payload=payload_dict,
+                supersedes_event_id=supersedes_event_id,
+                correction_reason=correction_reason,
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            return {"ok": False, "error": f"correction failed: {e}"}, 400
+        except Exception:
+            conn.rollback()
+            raise
+
+        return (
+            {
+                "ok": True,
+                "supersedes_event_id": supersedes_event_id,
+                "asset_tag": asset_tag,
+                "event_type": event_type,
+            },
+            201,
+        )
+    finally:
+        conn.close()
 
 
 @app.post("/admin/assets/create")
