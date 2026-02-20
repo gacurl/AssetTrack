@@ -22,11 +22,17 @@ import time
 from typing import Optional
 from datetime import datetime, timezone
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 
 from assettrack.assets import get_asset_table_columns
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import get_connection
+from assettrack.drilldowns import (
+    get_case_slot_detail,
+    get_holder_custody_detail,
+    list_case_summaries,
+    list_holders_in_custody,
+)
 from assettrack.ingest.validator import validate_rows
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
@@ -1683,6 +1689,68 @@ def dashboard():
         "dashboard.html",
         dashboard=dashboard_data,
         custody_days_threshold=threshold_days,
+    )
+
+
+@app.get("/dashboard/holders")
+def dashboard_holders():
+    conn = get_connection()
+    try:
+        holders = list_holders_in_custody(conn)
+    finally:
+        conn.close()
+
+    return render_template(
+        "dashboard_holders.html",
+        holders=holders,
+    )
+
+
+@app.get("/dashboard/holders/<int:holder_id>")
+def dashboard_holder_detail(holder_id: int):
+    conn = get_connection()
+    try:
+        detail = get_holder_custody_detail(conn, holder_id)
+    finally:
+        conn.close()
+
+    if detail is None:
+        abort(404)
+
+    return render_template(
+        "dashboard_holder_detail.html",
+        holder=detail,
+    )
+
+
+@app.get("/dashboard/cases")
+def dashboard_cases():
+    conn = get_connection()
+    try:
+        cases = list_case_summaries(conn)
+    finally:
+        conn.close()
+
+    return render_template(
+        "dashboard_cases.html",
+        cases=cases,
+    )
+
+
+@app.get("/dashboard/cases/<case_name>")
+def dashboard_case_detail(case_name: str):
+    conn = get_connection()
+    try:
+        detail = get_case_slot_detail(conn, case_name)
+    finally:
+        conn.close()
+
+    if detail is None:
+        abort(404)
+
+    return render_template(
+        "dashboard_case_detail.html",
+        case_detail=detail,
     )
 
 
