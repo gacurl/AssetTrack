@@ -39,6 +39,11 @@
         font-size: 0.95rem;
         white-space: nowrap;
       }
+      .chip.active {
+        background-color: #1f2937;
+        color: white;
+        font-weight: 600;
+      }
       .card {
         margin-top: 1rem;
         padding: 1rem;
@@ -70,12 +75,12 @@
       </header>
 
       <nav class="top-nav" aria-label="Primary">
-        <a class="chip" href="/dashboard">Dashboard</a>
-        <a class="chip" href="/holders">Holders</a>
-        <a class="chip" href="/return">Return</a>
-        <a class="chip" href="/preview">Preview</a>
-        <a class="chip" href="/issue/preview">Issue Preview</a>
-        <a class="chip" href="/dashboard">Intake</a>
+        <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="/dashboard">Dashboard</a>
+        <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="/holders">Holders</a>
+        <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="/return">Return</a>
+        <a class="chip {% if request.path.startswith('/preview') and not request.path.startswith('/issue') %}active{% endif %}" href="/preview">Preview</a>
+        <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="/issue/preview">Issue Preview</a>
+        <a class="chip {% if request.path == '/' %}active{% endif %}" href="/">Intake</a>
       </nav>
 
       {% block content %}{% endblock %}
