@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -44,7 +44,7 @@
     <div class="card">
       <h2>Move To Destination Slot</h2>
       <p class="muted">Destination must exist and be empty.</p>
-      <form method="post" action="/admin/slot-move">
+      <form method="post" action="{{ url_for('admin_slot_move') }}">
         <input type="hidden" name="source_slot_id" value="{{ source_slot.slot_id }}" />
 
         <div class="row">

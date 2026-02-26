@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">← Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -29,8 +29,8 @@
     <h2>Scan returns</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
 
-    <form method="post" action="/" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="/return" />
+    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+      <input type="hidden" name="return_to" value="{{ url_for('return_queue') }}" />
       <input
         type="text"
         name="scan_text"
@@ -40,7 +40,7 @@
       <button type="submit">Submit</button>
     </form>
 
-    <form method="post" action="/queue/clear" style="margin-top: 10px;">
+    <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;">
       <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
     </form>
   </div>
@@ -69,7 +69,6 @@
   </div>
 
   <div class="card">
-    <h2>Next Step</h2>
-    <p><a href="/return/preview"><strong>Open Return Assets Preview / Confirm</strong></a></p>
+    <p><a href="{{ url_for('return_preview') }}"><strong>Open Return Assets Preview / Confirm</strong></a></p>
   </div>
 {% endblock %}

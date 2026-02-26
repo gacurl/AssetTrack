@@ -1,0 +1,12 @@
+# assettrack/docker-compose.yml
+services:
+  assettrack:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ASSETTRACK_DB_PATH=${ASSETTRACK_DB_PATH}
+      - ASSETTRACK_ADMIN_USERS=${ASSETTRACK_ADMIN_USERS}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

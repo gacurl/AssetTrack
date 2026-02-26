@@ -1,46 +1,77 @@
-# Byte-compiled / cache files
+# ----------------------------
+# Python cache / bytecode
+# ----------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Distribution / packaging
+# ----------------------------
+# Build / packaging
+# ----------------------------
 dist/
 build/
 *.egg-info/
 
+# ----------------------------
 # Virtual environments
+# ----------------------------
 .venv/
 env/
 venv/
 ENV/
+.env
 
-# IDE/editor settings
+# ----------------------------
+# IDE/editor
+# ----------------------------
 .vscode/
 .idea/
 .local/
 
-# Local database & JSON configs
-inventory.db
-# da2062_layout.json
-inventory_lists.json
-
-# local sqlite db files (real inventory stays local)
+# ----------------------------
+# Databases (NEVER COMMIT)
+# ----------------------------
 data/*.db
+*.db
+*.sqlite3
 
-# Legacy data artifacts (old SQLite DBs, experiments) — intentionally ignored
-legacy/
+# Backups
+data/backups/
 
-# Legacy documentation archive — intentionally tracked
-!docs/legacy/
-!docs/legacy/**
+# ----------------------------
+# Raw import files (Excel, CSV)
+# ----------------------------
+data/import/
+*.xlsx
+*.xls
+*.csv
 
+# ----------------------------
+# Docker / runtime artifacts
+# ----------------------------
+*.pid
+*.sock
+
+# ----------------------------
 # Logs
+# ----------------------------
 *.log
 
+# ----------------------------
 # PyInstaller
+# ----------------------------
 *.spec
 
-# Mac stuff
+# ----------------------------
+# macOS junk
+# ----------------------------
 .DS_Store
 
+# ----------------------------
+# Legacy data artifacts (intentionally ignored)
+# ----------------------------
+legacy/
 
+# Legacy documentation archive (intentionally tracked)
+!docs/legacy/
+!docs/legacy/**

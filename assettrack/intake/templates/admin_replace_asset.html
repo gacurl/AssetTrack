@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -31,7 +31,7 @@
 
   <div class="card">
     <h2>1) Lookup Failed Asset</h2>
-    <form method="post" action="/admin/assets/replace">
+    <form method="post" action="{{ url_for('admin_replace_asset') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
         <label for="failed_asset_tag"><strong>failed asset_tag</strong> (required)</label><br />
@@ -68,7 +68,7 @@
     <div class="card">
       <h2>3) Replacement + Failure Details</h2>
       <p class="warn">This is one atomic operation: retire failed asset, create replacement, assign replacement to target slot.</p>
-      <form method="post" action="/admin/assets/replace">
+      <form method="post" action="{{ url_for('admin_replace_asset') }}">
         <input type="hidden" name="action" value="replace" />
         <input type="hidden" name="failed_asset_tag" value="{{ failed_asset.asset_tag }}" />
 

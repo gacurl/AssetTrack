@@ -12,8 +12,8 @@
 
 {% block content %}
   <nav class="actions" aria-label="Dashboard navigation">
-    <a class="chip" href="/dashboard">Back to Dashboard</a>
-    <a class="chip" href="/dashboard/cases">Case View</a>
+    <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="chip" href="{{ url_for('dashboard_cases') }}">Case View</a>
   </nav>
 
   <section class="card">
@@ -28,7 +28,7 @@
       <tbody>
         {% for row in holders %}
           <tr>
-            <td><a href="/dashboard/holders/{{ row.holder_id }}">{{ row.holder_name }}</a></td>
+            <td><a href="{{ url_for('dashboard_holder_detail', holder_id=row.holder_id) }}">{{ row.holder_name }}</a></td>
             <td>{{ row.asset_count }}</td>
           </tr>
         {% else %}

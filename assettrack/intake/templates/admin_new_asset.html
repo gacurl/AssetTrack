@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -30,7 +30,7 @@
   <div class="card">
     <h2>New Asset</h2>
     <p class="muted">Required fields must be provided before save.</p>
-    <form method="post" action="/admin/assets/new">
+    <form method="post" action="{{ url_for('admin_new_asset') }}">
       <div class="grid">
         <div class="row">
           <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />

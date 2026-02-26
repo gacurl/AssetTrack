@@ -1,8 +1,8 @@
 <!-- assettrack/intake/templates/index.html -->
 {% extends "base.html" %}
 
-{% block title %}AssetTrack Intake{% endblock %}
-{% block page_heading %}AssetTrack Intake{% endblock %}
+{% block title %}AssetTrack — Add Assets{% endblock %}
+{% block page_heading %}Add Assets{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -38,7 +38,7 @@
     {% endif %}
   {% endif %}
   {% if auth_enabled and authed %}
-    <p><a href="/lock">Lock</a></p>
+    <p><a href="{{ url_for('lock') }}">Lock</a></p>
   {% endif %}
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -51,8 +51,8 @@
 
   <div class="card">
     <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
-    <p><a href="/preview" target="_blank">Preview batch</a></p>
-    <p><a href="/return" target="_blank">Return Assets</a></p>
+    <p><a href="{{ url_for('preview') }}" target="_blank">Preview batch</a></p>
+    <p><a href="{{ url_for('return_queue') }}" target="_blank">Return Assets</a></p>
 
     {% if auth_enabled and not authed %}
       <form method="post">
@@ -60,7 +60,7 @@
         <button type="submit">Unlock</button>
       </form>
     {% else %}
-      <form class="row" method="post" action="/">
+      <form class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
           <label for="equipment_type"><strong>Equipment type</strong> (required to create new assets)</label><br />
           <input
@@ -86,7 +86,7 @@
         </div>
       </form>
     {% endif %}
-    <form method="post" action="/preview/commit" style="margin-top: 10px;">
+    <form method="post" action="{{ url_for('preview_commit') }}" style="margin-top: 10px;">
       <button type="submit">Add to database</button>
     </form>
   </div>

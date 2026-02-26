@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -31,7 +31,7 @@
 
   <div class="card">
     <h2>1) Lookup Asset</h2>
-    <form method="post" action="/admin/assets/retire">
+    <form method="post" action="{{ url_for('admin_retire_asset') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
         <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
@@ -66,7 +66,7 @@
     <div class="card">
       <h2>3) Retire Asset</h2>
       <p class="warn">Retirement is terminal. This action marks the asset as DISPOSED.</p>
-      <form method="post" action="/admin/assets/retire">
+      <form method="post" action="{{ url_for('admin_retire_asset') }}">
         <input type="hidden" name="action" value="retire" />
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
 

@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/preview">← Back to batch preview</a></p>
+  <p><a href="{{ url_for('preview') }}">← Back to batch preview</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -32,10 +32,10 @@
         <strong>Name:</strong> {{ selected_holder["name"] }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
-      <p><a href="/holders">Change holder selection</a></p>
+      <p><a href="{{ url_for('holders_search') }}">Change holder selection</a></p>
     {% else %}
       <p>No holder selected.</p>
-      <p><a href="/holders">Select holder</a></p>
+      <p><a href="{{ url_for('holders_search') }}">Select holder</a></p>
     {% endif %}
   </div>
 
@@ -55,11 +55,11 @@
     </p>
 
     {% if blocking_issues %}
-      <ul>
+      <ul><template>
         {% for issue in blocking_issues %}
           <li>{{ issue }}</li>
         {% endfor %}
-      </ul>
+      </template></ul>
     {% else %}
       <p>No blocking issues detected. Batch will commit atomically.</p>
     {% endif %}
@@ -100,11 +100,11 @@
               <td>
                 {% if row.asset_issues %}
                   <span class="pill bad">blocked</span>
-                  <ul>
+                  <ul><template>
                     {% for issue in row.asset_issues %}
                       <li>{{ issue }}</li>
                     {% endfor %}
-                  </ul>
+                  </template></ul>
                 {% else %}
                   <span class="pill good">ready</span>
                 {% endif %}
@@ -120,18 +120,18 @@
 
   <div class="card">
     <h2>Confirm Commit</h2>
-    <form method="post" action="/issue/commit">
+    <form method="post" action="{{ url_for('issue_commit') }}">
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
         I reviewed this batch and want to add it to the database.
       </label>
       <button id="issue_btn" type="submit" disabled>Issue assets</button>
     </form>
-    <form method="post" action="/preview/discard" style="margin-top: 10px;"
+    <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
       <button type="submit">Discard batch</button>
     </form>
-    <p style="margin-top: 10px;">JSON API: <code>/issue/commit?json=1</code> (POST)</p>
+    <p style="margin-top: 10px;">{{ url_for('issue_commit') }}?json=1</p>
   </div>
 {% endblock %}
 

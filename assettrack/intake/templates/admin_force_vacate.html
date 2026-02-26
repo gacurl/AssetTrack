@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -60,7 +60,7 @@
       <h2>Force Vacate Confirmation</h2>
       <p class="warn">Use only when you physically verified the slot is empty and database state is wrong.</p>
 
-      <form method="post" action="/admin/force-vacate">
+      <form method="post" action="{{ url_for('admin_force_vacate') }}">
         <input type="hidden" name="slot_id" value="{{ slot.slot_id }}" />
 
         <div class="row">

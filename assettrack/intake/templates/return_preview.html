@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/return">← Back to Return Queue</a></p>
+  <p><a href="{{ url_for('return_queue') }}">← Back to Return Queue</a></p>
 
   <div class="card">
     <h2>Validation Summary</h2>
@@ -95,7 +95,7 @@
     <h2>Confirm Return</h2>
 
     {% if not blocking_issues %}
-      <form method="post" action="/return/commit">
+      <form method="post" action="{{ url_for('return_commit') }}">
         <label>
           <input type="checkbox" name="confirm_reviewed" value="1" required />
           I have reviewed the changes and confirm this return batch.
