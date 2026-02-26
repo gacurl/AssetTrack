@@ -13,8 +13,8 @@
 
 {% block content %}
   <nav class="actions" aria-label="Dashboard navigation">
-    <a class="chip" href="/dashboard">Back to Dashboard</a>
-    <a class="chip" href="/dashboard/cases">Back to Cases</a>
+    <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="chip" href="{{ url_for('dashboard_cases') }}">Back to Cases</a>
   </nav>
 
   <section class="card">

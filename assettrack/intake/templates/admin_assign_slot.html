@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/dashboard">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -25,7 +25,7 @@
   <div class="card">
     <h2>1) Scan or Enter Asset Tag</h2>
     <p class="muted">Scanner-first flow: scan into asset_tag and submit lookup.</p>
-    <form method="post" action="/admin/assign-slot">
+    <form method="post" action="{{ url_for('admin_assign_slot') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
         <label for="asset_tag"><strong>asset_tag</strong></label><br />
@@ -67,7 +67,7 @@
 
     <div class="card">
       <h2>3) Assign Slot</h2>
-      <form method="post" action="/admin/assign-slot">
+      <form method="post" action="{{ url_for('admin_assign_slot') }}">
         <input type="hidden" name="action" value="assign" />
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
 

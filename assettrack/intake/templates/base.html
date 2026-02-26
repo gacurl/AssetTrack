@@ -74,14 +74,17 @@
         <h1>{% block page_heading %}{% endblock %}</h1>
       </header>
 
-      <nav class="top-nav" aria-label="Primary">
-        <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="/dashboard">Dashboard</a>
-        <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="/holders">Holders</a>
-        <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="/return">Return</a>
-        <a class="chip {% if request.path.startswith('/preview') and not request.path.startswith('/issue') %}active{% endif %}" href="/preview">Preview</a>
-        <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="/issue/preview">Issue Preview</a>
-        <a class="chip {% if request.path == '/' %}active{% endif %}" href="/">Intake</a>
-      </nav>
+      {% if session.get("authed") %}
+        <nav class="top-nav" aria-label="Primary">
+          <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+          <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
+          <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue_preview') }}">Issue</a>
+          <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="{{ url_for('return_queue') }}">Return</a>
+          <a class="chip {% if request.path.startswith('/preview') and not request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('preview') }}">Preview</a>
+          <a class="chip {% if request.path == '/' %}active{% endif %}" href="{{ url_for('intake') }}">Add Assets</a>
+          <a class="chip" href="{{ url_for('logout') }}">Logout</a>
+        </nav>
+      {% endif %}
 
       {% block content %}{% endblock %}
     </div>

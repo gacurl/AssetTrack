@@ -1,4 +1,5 @@
 # assettrack/db.py
+import os
 import sqlite3
 from pathlib import Path
 
@@ -124,8 +125,10 @@ def _rebuild_asset_events_for_corrections(conn: sqlite3.Connection) -> None:
     )
 
 
-# Canonical DB location (local-only, gitignored)
-DB_PATH = Path("data/assettrack.db")
+# Database location:
+# - Defaults to local development path (data/assettrack.db)
+# - Can be overridden via ASSETTRACK_DB_PATH for Docker/WSL persistence
+DB_PATH = Path(os.environ.get("ASSETTRACK_DB_PATH", "data/assettrack.db"))
 
 
 def get_connection():

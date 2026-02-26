@@ -50,10 +50,26 @@ SCAN_QUEUE: list[Scan] = []
 
 INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
+ASSETTRACK_AUTH_USER = os.getenv("ASSETTRACK_AUTH_USER", "admin")
+ASSETTRACK_AUTH_PASS = os.getenv("ASSETTRACK_AUTH_PASS", "assettrack")
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 ADMIN_AUTH_REALM = "AssetTrack Admin"
+
+
+@app.before_request
+def require_login_for_routes():
+    path = request.path or "/"
+    if path == "/":
+        return None
+    if path.startswith("/static/"):
+        return None
+    if path == "/health":
+        return None
+    if is_authed():
+        return None
+    return redirect("/")
 
 
 # Helpers
@@ -76,8 +92,7 @@ def auth_enabled() -> bool:
 
 
 def is_authed() -> bool:
-    """If no passcode is set, auth is disabled (always authed)."""
-    return True if not auth_enabled() else bool(session.get("authed", False))
+    return session.get("authed") is True
 
 
 def set_authed(value: bool) -> None:
@@ -100,8 +115,11 @@ def enforce_inactivity_timeout() -> bool:
     If authed, lock after inactivity.
     Returns the post-enforcement authed state.
     """
-    if not (auth_enabled() and is_authed()):
-        return is_authed()
+    if not auth_enabled():
+        return True
+
+    if not is_authed():
+        return False
 
     last_seen = session.get("last_seen")
     if last_seen is None:
@@ -1347,7 +1365,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
 def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
     if not asset_tags:
-        raise ValueError("No assets in the queue to stock out")
+        raise ValueError("No assets in the queue to issue.")
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         """
@@ -1633,77 +1651,22 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
 @app.route("/", methods=["GET", "POST"])
 def intake():
     if request.method == "GET":
-        return redirect(url_for("dashboard"))
-    
-    latest = ""
+        if is_authed():
+            return redirect("/dashboard")
+        return render_template("splash.html", error=None)
 
-    # Handle unlock attempt first (works even when currently locked).
-    if request.method == "POST" and auth_enabled() and "access_code" in request.form:
-        submitted_code = request.form.get("access_code")
-        if auth_ok(submitted_code):
-            set_authed(True)
-        return_to = (request.form.get("return_to") or "").strip()
-        if return_to.startswith("/"):
-            return redirect(return_to)
-        return redirect("/")
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    if username == ASSETTRACK_AUTH_USER and password == ASSETTRACK_AUTH_PASS:
+        session["authed"] = True
+        return redirect("/dashboard")
+    return render_template("splash.html", error="Invalid login")
 
-    # Determine auth state and enforce timeout for authed sessions.
-    authed = enforce_inactivity_timeout()
 
-    # Handle scan / clear only when authed.
-    if request.method == "POST" and authed:
-        session["equipment_type"] = (request.form.get("equipment_type") or "").strip()
-        action = request.form.get("action", "scan")
-
-        if action == "clear":
-            SCAN_QUEUE.clear()
-            session.pop("holder_id", None)
-            touch_session()
-        else:
-            raw = request.form.get("scan_text", "")
-            scan = sanitize_scan(raw)
-            if scan:
-                equipment_type = (request.form.get("equipment_type") or session.get("equipment_type") or "laptop").strip() or "laptop"
-                record = Scan.now(asset_tag=scan, equipment_type=equipment_type)
-
-                existing = {s.asset_tag for s in SCAN_QUEUE}
-                if record.asset_tag in existing:
-                    return_to = (request.form.get("return_to") or "").strip()
-                    if return_to.startswith("/"):
-                        return redirect(return_to)
-                    return redirect("/")
-
-                SCAN_QUEUE.append(record)
-                latest = record.asset_tag
-                session["equipment_type"] = "laptop"
-                touch_session()
-
-        return_to = (request.form.get("return_to") or "").strip()
-        if return_to.startswith("/"):
-            return redirect(return_to)
-        return redirect("/")
-
-    # View model for template.
-    timeout_seconds = INTAKE_TIMEOUT_SECONDS
-    last_seen_age_seconds = seconds_since_last_seen()
-
-    # If unlocked/auth-disabled, never allow the UI to show a blank "Last activity".
-    if authed and last_seen_age_seconds is None:
-        last_seen_age_seconds = 0
-
-    if not SCAN_QUEUE:
-        session["equipment_type"] = "laptop"
-    return render_template(
-        "index.html",
-        latest=latest,
-        queue=SCAN_QUEUE,
-        queue_len=len(SCAN_QUEUE),
-        authed=authed,
-        auth_enabled=auth_enabled(),
-        timeout_seconds=timeout_seconds,
-        last_seen_age_seconds=last_seen_age_seconds,
-        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
-    )
+@app.get("/logout")
+def logout():
+    session.pop("authed", None)
+    return redirect("/")
 
 
 @app.get("/dashboard")
@@ -1947,9 +1910,9 @@ def preview_commit():
             return {
                 "ok": False,
                 "committed": 0,
-                "error": "Select a holder before stock-out.",
+                "error": "Select a holder before issuing assets.",
             }, 400
-        flash("Select a holder before stock-out.", "error")
+        flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("preview"))
 
     asset_tags = _queue_asset_tags()
@@ -1959,7 +1922,7 @@ def preview_commit():
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
-        flash(f"Stock-out failed: {e}", "error")
+        flash(f"Issue failed: {e}", "error")
         return redirect(url_for("preview"))
 
     SCAN_QUEUE.clear()
@@ -1969,7 +1932,7 @@ def preview_commit():
     if wants_json():
         return {"ok": True, "committed": committed_count}
 
-    flash(f"Stocked out {committed_count} items.", "success")
+    flash(f"Issue {committed_count} assets.", "success")
     return redirect(url_for("intake"))
 
 
@@ -1977,7 +1940,7 @@ def preview_commit():
 def issue_preview():
     stock_out_mode = bool(session.get("stock_out_mode"))
     if not stock_out_mode:
-        flash("Enable stock-out mode before using Issue Assets.", "error")
+        flash("Enable issue mode before using Issue Assets.", "error")
         return render_template(
             "issue_preview.html",
             blocking_issues=[],
@@ -2013,7 +1976,7 @@ def issue_commit():
     if not stock_out_mode:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "Issue mode is not enabled."}, 400
-        flash("Enable stock-out mode before issuing assets.", "error")
+        flash("Enable issue mode before issuing assets.", "error")
         return redirect(url_for("preview"))
 
     confirmed = (request.form.get("confirm_reviewed") or "").strip().lower() in {"on", "true", "1", "yes"}
@@ -2030,15 +1993,15 @@ def issue_commit():
     holder = _selected_holder_from_session()
     if holder is None:
         if wants_json():
-            return {"ok": False, "committed": 0, "error": "Select a holder before stock-out."}, 400
-        flash("Select a holder before stock-out.", "error")
+            return {"ok": False, "committed": 0, "error": "Select a holder before issuing assets."}, 400
+        flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("issue_preview"))
 
     asset_tags = _queue_asset_tags()
     if not asset_tags:
         if wants_json():
-            return {"ok": False, "committed": 0, "error": "No assets in the queue to stock out"}, 400
-        flash("No assets in the queue to stock out.", "error")
+            return {"ok": False, "committed": 0, "error": "No assets in the queue to issue."}, 400
+        flash("No assets in the queue to issue..", "error")
         return redirect(url_for("issue_preview"))
 
     try:
@@ -2046,7 +2009,7 @@ def issue_commit():
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
-        flash(f"Stock-out failed: {e}", "error")
+        flash(f"Issue failed: {e}", "error")
         return redirect(url_for("issue_preview"))
 
     SCAN_QUEUE.clear()

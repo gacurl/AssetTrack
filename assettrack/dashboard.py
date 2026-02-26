@@ -1,3 +1,4 @@
+# assettrack/dashboard.py
 from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE

@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="/preview">← Back to preview</a> | <a href="/issue/preview">Issue Assets preview</a></p>
+  <p><a href="{{ url_for('preview') }}">← Back to preview</a> | <a href="{{ url_for('issue_preview') }}">Issue Assets preview</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -24,7 +24,7 @@
   {% endwith %}
 
   <div class="card">
-    <form method="get" action="/holders">
+    <form method="get" action="{{ url_for('holders_search') }}">
       <label for="q"><strong>Search by name or identifier</strong></label><br />
       <input
         type="text"
@@ -46,7 +46,7 @@
         <strong>Name:</strong> {{ selected_holder["name"] }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
-      <form method="post" action="/holders/clear">
+      <form method="post" action="{{ url_for('holders_clear') }}">
         <button type="submit">Clear selection</button>
       </form>
     {% else %}
@@ -75,7 +75,7 @@
               <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["contact_info"] or "" }}</td>
               <td>
-                <form method="post" action="/holders/select">
+                <form method="post" action="{{ url_for('holders_select') }}">
                   <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
                   <button type="submit">Select</button>
                 </form>
