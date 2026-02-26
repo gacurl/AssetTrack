@@ -1,139 +1,244 @@
+
 # ⚠️ Disclaimer (Not Government Endorsed)
 
 This software is an independent tool and is **not affiliated with, endorsed by, or sponsored by** the U.S. Department of War (DoW), U.S. Department of Defense (DoD), or any other government agency. Use of this software does **not** imply compliance with or substitution for official DoW/DoD policies, forms, or procedures. **You are responsible** for verifying accuracy and complying with all applicable regulations and for using official systems where required.
 
 ---
 
-# AssetTrack
+# 🚜 AssetTrack
 
-AssetTrack is an offline-first asset intake and accountability system designed for environments where reliability matters more than polish.
+AssetTrack is an **offline-first asset intake and accountability system** built for operational environments where reliability, determinism, and auditability matter more than visual polish.
 
-It provides a disciplined workflow for scanning physical assets, reviewing staged intake data, and committing records atomically to a local SQLite database. The system is intentionally simple, portable, and auditable.
+It provides a disciplined workflow for:
 
-AssetTrack supports:
-- Barcode scanning into a preview queue
-- Operator review with explicit confirmation before commit
-- Atomic writes to SQLite (no partial state)
-- Offline operation with no external service dependencies
-- Dockerized deployment with explicit data persistence
+* Scanning physical assets
+* Reviewing staged intake data
+* Committing records atomically
+* Preserving a durable, auditable event log
 
-AssetTrack is optimized for field use, controlled networks, and operational settings where accidental data loss, silent failures, or hidden state are unacceptable.
+The system is intentionally minimal, portable, and designed to fail closed.
 
 ---
 
-## Current Capabilities (Authoritative)
+## System Model (Authoritative)
 
-The sections below are in the process of being revised.  
-The list here reflects the **current, verified behavior** of AssetTrack.
+AssetTrack operates under three core principles:
+
+1. **No silent writes** — changes are previewed before commit.
+2. **Atomic state transitions** — no partial database updates.
+3. **Explicit persistence** — data durability is intentional, not accidental.
+
+Current architecture includes:
+
+* Offline-first Flask UI
+* SQLite storage
+* Deterministic event logging
+* Dockerized runtime
+* Named-volume persistence
+* Clean container security baseline (Trivy: 0 vulnerabilities)
+
+Root (`/`) routes to login.
+Authenticated users land on the operational dashboard.
+
+---
+
+## Current Capabilities
 
 AssetTrack currently provides:
-- Offline-first operation with no external service dependencies
-- Barcode scanning into a staged **preview queue**
-- Preview validation prior to commit
-- Explicit operator review confirmation before commit
-- Atomic commits to a local SQLite database
-- Deterministic clearing of the preview queue on successful commit
-- Dockerized execution with explicit host-mounted data persistence
 
-Capabilities related to PDF generation, DA Form 2062, GUI tabs, recycle bins, or calibration tools are **not part of the current AssetTrack system** and will be removed or archived as documentation cleanup continues.
+* Barcode scanning into a staged preview queue
+* Operator validation before commit
+* Explicit confirmation gating
+* Atomic SQLite commits
+* Deterministic clearing of the preview queue on success
+* Persistent event logging
+* Docker-based deployment with named volume durability
 
----
+Not included:
 
-## 📌 Features
-
-- **Scan --> Preview Queue**
-  - Barcode scans stage rows into a preview queue (no immediate database writes).
-  - Preview data can be validated before committing.
-
-- **Review-Confirmed Commit**
-  - Commits are intentionally gated by an explicit operator confirmation flag.
-  - On success, commits write **atomically** to SQLite and the preview queue is cleared.
-
-- **Offline-First Storage**
-  - Data is stored locally in SQLite (no external services required).
-
-- **Docker Support with Real Persistence**
-  - Docker runs are supported, but SQLite persistence requires mounting host `./data` to container `/app/data`.
-  - Without the bind mount, the database is container-local and disposable.
+* PDF generation
+* DA Form 2062 automation
+* GUI tab systems
+* Reporting dashboards beyond current scope
+* External service integrations
 
 ---
 
 ## Requirements
 
-AssetTrack is intentionally minimal. The requirements below reflect the **current, supported runtime**.
-
 ### Runtime
 
-- **Python:** 3.12
-- **Operating System:** macOS, Linux, or Windows (tested primarily on macOS and Linux)
-- **Database:** SQLite (local file-based storage)
-- **Shell:** POSIX-compatible shell recommended for setup commands
+* Python 3.12
+* macOS, Linux, or Windows
+* SQLite (local file-based database)
 
-### Python Dependencies
+### Optional Hardware
 
-All Python dependencies are defined in `requirements.txt`.
-
-No PDF generation libraries, GUI frameworks, or reporting toolkits are required or supported.
-
-### Docker (Optional)
-
-Docker is supported for packaging and deployment.
-
-**Important:**  
-SQLite persistence **requires** a host bind mount.
-
-- Host directory: `./data`
-- Container path: `/app/data`
-
-Running without this bind mount will result in a container-local, disposable database.
-
-### Hardware (Optional)
-
-- USB barcode scanner operating in keyboard (HID) mode
-- Tested with common handheld scanners; no vendor-specific SDKs required
+* USB barcode scanner (HID keyboard mode)
 
 ---
 
-## Quick Start
+# 🚀 Quick Start
 
-### Local (venv)
+AssetTrack supports:
 
-```bash
-# from repo root
+* Local virtual environment execution
+* Docker (recommended for operational parity)
+* Windows via WSL2 + Docker Desktop
+
+---
+
+## Option 1 — Local (venv)
+
+From the repository root:
+
+```
 python3 -m venv .venv
 source .venv/bin/activate
-
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-
-# run the intake UI
 python -m assettrack.intake.app
 ```
 
-Then open <http://127.0.0.1:8000/>
+Then open:
 
-### Docker (with persistence)
+[http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-SQLite persistence requires a bind mount. **Without it**, the database will be **disposable**.
+---
 
-```bash
-# build
-docker build -t assettrack:local .
+## Option 2 — Docker (Recommended)
 
-# run (persist ./data on the host)
-docker run --rm -p 8000:8000 -v "$(pwd)/data:/app/data" assettrack:local
+Docker Compose is the authoritative deployment path.
+
+Run:
+
+```
+docker compose up -d --build
 ```
 
-Then open <http://127.0.0.1:8000/>
+Then open:
+
+[http://localhost:8000](http://localhost:8000)
+
+---
+
+## Persistence Model (Important)
+
+AssetTrack uses a named Docker volume mounted to:
+
+```
+/app/data
+```
+
+This means:
+
+* Database survives container restarts
+* Database survives `docker compose down`
+* Data resets only if the Docker volume is explicitly removed
+
+To inspect volumes:
+
+```
+docker volume ls
+```
+
+To remove the AssetTrack volume (destructive):
+
+```
+docker volume rm assettrack_data
+```
+
+The database path inside the container is controlled by:
+
+```
+ASSETTRACK_DB_PATH
+```
+
+Default resolves to:
+
+```
+/app/data/assettrack.db
+```
+
+---
+
+## 🪟 Windows (WSL2 + Docker Desktop)
+
+### Recommended Windows Setup
+
+* Windows 11
+* WSL2 installed (Ubuntu recommended)
+* Docker Desktop installed
+* WSL integration enabled in Docker Desktop settings
+
+### Clone Inside WSL (Not `/mnt/c/...`)
+
+```
+cd ~
+git clone https://github.com/<your-org>/AssetTrack.git
+cd AssetTrack
+```
+
+Running from `/mnt/c` can cause:
+
+* Slow I/O
+* Mount inconsistencies
+* File permission edge cases
+
+Keep the repository inside the Linux filesystem (`~`).
+
+### Start the Application
+
+```
+docker compose up -d --build
+```
+
+Then open:
+
+[http://localhost:8000](http://localhost:8000)
+
+---
+
+## 🔐 Security Posture
+
+The container image is scanned using Trivy.
+
+Current baseline:
+
+* OS vulnerabilities: 0
+* Python package vulnerabilities: 0
+* LOW / MED / HIGH / CRIT: all zero
+
+Latest readable scan report:
+
+docs/security/trivy-readable.md
+
+The reproducible scan command is documented inside that file.
+
+---
+
+## Operational Notes
+
+* Root (`/`) routes to login
+* Authenticated users land on dashboard
+* All state transitions are logged
+* No external services required
+* No background jobs
+* No hidden side effects
+
+AssetTrack is intentionally boring.
+
+That is a feature.
 
 ---
 
 ## Acknowledgements
 
-AssetTrack was built through iterative design, operational testing, and disciplined reduction of accidental complexity.
+AssetTrack was built through iterative reduction — removing accidental complexity while preserving operational integrity.
 
 Thanks to:
-- Open-source tooling that prioritizes clarity and composability
-- Field operators whose workflows demand reliability over polish
-- Prior iterations of this project, which informed what to remove as much as what to keep
-- **:contentReference[oaicite:0]{index=0} (@CyberJrod)** for the initial iteration, early technical feedback, candid review, and pressure-testing assumptions
+
+* Open-source tooling focused on composability
+* Field operators who value reliability over aesthetics
+* Prior versions of this system that clarified what to eliminate
+* @CyberJrod for early technical feedback and assumption pressure-testing
