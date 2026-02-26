@@ -8,6 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Keep base OS packages patched (pulls fixed libpng, etc.)
+RUN apk update && apk upgrade --no-cache
+
 # System deps for common scientific + imaging stacks
 RUN apk add --no-cache \
         libjpeg-turbo \

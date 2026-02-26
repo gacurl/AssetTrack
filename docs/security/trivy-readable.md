@@ -1,10 +1,38 @@
+# AssetTrack — Container Security Report
+
+**Scan Date (UTC):** 2026-02-26 23:24:08 UTC
+**Image:** assettrack-assettrack:latest
+**Scanner:** Trivy
+**Scanners Enabled:** vuln
+
+**Command Used:**
+
+```
+trivy image --scanners vuln --format table assettrack-assettrack:latest
+```
+
+---
+
+## Security Status
+
+As of the scan date above, the container image `assettrack-assettrack:latest`
+contains **zero detected vulnerabilities** across all severities.
+
+This includes:
+- OS packages (Alpine base image)
+- Python dependencies
+- Application-installed libraries
+
+This report establishes the current security baseline for Issue 13-2.
+
+---
 
 Report Summary
 
 ┌──────────────────────────────────────────────────────────────────────────────────┬────────────┬─────────────────┐
 │                                      Target                                      │    Type    │ Vulnerabilities │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ assettrack:local (debian 13.3)                                                   │   debian   │        2        │
+│ assettrack-assettrack:latest (alpine 3.23.3)                                     │   alpine   │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/blinker-1.9.0.dist-info/METADATA          │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
@@ -15,7 +43,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/et_xmlfile-2.0.0.dist-info/METADATA       │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ usr/local/lib/python3.12/site-packages/flask-3.0.2.dist-info/METADATA            │ python-pkg │        0        │
+│ usr/local/lib/python3.12/site-packages/flask-3.1.3.dist-info/METADATA            │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/itsdangerous-2.2.0.dist-info/METADATA     │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
@@ -29,11 +57,11 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/pandas-3.0.0.dist-info/METADATA           │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ usr/local/lib/python3.12/site-packages/pillow-12.1.0.dist-info/METADATA          │ python-pkg │        0        │
+│ usr/local/lib/python3.12/site-packages/pillow-12.1.1.dist-info/METADATA          │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info/METADATA             │ python-pkg │        0        │
+│ usr/local/lib/python3.12/site-packages/pip-26.0.dist-info/METADATA               │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ usr/local/lib/python3.12/site-packages/pypdf-6.6.2.dist-info/METADATA            │ python-pkg │        0        │
+│ usr/local/lib/python3.12/site-packages/pypdf-6.7.2.dist-info/METADATA            │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/python_dateutil-2.9.0.post0.dist-info/ME- │ python-pkg │        0        │
 │ TADATA                                                                           │            │                 │
@@ -42,23 +70,9 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
 │ usr/local/lib/python3.12/site-packages/six-1.17.0.dist-info/METADATA             │ python-pkg │        0        │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┤
-│ usr/local/lib/python3.12/site-packages/werkzeug-3.1.5.dist-info/METADATA         │ python-pkg │        0        │
+│ usr/local/lib/python3.12/site-packages/werkzeug-3.1.6.dist-info/METADATA         │ python-pkg │        0        │
 └──────────────────────────────────────────────────────────────────────────────────┴────────────┴─────────────────┘
 Legend:
 - '-': Not scanned
 - '0': Clean (no security findings detected)
 
-
-assettrack:local (debian 13.3)
-==============================
-Total: 2 (HIGH: 2, CRITICAL: 0)
-
-┌──────────┬───────────────┬──────────┬──────────┬───────────────────┬───────────────┬──────────────────────────────────────────────────────────────┐
-│ Library  │ Vulnerability │ Severity │  Status  │ Installed Version │ Fixed Version │                            Title                             │
-├──────────┼───────────────┼──────────┼──────────┼───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
-│ libc-bin │ CVE-2026-0861 │ HIGH     │ affected │ 2.41-12+deb13u1   │               │ glibc: Integer overflow in memalign leads to heap corruption │
-│          │               │          │          │                   │               │ https://avd.aquasec.com/nvd/cve-2026-0861                    │
-├──────────┤               │          │          │                   ├───────────────┤                                                              │
-│ libc6    │               │          │          │                   │               │                                                              │
-│          │               │          │          │                   │               │                                                              │
-└──────────┴───────────────┴──────────┴──────────┴───────────────────┴───────────────┴──────────────────────────────────────────────────────────────┘
