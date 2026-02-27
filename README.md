@@ -232,6 +232,12 @@ That is a feature.
 
 ---
 
+## Documentation
+
+* [Operator Manual](docs/user-guide.md)
+
+---
+
 ## Acknowledgements
 
 AssetTrack was built through iterative reduction — removing accidental complexity while preserving operational integrity.
