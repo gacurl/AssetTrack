@@ -25,19 +25,33 @@ class HolderCreationViabilityTests(unittest.TestCase):
     def test_get_holders_new_route_exists(self) -> None:
         response = self.client.get("/holders/new")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Create Holder", response.data)
 
     def test_post_holders_new_persists_holder(self) -> None:
         holder_name = "Viability Gate Holder"
-        self.client.post(
+        response = self.client.post(
             "/holders/new",
             data={"name": holder_name},
         )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/holders"))
 
         row = self.conn.execute(
             "SELECT id, name FROM holders WHERE name = ?;",
             (holder_name,),
         ).fetchone()
         self.assertIsNotNone(row)
+
+    def test_post_holders_new_rejects_blank_name(self) -> None:
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "   "},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Name is required.", response.data)
+
+        count = self.conn.execute("SELECT COUNT(*) AS c FROM holders;").fetchone()["c"]
+        self.assertEqual(count, 0)
 
 
 if __name__ == "__main__":
