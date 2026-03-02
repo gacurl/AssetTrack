@@ -37,7 +37,7 @@ from assettrack.ingest.validator import validate_rows
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
-from assettrack.holders import get_holder, search_holders
+from assettrack.holders import create_holder, get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
 
@@ -2151,6 +2151,43 @@ def holders_search():
         results=results,
         selected_holder=_selected_holder_from_session(),
     )
+
+
+@app.get("/holders/new")
+def holders_new():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    return render_template(
+        "holder_new.html",
+        form={"name": ""},
+        error_message=None,
+    )
+
+
+@app.post("/holders/new")
+def holders_create():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    name = (request.form.get("name") or "").strip()
+    form = {"name": name}
+
+    if not name:
+        return render_template(
+            "holder_new.html",
+            form=form,
+            error_message="Name is required.",
+        )
+
+    created = create_holder(name)
+    flash(f"Created holder: {created['name']}", "success")
+    return redirect(url_for("holders_search"))
+
 
 @app.post("/holders/select")
 def holders_select():

@@ -1,6 +1,8 @@
 # file: assettrack/holders.py
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from assettrack.db import get_connection
 
 
@@ -51,5 +53,40 @@ def get_holder(holder_id: int) -> dict | None:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_holder(
+    name: str,
+    *,
+    holder_type: str = "PERSON",
+    identifier: str | None = None,
+    contact_info: str | None = None,
+) -> dict:
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise ValueError("name is required")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO holders (holder_type, name, identifier, contact_info, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (holder_type, normalized_name, identifier, contact_info, now_iso, now_iso),
+        )
+        conn.commit()
+        created_id = int(cursor.lastrowid)
+        row = conn.execute(
+            """
+            SELECT * FROM holders
+            WHERE id = ?;
+            """,
+            (created_id,),
+        ).fetchone()
+        return dict(row)
     finally:
         conn.close()
