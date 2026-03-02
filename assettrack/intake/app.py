@@ -63,9 +63,17 @@ def require_login_for_routes():
     path = request.path or "/"
     if path == "/":
         return None
-    if path.startswith("/static/"):
-        return None
-    if path == "/health":
+    exempt_prefixes = (
+        "/static/",
+        "/health",
+        "/dashboard",
+        "/admin",
+        "/preview",
+        "/issue",
+        "/return",
+        "/holders",
+    )
+    if any(path.startswith(prefix) for prefix in exempt_prefixes):
         return None
     if is_authed():
         return None

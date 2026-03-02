@@ -195,8 +195,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(overdue_rows[0]["asset_tag"], "AT-OLD")
         self.assertEqual(overdue_rows[0]["days_out"], 50)
 
-    def test_root_redirects_to_dashboard(self):
+    def test_root_renders_splash_when_not_authed(self):
         resp = self.client.get("/", follow_redirects=False)
-        self.assertIn(resp.status_code, (301, 302))
-        self.assertTrue(resp.headers["Location"].endswith("/dashboard"))
-
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"LOGIN", resp.data)
