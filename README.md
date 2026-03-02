@@ -162,6 +162,62 @@ Default resolves to:
 
 ---
 
+## Verifying Docker persistence (data survives restarts)
+
+Use this manual check to prove holder data survives container restarts.
+
+1. Start the app:
+
+```
+docker compose up -d --build
+```
+
+2. In the UI (`http://localhost:8000`), create a holder from:
+   `Holders` -> `Add Holder` (example name: `ZZ Persist Check`).
+
+3. Confirm it is searchable before restart:
+
+```
+docker compose exec -T assettrack python - <<'PY'
+import sqlite3
+conn = sqlite3.connect("/app/data/assettrack.db")
+rows = conn.execute(
+    "SELECT id, name FROM holders WHERE name = ?;",
+    ("ZZ Persist Check",),
+).fetchall()
+print(rows)
+conn.close()
+PY
+```
+
+4. Restart containers:
+
+```
+docker compose down
+docker compose up -d
+```
+
+5. Confirm holder still exists after restart (same query):
+
+```
+docker compose exec -T assettrack python - <<'PY'
+import sqlite3
+conn = sqlite3.connect("/app/data/assettrack.db")
+rows = conn.execute(
+    "SELECT id, name FROM holders WHERE name = ?;",
+    ("ZZ Persist Check",),
+).fetchall()
+print(rows)
+conn.close()
+PY
+```
+
+Expected: the holder row is present both before and after `down/up`.
+`docker compose down` preserves data in the mounted `/app/data/assettrack.db`.
+Data is wiped only if you explicitly remove volumes (for example `docker compose down -v`).
+
+---
+
 ## 🪟 Windows (WSL2 + Docker Desktop)
 
 ### Recommended Windows Setup
