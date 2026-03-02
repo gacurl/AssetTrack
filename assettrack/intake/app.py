@@ -2177,14 +2177,15 @@ def holders_create():
     name = (request.form.get("name") or "").strip()
     form = {"name": name}
 
-    if not name:
+    try:
+        created = create_holder(name)
+    except ValueError:
         return render_template(
             "holder_new.html",
             form=form,
             error_message="Name is required.",
         )
 
-    created = create_holder(name)
     flash(f"Created holder: {created['name']}", "success")
     return redirect(url_for("holders_search"))
 
