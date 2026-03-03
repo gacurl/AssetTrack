@@ -12,6 +12,7 @@ from assettrack.drilldowns import (
     list_holders_in_custody,
 )
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -35,6 +36,8 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn.commit()
     intake_app.app.testing = True
     client = intake_app.app.test_client()
+    operator_user_id = create_test_user(username="operator", password="op-pass", role="operator")
+    login_session(client, operator_user_id)
     yield conn, client
     conn.close()
 
@@ -236,4 +239,3 @@ def test_holder_detail_uses_most_recent_stock_out_and_unknown_when_missing(app_c
     assert rows["AT-RECENT"]["days_out"] == 19
     assert rows["AT-UNKNOWN"]["last_issued_date"] is None
     assert rows["AT-UNKNOWN"]["days_out"] is None
-

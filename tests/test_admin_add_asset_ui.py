@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import base64
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class AdminAddAssetUiTests(unittest.TestCase):
@@ -41,27 +40,14 @@ class AdminAddAssetUiTests(unittest.TestCase):
             """
         )
         self.conn.commit()
-
-        self.orig_passcode = intake_app.INTAKE_PASSCODE
-        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
-        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
-        intake_app.INTAKE_PASSCODE = "test-admin-code"
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
+        admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+        login_session(self.client, admin_user_id)
 
     def tearDown(self) -> None:
-        if self.orig_admin_users is None:
-            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
-        else:
-            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
-        intake_app.INTAKE_PASSCODE = self.orig_passcode
         self.conn.close()
         self.temp_dir.cleanup()
-
-    def _set_admin_session(self) -> None:
-        with self.client.session_transaction() as sess:
-            sess["authed"] = True
-            sess["last_seen"] = intake_app.now_seconds()
 
     def _insert_slot(self, slot_id: int, case_name: str, slot_position: int, *, current_asset_tag: str | None = None) -> None:
         self.conn.execute(
@@ -100,25 +86,14 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.conn.commit()
         return int(cursor.lastrowid)
 
-    def _admin_headers(self) -> dict[str, str]:
-        token = base64.b64encode(b"admin:test-pass").decode("ascii")
-        return {"Authorization": f"Basic {token}"}
-
-    def test_get_admin_new_asset_route_blocks_non_admin_and_allows_admin(self) -> None:
-        blocked = self.client.get("/admin/assets/new", headers=self._admin_headers())
-        self.assertEqual(blocked.status_code, 302)
-        self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
-
-        self._set_admin_session()
-        allowed = self.client.get("/admin/assets/new", headers=self._admin_headers())
-        self.assertEqual(allowed.status_code, 200)
-        self.assertIn(b"Admin: Add Asset", allowed.data)
+    def test_get_admin_new_asset_route_allows_admin(self) -> None:
+        response = self.client.get("/admin/assets/new")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Admin: Add Asset", response.data)
 
     def test_post_creates_unslotted_asset_and_enforces_serial_uniqueness(self) -> None:
-        self._set_admin_session()
         response = self.client.post(
             "/admin/assets/new",
-            headers=self._admin_headers(),
             data={
                 "asset_tag": "AT-500",
                 "serial_number": "SER-500",
@@ -150,7 +125,6 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         duplicate = self.client.post(
             "/admin/assets/new",
-            headers=self._admin_headers(),
             data={
                 "asset_tag": "AT-501",
                 "serial_number": "SER-500",
@@ -166,12 +140,10 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIsNone(missing)
 
     def test_post_creates_slotted_asset_by_case_and_slot_and_writes_both_events(self) -> None:
-        self._set_admin_session()
         self._insert_slot(101, "CASE-A", 7)
 
         response = self.client.post(
             "/admin/assets/new",
-            headers=self._admin_headers(),
             data={
                 "asset_tag": "AT-600",
                 "serial_number": "SER-600",
@@ -215,13 +187,11 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual([row["event_type"] for row in events], ["ASSET_CREATED", "SLOT_ASSIGN"])
 
     def test_post_duplicate_serial_number_rejected_with_rollback(self) -> None:
-        self._set_admin_session()
         self._insert_asset("AT-700", "SER-DUP")
         self._insert_slot(102, "CASE-B", 1)
 
         response = self.client.post(
             "/admin/assets/new",
-            headers=self._admin_headers(),
             data={
                 "asset_tag": "AT-701",
                 "serial_number": "SER-DUP",
@@ -243,7 +213,6 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIsNone(slot["current_asset_tag"])
 
     def test_post_assign_now_with_occupied_slot_rejected_with_rollback(self) -> None:
-        self._set_admin_session()
         existing_id = self._insert_asset("AT-800", "SER-800")
         self._insert_slot(103, "CASE-C", 9, current_asset_tag="AT-800")
         self.conn.execute(
@@ -257,7 +226,6 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/new",
-            headers=self._admin_headers(),
             data={
                 "asset_tag": "AT-801",
                 "serial_number": "SER-801",

@@ -1,14 +1,13 @@
 # file: tests/test_return_batch.py
 from __future__ import annotations
 
-import base64
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class ReturnBatchTests(unittest.TestCase):
@@ -28,17 +27,13 @@ class ReturnBatchTests(unittest.TestCase):
             """
         )
         self.conn.commit()
-        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
-        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
         self.client = intake_app.app.test_client()
         intake_app.app.testing = True
         intake_app.SCAN_QUEUE.clear()
+        operator_user_id = create_test_user(username="operator", password="op-pass", role="operator")
+        login_session(self.client, operator_user_id)
 
     def tearDown(self) -> None:
-        if self.orig_admin_users is None:
-            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
-        else:
-            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
         intake_app.SCAN_QUEUE.clear()
         self.conn.close()
         self.temp_dir.cleanup()
@@ -63,10 +58,6 @@ class ReturnBatchTests(unittest.TestCase):
         )
         self.conn.commit()
 
-    def _admin_headers(self) -> dict[str, str]:
-        token = base64.b64encode(b"admin:test-pass").decode("ascii")
-        return {"Authorization": f"Basic {token}"}
-
     def test_return_preview_and_commit_gating(self) -> None:
         self._insert_slot(10, "A", 1, None)
         self._insert_slot(20, "B", 2, None)
@@ -83,7 +74,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(preview_render.status_code, 200)
         self.assertIn("Return Assets — Preview / Confirm".encode("utf-8"), preview_render.data)
 
-        unreviewed = self.client.post("/return/commit?json=1", headers=self._admin_headers())
+        unreviewed = self.client.post("/return/commit?json=1")
         self.assertEqual(unreviewed.status_code, 400)
         self.assertFalse(unreviewed.json["ok"])
         self.assertEqual(unreviewed.json["committed"], 0)
@@ -98,7 +89,6 @@ class ReturnBatchTests(unittest.TestCase):
 
         blocked = self.client.post(
             "/return/commit?json=1",
-            headers=self._admin_headers(),
             data={"confirm_reviewed": "on"},
         )
         self.assertEqual(blocked.status_code, 400)
@@ -122,7 +112,6 @@ class ReturnBatchTests(unittest.TestCase):
 
         success = self.client.post(
             "/return/commit?json=1",
-            headers=self._admin_headers(),
             data={"confirm_reviewed": "on"},
         )
         self.assertEqual(success.status_code, 200)

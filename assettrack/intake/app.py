@@ -11,10 +11,6 @@ Feynman-brief:
 
 from __future__ import annotations
 
-import base64
-import binascii
-from functools import wraps
-import hmac
 import json
 import os
 import sqlite3
@@ -37,9 +33,11 @@ from assettrack.ingest.validator import validate_rows
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
+from assettrack.auth import current_user, require_login, require_role
 from assettrack.holders import create_holder, get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
+from assettrack.users import count_users, create_user, get_user_by_username, verify_password
 
 
 app = Flask(__name__)
@@ -48,36 +46,19 @@ app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 # In-memory only: wiped on restart
 SCAN_QUEUE: list[Scan] = []
 
-INTAKE_PASSCODE = os.getenv("ASSETTRACK_INTAKE_CODE")
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
-ASSETTRACK_AUTH_USER = os.getenv("ASSETTRACK_AUTH_USER", "admin")
-ASSETTRACK_AUTH_PASS = os.getenv("ASSETTRACK_AUTH_PASS", "assettrack")
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
-ADMIN_AUTH_REALM = "AssetTrack Admin"
 
 
-@app.before_request
-def require_login_for_routes():
-    path = request.path or "/"
-    if path == "/":
-        return None
-    exempt_prefixes = (
-        "/static/",
-        "/health",
-        "/dashboard",
-        "/admin",
-        "/preview",
-        "/issue",
-        "/return",
-        "/holders",
-    )
-    if any(path.startswith(prefix) for prefix in exempt_prefixes):
-        return None
-    if is_authed():
-        return None
-    return redirect("/")
+@app.context_processor
+def inject_auth_user():
+    user = current_user()
+    return {
+        "authenticated_user": user,
+        "authenticated_role": None if user is None else user.get("role"),
+    }
 
 
 # Helpers
@@ -96,53 +77,26 @@ def sanitize_scan(raw: str) -> str:
 
 
 def auth_enabled() -> bool:
-    return bool(INTAKE_PASSCODE)
+    return False
 
 
 def is_authed() -> bool:
-    return session.get("authed") is True
+    return current_user() is not None
 
 
 def set_authed(value: bool) -> None:
     if value:
-        session["authed"] = True
-        touch_session()
-    else:
-        session.pop("authed", None)
-        session.pop("last_seen", None)
+        return
+    session.pop("user_id", None)
+    session.pop("last_seen", None)
 
 
 def auth_ok(submitted: str | None) -> bool:
-    if not auth_enabled():
-        return True
-    return submitted == INTAKE_PASSCODE
+    return False
 
 
 def enforce_inactivity_timeout() -> bool:
-    """
-    If authed, lock after inactivity.
-    Returns the post-enforcement authed state.
-    """
-    if not auth_enabled():
-        return True
-
-    if not is_authed():
-        return False
-
-    last_seen = session.get("last_seen")
-    if last_seen is None:
-        # Authed but missing last_seen: initialize.
-        touch_session()
-        return True
-
-    elapsed = now_seconds() - int(last_seen)
-    if elapsed > INTAKE_TIMEOUT_SECONDS:
-        set_authed(False)
-        return False
-
-    # Still valid: refresh activity.
-    touch_session()
-    return True
+    return is_authed()
 
 
 def seconds_since_last_seen() -> Optional[int]:
@@ -183,26 +137,6 @@ def _normalize_location_type(value: object) -> str:
 def _is_terminal_location_type(value: object) -> bool:
     return _normalize_location_type(value) in TERMINAL_LOCATION_TYPES
 
-
-def _require_admin_for_route():
-    authed = enforce_inactivity_timeout()
-    if auth_enabled() and not authed:
-        flash("Locked. Re-enter access code.", "error")
-        return redirect(url_for("intake"))
-
-    if auth_enabled():
-        touch_session()
-    return None
-
-
-def _require_admin_for_api():
-    authed = enforce_inactivity_timeout()
-    if auth_enabled() and not authed:
-        return {"ok": False, "error": "Locked"}, 401
-
-    if auth_enabled():
-        touch_session()
-    return None
 
 def _get_event_by_id(conn: sqlite3.Connection, event_id: int) -> dict | None:
     row = conn.execute(
@@ -648,84 +582,16 @@ def _is_truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _parse_admin_users(raw_value: str | None) -> list[tuple[str, str]]:
-    if raw_value is None:
-        raise ValueError("ASSETTRACK_ADMIN_USERS is not configured")
-
-    raw = raw_value.strip()
-    if not raw:
-        raise ValueError("ASSETTRACK_ADMIN_USERS is empty")
-
-    if any(ch.isspace() for ch in raw):
-        raise ValueError("ASSETTRACK_ADMIN_USERS must not contain whitespace")
-
-    users: list[tuple[str, str]] = []
-    seen_usernames: set[str] = set()
-    for entry in raw.split(","):
-        if not entry:
-            raise ValueError("ASSETTRACK_ADMIN_USERS has empty entry")
-        if entry.count(":") != 1:
-            raise ValueError("ASSETTRACK_ADMIN_USERS entry must be username:password")
-
-        username, password = entry.split(":", 1)
-        if not username or not password:
-            raise ValueError("ASSETTRACK_ADMIN_USERS entry must include username and password")
-        if username in seen_usernames:
-            raise ValueError("ASSETTRACK_ADMIN_USERS has duplicate usernames")
-
-        seen_usernames.add(username)
-        users.append((username, password))
-
-    if not users:
-        raise ValueError("ASSETTRACK_ADMIN_USERS must include at least one user")
-    return users
+def _require_admin_for_route():
+    user = current_user()
+    role = str((user or {}).get("role") or "").strip().lower()
+    if role != "admin":
+        return {"ok": False, "error": "Forbidden"}, 403
+    return None
 
 
-def _unauthorized_response():
-    response = {"ok": False, "error": "Unauthorized"}
-    headers = {"WWW-Authenticate": f'Basic realm="{ADMIN_AUTH_REALM}"'}
-    return response, 401, headers
-
-
-def require_admin(view_func):
-    @wraps(view_func)
-    def wrapped(*args, **kwargs):
-        raw_admin_users = os.getenv("ASSETTRACK_ADMIN_USERS")
-        try:
-            configured_users = _parse_admin_users(raw_admin_users)
-        except ValueError:
-            return {"ok": False, "error": "Admin authentication is not configured"}, 503
-
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return _unauthorized_response()
-
-        scheme, _, encoded_credentials = auth_header.partition(" ")
-        if scheme.lower() != "basic" or not encoded_credentials:
-            return _unauthorized_response()
-
-        try:
-            decoded = base64.b64decode(encoded_credentials, validate=True).decode("utf-8")
-        except (ValueError, binascii.Error, UnicodeDecodeError):
-            return _unauthorized_response()
-
-        if ":" not in decoded:
-            return _unauthorized_response()
-
-        provided_username, provided_password = decoded.split(":", 1)
-
-        is_authorized = False
-        for configured_username, configured_password in configured_users:
-            username_match = hmac.compare_digest(provided_username, configured_username)
-            password_match = hmac.compare_digest(provided_password, configured_password)
-            is_authorized = is_authorized or (username_match and password_match)
-
-        if not is_authorized:
-            return _unauthorized_response()
-
-        return view_func(*args, **kwargs)
-
-    return wrapped
+def _require_admin_for_api():
+    return _require_admin_for_route()
 
 
 def _create_admin_asset_in_tx(
@@ -1659,25 +1525,64 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
 @app.route("/", methods=["GET", "POST"])
 def intake():
     if request.method == "GET":
-        if is_authed():
+        if current_user() is not None:
             return redirect("/dashboard")
         return render_template("splash.html", error=None)
 
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
-    if username == ASSETTRACK_AUTH_USER and password == ASSETTRACK_AUTH_PASS:
-        session["authed"] = True
-        return redirect("/dashboard")
-    return render_template("splash.html", error="Invalid login")
+    user = get_user_by_username(username)
+    if user is None or not verify_password(user, password):
+        return render_template("splash.html", error="Invalid login"), 403
+
+    role = str(user.get("role") or "").strip().lower()
+    active = int(user.get("active") or 0) == 1
+    if role not in {"admin", "operator"} or not active:
+        session.pop("user_id", None)
+        return render_template("splash.html", error="Access denied"), 403
+
+    session["user_id"] = int(user["id"])
+    touch_session()
+    return redirect("/dashboard")
+
+
+@app.route("/bootstrap/admin", methods=["GET", "POST"])
+def bootstrap_admin():
+    if count_users() != 0:
+        return {"ok": False, "error": "Bootstrap is disabled"}, 403
+
+    if request.method == "GET":
+        return render_template("bootstrap_admin.html", error=None)
+
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    confirm_password = request.form.get("confirm_password") or ""
+
+    if not username or not password:
+        return render_template("bootstrap_admin.html", error="Username and password are required."), 400
+    if password != confirm_password:
+        return render_template("bootstrap_admin.html", error="Passwords do not match."), 400
+
+    try:
+        user = create_user(username=username, password=password, role="admin", active=True)
+    except ValueError as e:
+        return render_template("bootstrap_admin.html", error=str(e)), 400
+    except sqlite3.IntegrityError:
+        return render_template("bootstrap_admin.html", error="Username already exists."), 400
+
+    session["user_id"] = int(user["id"])
+    touch_session()
+    return redirect("/dashboard")
 
 
 @app.get("/logout")
 def logout():
-    session.pop("authed", None)
+    session.pop("user_id", None)
     return redirect("/")
 
 
 @app.get("/dashboard")
+@require_login
 def dashboard():
     threshold_days = get_custody_days_threshold(
         os.getenv("ASSETTRACK_CUSTODY_DAYS_THRESHOLD"),
@@ -1701,6 +1606,7 @@ def dashboard():
 
 
 @app.get("/dashboard/holders")
+@require_login
 def dashboard_holders():
     conn = get_connection()
     try:
@@ -1715,6 +1621,7 @@ def dashboard_holders():
 
 
 @app.get("/dashboard/holders/<int:holder_id>")
+@require_login
 def dashboard_holder_detail(holder_id: int):
     conn = get_connection()
     try:
@@ -1732,6 +1639,7 @@ def dashboard_holder_detail(holder_id: int):
 
 
 @app.get("/dashboard/cases")
+@require_login
 def dashboard_cases():
     conn = get_connection()
     try:
@@ -1746,6 +1654,7 @@ def dashboard_cases():
 
 
 @app.get("/dashboard/cases/<case_name>")
+@require_login
 def dashboard_case_detail(case_name: str):
     conn = get_connection()
     try:
@@ -1763,6 +1672,7 @@ def dashboard_case_detail(case_name: str):
 
 
 @app.get("/preview")
+@require_login
 def preview():
     parsed_rows = build_parsed_rows_from_queue()
     validation = validate_rows(parsed_rows)
@@ -1785,6 +1695,7 @@ def preview():
 
 
 @app.get("/preview/validate")
+@require_login
 def preview_validate():
     parsed_rows = build_parsed_rows_from_queue()
     result = validate_rows(parsed_rows)
@@ -1796,7 +1707,8 @@ def preview_validate():
     }
 
 @app.post("/preview/mode")
-@require_admin
+@require_login
+@require_role("admin")
 def preview_mode():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -1814,7 +1726,8 @@ def preview_mode():
     return redirect(url_for("preview"))
 
 @app.post("/preview/discard")
-@require_admin
+@require_login
+@require_role("admin")
 def preview_discard():
     # Enforce auth and inactivity timeout for discard requests.
     authed = enforce_inactivity_timeout()
@@ -1839,7 +1752,8 @@ def preview_discard():
     return redirect(url_for("intake"))
 
 @app.post("/preview/commit")
-@require_admin
+@require_login
+@require_role("admin")
 def preview_commit():
     # Enforce auth and inactivity timeout for commit requests.
     authed = enforce_inactivity_timeout()
@@ -1945,6 +1859,7 @@ def preview_commit():
 
 
 @app.get("/issue/preview")
+@require_login
 def issue_preview():
     stock_out_mode = bool(session.get("stock_out_mode"))
     if not stock_out_mode:
@@ -1971,7 +1886,7 @@ def issue_preview():
 
 
 @app.post("/issue/commit")
-@require_admin
+@require_login
 def issue_commit():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2032,6 +1947,7 @@ def issue_commit():
 
 
 @app.get("/return")
+@require_login
 def return_queue():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2062,6 +1978,7 @@ def return_queue():
 
 
 @app.get("/return/preview")
+@require_login
 def return_preview():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2083,7 +2000,7 @@ def return_preview():
 
 
 @app.post("/return/commit")
-@require_admin
+@require_login
 def return_commit():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2130,12 +2047,14 @@ def return_commit():
     return redirect(url_for("return_queue"))
 
 @app.get("/lock")
-@require_admin
+@require_login
+@require_role("admin")
 def lock():
     set_authed(False)
     return redirect("/")
 
 @app.get("/holders")
+@require_login
 def holders_search():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2154,6 +2073,7 @@ def holders_search():
 
 
 @app.get("/holders/new")
+@require_login
 def holders_new():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2168,6 +2088,7 @@ def holders_new():
 
 
 @app.post("/holders/new")
+@require_login
 def holders_create():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2191,6 +2112,7 @@ def holders_create():
 
 
 @app.post("/holders/select")
+@require_login
 def holders_select():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2214,6 +2136,7 @@ def holders_select():
 
 
 @app.post("/holders/clear")
+@require_login
 def holders_clear():
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
@@ -2227,7 +2150,8 @@ def holders_clear():
 
 
 @app.route("/admin/assets/new", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_new_asset():
     guard_result = _require_admin_for_route()
     if guard_result:
@@ -2338,7 +2262,8 @@ def admin_new_asset():
 
 
 @app.route("/admin/assets/retire", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_retire_asset():
     guard_result = _require_admin_for_route()
     if guard_result:
@@ -2455,7 +2380,8 @@ def admin_retire_asset():
 
 
 @app.route("/admin/assets/replace", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_replace_asset():
     guard_result = _require_admin_for_route()
     if guard_result:
@@ -2671,7 +2597,8 @@ def admin_replace_asset():
 
 
 @app.post("/admin/events/correct")
-@require_admin
+@require_login
+@require_role("admin")
 def admin_correct_event():
     guard_result = _require_admin_for_api()
     if guard_result:
@@ -2764,7 +2691,8 @@ def admin_correct_event():
 
 
 @app.post("/admin/assets/create")
-@require_admin
+@require_login
+@require_role("admin")
 def admin_create_asset():
     guard_result = _require_admin_for_api()
     if guard_result:
@@ -2866,7 +2794,8 @@ def admin_create_asset():
 
 
 @app.route("/admin/assign-slot", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_assign_slot():
     guard_result = _require_admin_for_route()
     if guard_result:
@@ -3126,7 +3055,8 @@ def admin_assign_slot():
 
 
 @app.route("/admin/slot-move", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_slot_move():
     guard_result = _require_admin_for_route()
     if guard_result:
@@ -3421,7 +3351,8 @@ def admin_slot_move():
 
 
 @app.route("/admin/force-vacate", methods=["GET", "POST"])
-@require_admin
+@require_login
+@require_role("admin")
 def admin_force_vacate():
     guard_result = _require_admin_for_route()
     if guard_result:

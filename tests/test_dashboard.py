@@ -8,6 +8,7 @@ from pathlib import Path
 import assettrack.db as db
 from assettrack.dashboard import build_dashboard_data
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class DashboardTests(unittest.TestCase):
@@ -43,6 +44,8 @@ class DashboardTests(unittest.TestCase):
         self.conn.commit()
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
+        operator_user_id = create_test_user(username="operator", password="op-pass", role="operator")
+        login_session(self.client, operator_user_id)
 
     def tearDown(self) -> None:
         self.conn.close()
@@ -195,7 +198,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(overdue_rows[0]["asset_tag"], "AT-OLD")
         self.assertEqual(overdue_rows[0]["days_out"], 50)
 
-    def test_root_renders_splash_when_not_authed(self):
+    def test_root_redirects_to_dashboard_when_logged_in(self):
         resp = self.client.get("/", follow_redirects=False)
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"LOGIN", resp.data)
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue((resp.headers.get("Location") or "").endswith("/dashboard"))

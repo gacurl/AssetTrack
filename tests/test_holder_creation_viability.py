@@ -6,6 +6,7 @@ from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class HolderCreationViabilityTests(unittest.TestCase):
@@ -15,8 +16,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.conn = db.get_connection()
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
-        with self.client.session_transaction() as session:
-            session["authed"] = True
+        user_id = create_test_user(username="operator", password="op-pass", role="operator")
+        login_session(self.client, user_id)
 
     def tearDown(self) -> None:
         self.conn.close()
