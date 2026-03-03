@@ -1,9 +1,9 @@
 # assettrack/users.py
 from __future__ import annotations
 
-import subprocess
-import tempfile
 from datetime import datetime, timezone
+
+import bcrypt
 
 from assettrack.db import get_connection
 
@@ -17,14 +17,8 @@ def _now_iso() -> str:
 def _bcrypt_hash(password: str) -> str:
     if not password:
         raise ValueError("password is required")
-    completed = subprocess.run(
-        ["htpasswd", "-bnBC", "12", "assettrack-user", password],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    output = completed.stdout.strip()
-    _, _, password_hash = output.partition(":")
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    password_hash = password_hash.decode("utf-8")
     if not password_hash.startswith("$2"):
         raise ValueError("bcrypt hash generation failed")
     return password_hash
@@ -104,13 +98,7 @@ def verify_password(user: dict | None, password: str) -> bool:
     password_hash = str(user.get("password_hash") or "")
     if not password_hash.startswith("$2"):
         return False
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
-        f.write(f"assettrack-user:{password_hash}\n")
-        f.flush()
-        completed = subprocess.run(
-            ["htpasswd", "-vbB", f.name, "assettrack-user", password],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return completed.returncode == 0
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        return False
