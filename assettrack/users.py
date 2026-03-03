@@ -24,6 +24,19 @@ def _bcrypt_hash(password: str) -> str:
     return password_hash
 
 
+def _validate_new_password(username: str, current_password: str, new_password: str) -> None:
+    if len(new_password) < 12:
+        raise ValueError("New password must be at least 12 characters.")
+    if not any(ch.isalpha() for ch in new_password):
+        raise ValueError("New password must include at least one letter.")
+    if not any(ch.isdigit() for ch in new_password):
+        raise ValueError("New password must include at least one number.")
+    if new_password.casefold() == str(username or "").casefold():
+        raise ValueError("New password must not equal username.")
+    if new_password == current_password:
+        raise ValueError("New password must not equal current password.")
+
+
 def count_users() -> int:
     conn = get_connection()
     try:
@@ -232,6 +245,37 @@ def reset_user_password(user_id: int, new_password: str) -> dict:
             raise ValueError("User not found.")
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?;", (normalized_user_id,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def change_own_password(user_id: int, current_password: str, new_password: str) -> dict:
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise ValueError("User not found.")
+
+    if not verify_password(user, current_password):
+        raise ValueError("Current password is incorrect.")
+
+    _validate_new_password(str(user.get("username") or ""), current_password, new_password)
+    password_hash = _bcrypt_hash(new_password)
+    now_iso = _now_iso()
+
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            (password_hash, now_iso, int(user["id"])),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("User not found.")
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?;", (int(user["id"]),)).fetchone()
         return dict(row)
     finally:
         conn.close()

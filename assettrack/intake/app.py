@@ -38,6 +38,7 @@ from assettrack.holders import create_holder, get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
 from assettrack.users import (
+    change_own_password,
     count_users,
     create_user,
     get_user_by_id,
@@ -1589,6 +1590,37 @@ def bootstrap_admin():
 def logout():
     session.pop("user_id", None)
     return redirect("/")
+
+
+@app.get("/account/change-password")
+@require_login
+def account_change_password():
+    return render_template("account_change_password.html")
+
+
+@app.post("/account/change-password")
+@require_login
+def account_change_password_submit():
+    user = current_user()
+    if user is None:
+        return {"ok": False, "error": "Forbidden"}, 403
+
+    current_password = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    confirm_new_password = request.form.get("confirm_new_password") or ""
+
+    if new_password != confirm_new_password:
+        flash("New password and confirmation must match.", "error")
+        return redirect(url_for("account_change_password"))
+
+    try:
+        change_own_password(int(user["id"]), current_password, new_password)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("account_change_password"))
+
+    flash("Password updated.", "success")
+    return redirect(url_for("account_change_password"))
 
 
 @app.get("/dashboard")
