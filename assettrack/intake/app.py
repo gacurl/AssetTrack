@@ -37,6 +37,7 @@ from assettrack.auth import current_user, require_login, require_role
 from assettrack.holders import create_holder, get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
+from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
     change_own_password,
     count_users,
@@ -1248,7 +1249,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
 
 
-def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
+def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to issue.")
 
@@ -1382,7 +1383,7 @@ def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                     """,
-                    (canon_tag, "STOCK_OUT", now_iso, "system", None, None, holder_id),
+                    (canon_tag, ISSUE_EVENT_TYPE, now_iso, "system", None, None, holder_id),
                 )
 
             return len(canon_tags)
@@ -1390,7 +1391,7 @@ def _stock_out_batch(asset_tags: list[str], holder_id: int) -> int:
         conn.close()
 
 
-def _stock_in_batch(asset_tags: list[str]) -> int:
+def _return_batch(asset_tags: list[str]) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to return")
 
@@ -1524,7 +1525,7 @@ def _stock_in_batch(asset_tags: list[str]) -> int:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                     """,
-                    (canon_tag, "STOCK_IN", now_iso, "system", None, None, None),
+                    (canon_tag, RETURN_EVENT_TYPE, now_iso, "system", None, None, None),
                 )
 
             return len(validated_rows)
@@ -1732,7 +1733,7 @@ def preview():
         validation=validation,
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
         selected_holder=_selected_holder_from_session(),
-        stock_out_mode=bool(session.get("stock_out_mode")),
+        issue_mode=bool(session.get("issue_mode")),
     )
 
 
@@ -1757,10 +1758,10 @@ def preview_mode():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
-    enabled = (request.form.get("stock_out_mode") or "").strip().lower() in {"on", "true", "1", "yes"}
-    session["stock_out_mode"] = bool(enabled)
+    enabled = (request.form.get("issue_mode") or "").strip().lower() in {"on", "true", "1", "yes"}
+    session["issue_mode"] = bool(enabled)
 
-    # If turning off stock-out mode, clear holder selection to avoid confusion.
+    # If turning off issue mode, clear holder selection to avoid confusion.
     if not enabled:
         session.pop("holder_id", None)
 
@@ -1817,11 +1818,11 @@ def preview_commit():
         flash("Please confirm you reviewed the batch before adding it.", "error")
         return redirect(url_for("preview"))
 
-    stock_out_mode = bool(session.get("stock_out_mode"))
+    issue_mode = bool(session.get("issue_mode"))
 
     # Normal intake commit mode
 
-    if not stock_out_mode:
+    if not issue_mode:
         parsed_rows = build_parsed_rows_from_queue()
 
         validation = validate_rows(parsed_rows)
@@ -1857,7 +1858,7 @@ def preview_commit():
             return redirect(url_for("preview"))
 
         SCAN_QUEUE.clear()
-        session.pop("holder_id", None)  # keep tidy; holder is only meaningful for stock-out
+        session.pop("holder_id", None)  # keep tidy; holder is only meaningful for issue mode
         touch_session()
 
         if wants_json():
@@ -1866,7 +1867,7 @@ def preview_commit():
         flash(f"Added {result.committed_count} items to the database.", "success")
         return redirect(url_for("intake"))
 
-    # Stock-out commit mode
+    # Issue commit mode
 
     holder = _selected_holder_from_session()
     if holder is None:
@@ -1882,7 +1883,7 @@ def preview_commit():
     asset_tags = _queue_asset_tags()
 
     try:
-        committed_count = _stock_out_batch(asset_tags, holder["id"])
+        committed_count = _issue_batch(asset_tags, holder["id"])
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
@@ -1903,8 +1904,8 @@ def preview_commit():
 @app.get("/issue/preview")
 @require_login
 def issue_preview():
-    stock_out_mode = bool(session.get("stock_out_mode"))
-    if not stock_out_mode:
+    issue_mode = bool(session.get("issue_mode"))
+    if not issue_mode:
         flash("Enable issue mode before using Issue Assets.", "error")
         return render_template(
             "issue_preview.html",
@@ -1918,7 +1919,7 @@ def issue_preview():
 
     return render_template(
         "issue_preview.html",
-        stock_out_mode=stock_out_mode,
+        issue_mode=issue_mode,
         selected_holder=selected_holder,
         queued_count=len(asset_tags),
         assets=issue_preview_state["assets"],
@@ -1937,8 +1938,8 @@ def issue_commit():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
-    stock_out_mode = bool(session.get("stock_out_mode"))
-    if not stock_out_mode:
+    issue_mode = bool(session.get("issue_mode"))
+    if not issue_mode:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "Issue mode is not enabled."}, 400
         flash("Enable issue mode before issuing assets.", "error")
@@ -1970,7 +1971,7 @@ def issue_commit():
         return redirect(url_for("issue_preview"))
 
     try:
-        committed_count = _stock_out_batch(asset_tags, holder["id"])
+        committed_count = _issue_batch(asset_tags, holder["id"])
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
@@ -2072,7 +2073,7 @@ def return_commit():
         return redirect(url_for("return_preview"))
 
     try:
-        committed_count = _stock_in_batch(asset_tags)
+        committed_count = _return_batch(asset_tags)
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400

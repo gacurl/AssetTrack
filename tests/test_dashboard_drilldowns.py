@@ -1,3 +1,4 @@
+# file: tests/test_dashboard_drilldowns.py
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from assettrack.drilldowns import (
     list_case_summaries,
     list_holders_in_custody,
 )
+from assettrack.event_types import issue_event_type_values
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
 
@@ -82,13 +84,15 @@ def _insert_asset(
     return int(cursor.lastrowid)
 
 
-def _insert_stock_out(conn, asset_tag: str, event_date: str) -> None:
+def _insert_issue_event(conn, asset_tag: str, event_date: str, *, legacy: bool = False) -> None:
+    issue_values = issue_event_type_values()
+    event_type = issue_values[1] if legacy else issue_values[0]
     conn.execute(
         """
         INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
-        VALUES (?, 'STOCK_OUT', ?, 'tester', NULL, NULL, NULL);
+        VALUES (?, ?, ?, 'tester', NULL, NULL, NULL);
         """,
-        (asset_tag, event_date),
+        (asset_tag, event_type, event_date),
     )
 
 
@@ -204,7 +208,7 @@ def test_holders_and_cases_deterministic_ordering(app_client) -> None:
     assert [row["case_name"] for row in cases] == ["CASE-B", "CASE-A"]
 
 
-def test_holder_detail_uses_most_recent_stock_out_and_unknown_when_missing(app_client) -> None:
+def test_holder_detail_uses_most_recent_issue_event_and_unknown_when_missing(app_client) -> None:
     conn, _ = app_client
     _insert_holder(conn, 1, "Holder")
     _insert_asset(
@@ -223,8 +227,8 @@ def test_holder_detail_uses_most_recent_stock_out_and_unknown_when_missing(app_c
         holder_id=1,
         equipment_type="tablet",
     )
-    _insert_stock_out(conn, "AT-RECENT", "2026-01-01T00:00:00Z")
-    _insert_stock_out(conn, "AT-RECENT", "2026-02-01T00:00:00Z")
+    _insert_issue_event(conn, "AT-RECENT", "2026-01-01T00:00:00Z", legacy=True)
+    _insert_issue_event(conn, "AT-RECENT", "2026-02-01T00:00:00Z")
     conn.commit()
 
     detail = get_holder_custody_detail(

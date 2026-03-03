@@ -1,7 +1,9 @@
 # assettrack/dashboard.py
+# file: assettrack/dashboard.py
 from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE
+from assettrack.event_types import issue_event_type_values
 
 from datetime import datetime, timezone
 import sqlite3
@@ -226,36 +228,38 @@ def _in_custody_days_out(conn: sqlite3.Connection, *, now_utc: datetime) -> list
 
     asset_tags = [str(row["asset_tag"]) for row in asset_rows]
     placeholders = ", ".join("?" for _ in asset_tags)
+    issue_values = issue_event_type_values()
+    issue_placeholders = ", ".join("?" for _ in issue_values)
     event_rows = conn.execute(
         f"""
         SELECT asset_tag, event_date, id
         FROM asset_events
-        WHERE event_type = 'STOCK_OUT'
+        WHERE event_type IN ({issue_placeholders})
         AND {ACTIVE_EVENTS_WHERE}
         AND asset_tag IN ({placeholders})
         ORDER BY asset_tag ASC, id ASC;
         """,
-        tuple(asset_tags),
+        tuple(issue_values) + tuple(asset_tags),
     ).fetchall()
 
-    latest_stock_out_by_tag: dict[str, datetime] = {}
+    latest_issue_by_tag: dict[str, datetime] = {}
     for row in event_rows:
         asset_tag = str(row["asset_tag"] or "")
         parsed = _parse_utc_timestamp(row["event_date"])
         if parsed is None:
             continue
-        previous = latest_stock_out_by_tag.get(asset_tag)
+        previous = latest_issue_by_tag.get(asset_tag)
         if previous is None or parsed > previous:
-            latest_stock_out_by_tag[asset_tag] = parsed
+            latest_issue_by_tag[asset_tag] = parsed
 
     rows_with_days: list[dict] = []
     for row in asset_rows:
         asset_tag = str(row["asset_tag"] or "")
-        stock_out_ts = latest_stock_out_by_tag.get(asset_tag)
-        if stock_out_ts is None:
+        issue_ts = latest_issue_by_tag.get(asset_tag)
+        if issue_ts is None:
             continue
 
-        days_out = int((now_utc - stock_out_ts).total_seconds() // 86400)
+        days_out = int((now_utc - issue_ts).total_seconds() // 86400)
         rows_with_days.append(
             {
                 "asset_tag": asset_tag,

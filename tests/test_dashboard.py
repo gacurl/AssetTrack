@@ -1,3 +1,4 @@
+# file: tests/test_dashboard.py
 from __future__ import annotations
 
 import tempfile
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import assettrack.db as db
 from assettrack.dashboard import build_dashboard_data
+from assettrack.event_types import issue_event_type_values
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
 
@@ -103,13 +105,15 @@ class DashboardTests(unittest.TestCase):
             (slot_id, case_name, slot_position),
         )
 
-    def _insert_stock_out(self, asset_tag: str, event_date: str) -> None:
+    def _insert_issue_event(self, asset_tag: str, event_date: str, *, legacy: bool = False) -> None:
+        issue_values = issue_event_type_values()
+        event_type = issue_values[1] if legacy else issue_values[0]
         self.conn.execute(
             """
             INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
-            VALUES (?, 'STOCK_OUT', ?, 'tester', NULL, NULL, NULL);
+            VALUES (?, ?, ?, 'tester', NULL, NULL, NULL);
             """,
-            (asset_tag, event_date),
+            (asset_tag, event_type, event_date),
         )
 
     def _replace_slot_occupancy_without_unique_constraints(self) -> None:
@@ -140,7 +144,7 @@ class DashboardTests(unittest.TestCase):
             """,
             (storage_asset_id,),
         )
-        self._insert_stock_out("AT-CUST", "2025-12-01T00:00:00Z")
+        self._insert_issue_event("AT-CUST", "2025-12-01T00:00:00Z")
         self.conn.commit()
 
         response = self.client.get("/dashboard")
@@ -154,7 +158,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Case Utilization", response.data)
         self.assertIn(b"Exceptions Preview", response.data)
 
-    def test_dashboard_metrics_use_distinct_and_most_recent_stock_out(self) -> None:
+    def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()
         self._insert_holder(1, "Alpha")
         self._insert_holder(2, "Bravo")
@@ -178,9 +182,9 @@ class DashboardTests(unittest.TestCase):
             (asset_old, asset_recent, asset_storage),
         )
 
-        self._insert_stock_out("AT-OLD", "2026-01-01T00:00:00Z")
-        self._insert_stock_out("AT-RECENT", "2026-01-01T00:00:00Z")
-        self._insert_stock_out("AT-RECENT", "2026-02-10T00:00:00Z")
+        self._insert_issue_event("AT-OLD", "2026-01-01T00:00:00Z")
+        self._insert_issue_event("AT-RECENT", "2026-01-01T00:00:00Z", legacy=True)
+        self._insert_issue_event("AT-RECENT", "2026-02-10T00:00:00Z")
         self.conn.commit()
 
         data = build_dashboard_data(

@@ -6,6 +6,7 @@ import sqlite3
 
 from assettrack.assets import get_asset_table_columns
 from assettrack.audit import ACTIVE_EVENTS_WHERE
+from assettrack.event_types import issue_event_type_values
 
 
 def _parse_utc_timestamp(value: object) -> datetime | None:
@@ -112,19 +113,21 @@ def get_holder_custody_detail(
     placeholders = ", ".join("?" for _ in asset_tags)
 
     # Important: ignore superseded events (Issue 12-2)
+    issue_values = issue_event_type_values()
+    issue_placeholders = ", ".join("?" for _ in issue_values)
     event_rows = conn.execute(
         f"""
         SELECT id, asset_tag, event_date
         FROM asset_events
-        WHERE event_type = 'STOCK_OUT'
+        WHERE event_type IN ({issue_placeholders})
           AND {ACTIVE_EVENTS_WHERE}
           AND asset_tag IN ({placeholders})
         ORDER BY asset_tag ASC, id ASC;
         """,
-        tuple(asset_tags),
+        tuple(issue_values) + tuple(asset_tags),
     ).fetchall()
 
-    latest_stock_out: dict[str, dict] = {}
+    latest_issue: dict[str, dict] = {}
     for row in event_rows:
         asset_tag = str(row["asset_tag"] or "")
         parsed = _parse_utc_timestamp(row["event_date"])
@@ -132,21 +135,21 @@ def get_holder_custody_detail(
             continue
 
         event_id = int(row["id"])
-        previous = latest_stock_out.get(asset_tag)
+        previous = latest_issue.get(asset_tag)
         if previous is None or parsed > previous["ts"] or (parsed == previous["ts"] and event_id > previous["id"]):
-            latest_stock_out[asset_tag] = {
+            latest_issue[asset_tag] = {
                 "ts": parsed,
                 "id": event_id,
                 "event_date": str(row["event_date"]),
             }
 
     for asset in assets:
-        stock_out = latest_stock_out.get(asset["asset_tag"])
-        if stock_out is None:
+        issue_event = latest_issue.get(asset["asset_tag"])
+        if issue_event is None:
             continue
-        days_out = int((current_utc - stock_out["ts"]).total_seconds() // 86400)
+        days_out = int((current_utc - issue_event["ts"]).total_seconds() // 86400)
         asset["days_out"] = max(0, days_out)
-        asset["last_issued_date"] = stock_out["event_date"]
+        asset["last_issued_date"] = issue_event["event_date"]
 
     return {
         "holder_id": int(holder_row["id"]),

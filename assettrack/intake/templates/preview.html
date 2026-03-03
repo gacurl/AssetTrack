@@ -64,14 +64,14 @@
 
     <form method="post" action="{{ url_for('preview_mode') }}" style="margin-top: 10px;">
       <label>
-        <input type="checkbox" name="stock_out_mode" value="on" {% if stock_out_mode %}checked{% endif %} />
+        <input type="checkbox" name="issue_mode" value="on" {% if issue_mode %}checked{% endif %} />
         Enable Issue mode (issue assets to a selected holder)
       </label>
       <br /><br />
       <button type="submit">Save mode</button>
     </form>
 
-    {% if stock_out_mode %}
+    {% if issue_mode %}
       <p style="margin-top: 12px;"><strong>Issue mode:</strong> ON</p>
       {% if selected_holder %}
         <p>
