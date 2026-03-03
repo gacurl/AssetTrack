@@ -120,6 +120,10 @@ Then open:
 
 [http://localhost:8000](http://localhost:8000)
 
+If this is a fresh database with no users yet, bootstrap the first admin at:
+
+[http://localhost:8000/bootstrap/admin](http://localhost:8000/bootstrap/admin)
+
 ---
 
 ## Persistence Model (Important)

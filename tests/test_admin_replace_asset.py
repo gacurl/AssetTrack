@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import base64
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class AdminReplaceAssetTests(unittest.TestCase):
@@ -39,27 +38,14 @@ class AdminReplaceAssetTests(unittest.TestCase):
             """
         )
         self.conn.commit()
-
-        self.orig_passcode = intake_app.INTAKE_PASSCODE
-        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
-        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
-        intake_app.INTAKE_PASSCODE = "test-admin-code"
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
+        admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+        login_session(self.client, admin_user_id)
 
     def tearDown(self) -> None:
-        if self.orig_admin_users is None:
-            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
-        else:
-            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
-        intake_app.INTAKE_PASSCODE = self.orig_passcode
         self.conn.close()
         self.temp_dir.cleanup()
-
-    def _set_admin_session(self) -> None:
-        with self.client.session_transaction() as sess:
-            sess["authed"] = True
-            sess["last_seen"] = intake_app.now_seconds()
 
     def _insert_slot(self, slot_id: int, case_name: str, slot_position: int, current_asset_tag: str | None = None) -> None:
         self.conn.execute(
@@ -123,22 +109,12 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", (asset_tag, slot_id))
         self.conn.commit()
 
-    def _admin_headers(self) -> dict[str, str]:
-        token = base64.b64encode(b"admin:test-pass").decode("ascii")
-        return {"Authorization": f"Basic {token}"}
-
-    def test_get_replace_route_admin_only(self) -> None:
-        blocked = self.client.get("/admin/assets/replace", headers=self._admin_headers())
-        self.assertEqual(blocked.status_code, 302)
-        self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
-
-        self._set_admin_session()
-        allowed = self.client.get("/admin/assets/replace", headers=self._admin_headers())
-        self.assertEqual(allowed.status_code, 200)
-        self.assertIn(b"Admin: Replace Failed Asset", allowed.data)
+    def test_get_replace_route_allows_admin(self) -> None:
+        response = self.client.get("/admin/assets/replace")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Admin: Replace Failed Asset", response.data)
 
     def test_swap_from_storage_success(self) -> None:
-        self._set_admin_session()
         self._insert_slot(10, "CASE-A", 1, None)
         failed_id = self._insert_asset(
             "FAIL-100",
@@ -151,7 +127,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-100",
@@ -224,7 +199,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertEqual([row["event_type"] for row in replacement_events], ["ASSET_CREATED", "SLOT_ASSIGN"])
 
     def test_swap_from_in_custody_success(self) -> None:
-        self._set_admin_session()
         self._insert_slot(11, "CASE-B", 2, None)
         failed_id = self._insert_asset(
             "FAIL-200",
@@ -236,7 +210,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-200",
@@ -282,7 +255,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertEqual(retired_event["holder_id"], 99)
 
     def test_missing_target_slot_is_blocked(self) -> None:
-        self._set_admin_session()
         self._insert_asset(
             "FAIL-300",
             serial_number="SER-FAIL-300",
@@ -293,7 +265,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-300",
@@ -314,7 +285,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertIsNone(replacement)
 
     def test_target_slot_occupied_by_other_asset_is_blocked_with_no_partial_updates(self) -> None:
-        self._set_admin_session()
         self._insert_slot(12, "CASE-C", 3, None)
         failed_id = self._insert_asset(
             "FAIL-400",
@@ -334,7 +304,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-400",
@@ -361,7 +330,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertIsNone(replacement)
 
     def test_duplicate_replacement_identifiers_are_blocked(self) -> None:
-        self._set_admin_session()
         self._insert_slot(13, "CASE-D", 4, None)
         failed_id = self._insert_asset(
             "FAIL-500",
@@ -381,7 +349,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         duplicate_tag = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-500",
@@ -400,7 +367,6 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         duplicate_serial = self.client.post(
             "/admin/assets/replace",
-            headers=self._admin_headers(),
             data={
                 "action": "replace",
                 "failed_asset_tag": "FAIL-500",

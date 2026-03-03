@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import base64
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 
 class AdminRetireAssetTests(unittest.TestCase):
@@ -32,29 +31,16 @@ class AdminRetireAssetTests(unittest.TestCase):
             """
         )
         self.conn.commit()
-
-        self.orig_passcode = intake_app.INTAKE_PASSCODE
-        self.orig_admin_users = os.environ.get("ASSETTRACK_ADMIN_USERS")
-        os.environ["ASSETTRACK_ADMIN_USERS"] = "admin:test-pass"
-        intake_app.INTAKE_PASSCODE = "test-admin-code"
         intake_app.app.testing = True
         intake_app.SCAN_QUEUE.clear()
         self.client = intake_app.app.test_client()
+        admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+        login_session(self.client, admin_user_id)
 
     def tearDown(self) -> None:
         intake_app.SCAN_QUEUE.clear()
-        if self.orig_admin_users is None:
-            os.environ.pop("ASSETTRACK_ADMIN_USERS", None)
-        else:
-            os.environ["ASSETTRACK_ADMIN_USERS"] = self.orig_admin_users
-        intake_app.INTAKE_PASSCODE = self.orig_passcode
         self.conn.close()
         self.temp_dir.cleanup()
-
-    def _set_admin_session(self) -> None:
-        with self.client.session_transaction() as sess:
-            sess["authed"] = True
-            sess["last_seen"] = intake_app.now_seconds()
 
     def _insert_slot(self, slot_id: int, case_name: str, slot_position: int, current_asset_tag: str | None = None) -> None:
         self.conn.execute(
@@ -93,22 +79,12 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.conn.commit()
         return int(cursor.lastrowid)
 
-    def _admin_headers(self) -> dict[str, str]:
-        token = base64.b64encode(b"admin:test-pass").decode("ascii")
-        return {"Authorization": f"Basic {token}"}
-
-    def test_get_retire_route_admin_only(self) -> None:
-        blocked = self.client.get("/admin/assets/retire", headers=self._admin_headers())
-        self.assertEqual(blocked.status_code, 302)
-        self.assertTrue((blocked.headers.get("Location") or "").endswith("/"))
-
-        self._set_admin_session()
-        allowed = self.client.get("/admin/assets/retire", headers=self._admin_headers())
-        self.assertEqual(allowed.status_code, 200)
-        self.assertIn(b"Admin: Retire Asset", allowed.data)
+    def test_get_retire_route_allows_admin(self) -> None:
+        response = self.client.get("/admin/assets/retire")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Admin: Retire Asset", response.data)
 
     def test_retire_from_storage_is_atomic_and_logs_event(self) -> None:
-        self._set_admin_session()
         asset_id = self._insert_asset("RET-100", location_type="STORAGE", holder_id=None, home_slot_id=10)
         self._insert_slot(10, "CASE-A", 1, current_asset_tag="RET-100")
         self.conn.execute(
@@ -122,7 +98,6 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         response = self.client.post(
             "/admin/assets/retire",
-            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-100",
@@ -166,12 +141,10 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.assertEqual(payload["to_location_type"], "DISPOSED")
 
     def test_retire_from_in_custody_requires_extra_confirmation(self) -> None:
-        self._set_admin_session()
         self._insert_asset("RET-200", location_type="IN_CUSTODY", holder_id=51, home_slot_id=None)
 
         missing_confirm = self.client.post(
             "/admin/assets/retire",
-            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-200",
@@ -185,7 +158,6 @@ class AdminRetireAssetTests(unittest.TestCase):
 
         ok = self.client.post(
             "/admin/assets/retire",
-            headers=self._admin_headers(),
             data={
                 "action": "retire",
                 "asset_tag": "RET-200",
@@ -233,12 +205,10 @@ class AdminRetireAssetTests(unittest.TestCase):
             intake_app._stock_in_batch(["RET-300"])
 
     def test_admin_assign_slot_refuses_retired_asset(self) -> None:
-        self._set_admin_session()
         self._insert_asset("RET-400", location_type="DISPOSED", holder_id=None, home_slot_id=None)
 
         response = self.client.post(
             "/admin/assign-slot",
-            headers=self._admin_headers(),
             data={
                 "action": "lookup",
                 "asset_tag": "RET-400",

@@ -1,0 +1,31 @@
+<!-- file: assettrack/intake/templates/bootstrap_admin.html -->
+{% extends "base.html" %}
+
+{% block title %}AssetTrack Bootstrap Admin{% endblock %}
+{% block page_heading %}Bootstrap First Admin{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <p>Create the first admin account. This route is disabled after the first user is created.</p>
+
+    {% if error %}
+      <div class="flash error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('bootstrap_admin') }}">
+      <div class="row">
+        <label for="username"><strong>Username</strong></label><br />
+        <input type="text" id="username" name="username" required autofocus />
+      </div>
+      <div class="row">
+        <label for="password"><strong>Password</strong></label><br />
+        <input type="password" id="password" name="password" required />
+      </div>
+      <div class="row">
+        <label for="confirm_password"><strong>Confirm Password</strong></label><br />
+        <input type="password" id="confirm_password" name="confirm_password" required />
+      </div>
+      <button type="submit">Create Admin</button>
+    </form>
+  </div>
+{% endblock %}

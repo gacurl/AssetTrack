@@ -284,6 +284,28 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('admin', 'operator')),
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+    if _table_exists(conn, "users") and not _column_exists(conn, "users", "active"):
+        cursor.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+            """
+        )
+
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_holders_name
             ON holders(name);
         """

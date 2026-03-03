@@ -74,7 +74,7 @@
         <h1>{% block page_heading %}{% endblock %}</h1>
       </header>
 
-      {% if session.get("authed") %}
+      {% if authenticated_user %}
         <nav class="top-nav" aria-label="Primary">
           <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
           <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
