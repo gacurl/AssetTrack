@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block title %}Issue Assets Preview{% endblock %}
-{% block page_heading %}Issue Assets Preview / Confirm{% endblock %}
+{% block page_heading %}Issue Assets — Preview / Confirm{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -125,7 +125,7 @@
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
         I reviewed this batch and want to add it to the database.
       </label>
-      <button id="issue_btn" type="submit" disabled>Issue assets</button>
+      <button id="issue_btn" type="submit" disabled>Commit Issue</button>
     </form>
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
