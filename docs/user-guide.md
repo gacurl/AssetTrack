@@ -135,9 +135,9 @@ On failure:
 
 ---
 
-## 7. Issuing Assets (Stock Out)
+## 7. Issuing Assets (Issue)
 
-Stock Out moves assets from STORAGE to IN_CUSTODY.
+Issue moves assets from STORAGE to IN_CUSTODY.
 
 ### Preconditions
 
@@ -164,14 +164,14 @@ Stock Out moves assets from STORAGE to IN_CUSTODY.
 - `location_type` → IN_CUSTODY
 - `current_holder_id` set
 - Slot vacated
-- STOCK_OUT event logged
+- ISSUE event logged
 - Queue cleared
 - Holder cleared
 - Redirect to `/`
 
 ---
 
-## 8. Returning Assets (Stock In)
+## 8. Returning Assets (Return)
 
 Return moves assets from IN_CUSTODY to STORAGE.
 
@@ -198,7 +198,7 @@ Return moves assets from IN_CUSTODY to STORAGE.
 - `location_type` → STORAGE
 - `current_holder_id` cleared
 - Slot reoccupied
-- STOCK_IN event logged
+- RETURN event logged
 - Queue cleared
 - Redirect to `/return`
 

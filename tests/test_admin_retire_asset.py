@@ -1,3 +1,4 @@
+# file: tests/test_admin_retire_asset.py
 from __future__ import annotations
 
 import json
@@ -194,15 +195,15 @@ class AdminRetireAssetTests(unittest.TestCase):
         payload = json.loads(event["payload"])
         self.assertEqual(payload["failure_type"], "LOST")
 
-    def test_retired_assets_are_blocked_from_stock_out_and_stock_in(self) -> None:
+    def test_retired_assets_are_blocked_from_issue_and_return(self) -> None:
         self._insert_asset("RET-300", location_type="DISPOSED", holder_id=None, home_slot_id=20)
         self._insert_slot(20, "CASE-B", 2, current_asset_tag=None)
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
-            intake_app._stock_out_batch(["RET-300"], holder_id=4)
+            intake_app._issue_batch(["RET-300"], holder_id=4)
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
-            intake_app._stock_in_batch(["RET-300"])
+            intake_app._return_batch(["RET-300"])
 
     def test_admin_assign_slot_refuses_retired_asset(self) -> None:
         self._insert_asset("RET-400", location_type="DISPOSED", holder_id=None, home_slot_id=None)

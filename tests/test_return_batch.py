@@ -143,7 +143,7 @@ class ReturnBatchTests(unittest.TestCase):
             ("TAG-OK",),
         ).fetchone()
         self.assertIsNotNone(event_row)
-        self.assertEqual(event_row["event_type"], "STOCK_IN")
+        self.assertEqual(event_row["event_type"], "RETURN")
 
 
 if __name__ == "__main__":
