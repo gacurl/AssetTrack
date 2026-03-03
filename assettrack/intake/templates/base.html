@@ -81,6 +81,9 @@
           <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue_preview') }}">Issue</a>
           <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="{{ url_for('return_queue') }}">Return</a>
           <a class="chip {% if request.path.startswith('/preview') and not request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('preview') }}">Preview</a>
+          {% if authenticated_role == 'admin' %}
+            <a class="chip {% if request.path.startswith('/admin/users') %}active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
+          {% endif %}
           <a class="chip {% if request.path == '/' %}active{% endif %}" href="{{ url_for('intake') }}">Add Assets</a>
           <a class="chip" href="{{ url_for('logout') }}">Logout</a>
         </nav>
