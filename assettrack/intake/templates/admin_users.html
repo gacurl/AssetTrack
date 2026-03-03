@@ -1,0 +1,98 @@
+<!-- file: assettrack/intake/templates/admin_users.html -->
+{% extends "base.html" %}
+
+{% block title %}Admin Users{% endblock %}
+{% block page_heading %}Admin: Users{% endblock %}
+
+{% block extra_head %}
+  <style>
+    input[type="text"], input[type="password"], select { width: 100%; max-width: 320px; padding: 0.45rem; font-size: 0.95rem; }
+    .inline-form { display: inline-block; margin: 0.15rem 0.35rem 0.15rem 0; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Create User</h2>
+    <form method="post" action="{{ url_for('admin_users_create') }}">
+      <div class="row">
+        <label for="username"><strong>Username</strong></label><br />
+        <input type="text" id="username" name="username" required />
+      </div>
+      <div class="row">
+        <label for="password"><strong>Password</strong></label><br />
+        <input type="password" id="password" name="password" required />
+      </div>
+      <div class="row">
+        <label for="role"><strong>Role</strong></label><br />
+        <select id="role" name="role">
+          <option value="operator">operator</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>
+          <input type="checkbox" name="active" value="1" checked />
+          Active
+        </label>
+      </div>
+      <button type="submit">Create User</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Users</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Active</th>
+          <th>Created</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ user.role }}</td>
+            <td>{{ "yes" if user.active else "no" }}</td>
+            <td><code>{{ user.created_at }}</code></td>
+            <td><code>{{ user.updated_at }}</code></td>
+            <td>
+              <form class="inline-form" method="post" action="{{ url_for('admin_users_toggle_active', user_id=user.id) }}">
+                <input type="hidden" name="active" value="{{ 0 if user.active else 1 }}" />
+                <button type="submit">{{ "Disable" if user.active else "Enable" }}</button>
+              </form>
+
+              <form class="inline-form" method="post" action="{{ url_for('admin_users_set_role', user_id=user.id) }}">
+                <select name="role">
+                  <option value="operator" {% if user.role == "operator" %}selected{% endif %}>operator</option>
+                  <option value="admin" {% if user.role == "admin" %}selected{% endif %}>admin</option>
+                </select>
+                <button type="submit">Set Role</button>
+              </form>
+
+              <form class="inline-form" method="post" action="{{ url_for('admin_users_reset_password', user_id=user.id) }}">
+                <input type="password" name="new_password" placeholder="New password" required />
+                <button type="submit">Reset Password</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

@@ -37,7 +37,17 @@ from assettrack.auth import current_user, require_login, require_role
 from assettrack.holders import create_holder, get_holder, search_holders
 from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
-from assettrack.users import count_users, create_user, get_user_by_username, verify_password
+from assettrack.users import (
+    count_users,
+    create_user,
+    get_user_by_id,
+    get_user_by_username,
+    list_users,
+    reset_user_password,
+    set_user_active,
+    set_user_role,
+    verify_password,
+)
 
 
 app = Flask(__name__)
@@ -2147,6 +2157,90 @@ def holders_clear():
     touch_session()
     flash("Cleared holder selection.", "success")
     return redirect(url_for("holders_search"))
+
+
+@app.get("/admin/users")
+@require_login
+@require_role("admin")
+def admin_users():
+    users = list_users()
+    return render_template("admin_users.html", users=users)
+
+
+@app.post("/admin/users/create")
+@require_login
+@require_role("admin")
+def admin_users_create():
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    role = (request.form.get("role") or "").strip().lower()
+    active = True if request.form.get("active") is None else _is_truthy(request.form.get("active"))
+
+    try:
+        create_user(username=username, password=password, role=role, active=active)
+    except ValueError as e:
+        flash(str(e), "error")
+    except sqlite3.IntegrityError:
+        flash("Username already exists.", "error")
+    else:
+        flash(f"Created user: {username}", "success")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:user_id>/toggle-active")
+@require_login
+@require_role("admin")
+def admin_users_toggle_active(user_id: int):
+    target = get_user_by_id(user_id)
+    if target is None:
+        flash("User not found.", "error")
+        return redirect(url_for("admin_users"))
+
+    requested = request.form.get("active")
+    next_active = (not bool(int(target.get("active") or 0))) if requested is None else _is_truthy(requested)
+
+    try:
+        updated = set_user_active(user_id, next_active)
+    except ValueError as e:
+        flash(str(e), "error")
+    else:
+        state = "enabled" if int(updated.get("active") or 0) == 1 else "disabled"
+        flash(f"User {updated['username']} is now {state}.", "success")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:user_id>/reset-password")
+@require_login
+@require_role("admin")
+def admin_users_reset_password(user_id: int):
+    new_password = request.form.get("new_password") or ""
+
+    try:
+        updated = reset_user_password(user_id, new_password)
+    except ValueError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"Password reset for {updated['username']}.", "success")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:user_id>/set-role")
+@require_login
+@require_role("admin")
+def admin_users_set_role(user_id: int):
+    role = (request.form.get("role") or "").strip().lower()
+
+    try:
+        updated = set_user_role(user_id, role)
+    except ValueError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"Updated role for {updated['username']} to {updated['role']}.", "success")
+
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/admin/assets/new", methods=["GET", "POST"])
