@@ -84,6 +84,7 @@
           {% if authenticated_role == 'admin' %}
             <a class="chip {% if request.path.startswith('/admin/users') %}active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
           {% endif %}
+          <a class="chip {% if request.path.startswith('/account/change-password') %}active{% endif %}" href="{{ url_for('account_change_password') }}">Account</a>
           <a class="chip {% if request.path == '/' %}active{% endif %}" href="{{ url_for('intake') }}">Add Assets</a>
           <a class="chip" href="{{ url_for('logout') }}">Logout</a>
         </nav>
