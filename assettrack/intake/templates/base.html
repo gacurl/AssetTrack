@@ -78,9 +78,12 @@
   </head>
   <body>
     <div class="page">
-      <header class="page-header">
-        <h1>{% block page_heading %}{% endblock %}</h1>
-      </header>
+      {% set heading = self.page_heading() | trim %}
+      {% if heading %}
+        <header class="page-header">
+          <h1>{{ heading }}</h1>
+        </header>
+      {% endif %}
 
       {% if authenticated_user %}
         <nav class="top-nav" aria-label="Primary">
