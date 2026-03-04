@@ -7,6 +7,14 @@
 {% block extra_head %}
   <style>
     input[type="text"], input[type="password"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    @keyframes countdownPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.03); }
+    }
+    .countdown-pulse {
+      display: inline-block;
+      animation: countdownPulse 0.9s ease-in-out infinite;
+    }
   </style>
 {% endblock %}
 
@@ -19,6 +27,7 @@
         Timeout in:
         {% if last_seen_age_seconds is not none %}
           <span id="timeout-countdown-seconds"></span>s
+          <span id="lock-hint" class="muted" hidden>Locked. Refresh to continue.</span>
         {% else %}
           n/a
         {% endif %}
@@ -60,7 +69,7 @@
         <button type="submit">Unlock</button>
       </form>
     {% else %}
-      <form class="row" method="post" action="{{ url_for('intake') }}">
+      <form id="intake-form" class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
           <label for="equipment_type"><strong>Equipment type</strong> (required to create new assets)</label><br />
           <input
@@ -76,18 +85,19 @@
         <div class="row">
           <input
             type="text"
+            id="scan-input"
             name="scan_text"
             placeholder="Scan here..."
             autofocus
             autocomplete="off"
           />
-          <button type="submit">Submit</button>
-          <button type="submit" name="action" value="clear">Clear queue</button>
+          <button id="submit-scan" type="submit">Submit</button>
+          <button id="clear-queue" type="submit" name="action" value="clear">Clear queue</button>
         </div>
       </form>
     {% endif %}
     <form method="post" action="{{ url_for('preview_commit') }}" style="margin-top: 10px;">
-      <button type="submit">Add to database</button>
+      <button id="add-to-db" type="submit">Add to database</button>
     </form>
   </div>
 
@@ -98,9 +108,12 @@
 
   <div class="card">
     <h2>Queue ({{ queue_len }})</h2>
-    <ul role="list">
+    <ul id="queue-list" role="list">
       {% for s in queue %}
-        <li><code>{{ s.asset_tag }}</code></li>
+        <li data-asset-tag="{{ s.asset_tag }}">
+          <span class="queue-ts"></span>
+          <code>{{ s.asset_tag }}</code>
+        </li>
       {% endfor %}
     </ul>
   </div>
@@ -108,13 +121,36 @@
 
 {% block extra_scripts %}
   <script>
+    const LOCK_HINT_TEXT = "Locked. Refresh to continue.";
+    const TS_STORAGE_KEY = "assettrack:intake:queue_ts";
+
+    const lockHintEl = document.getElementById("lock-hint");
+    const intakeFormEl = document.getElementById("intake-form");
+    const scanInputEl = document.getElementById("scan-input");
+    const submitScanEl = document.getElementById("submit-scan");
+    const clearQueueEl = document.getElementById("clear-queue");
+    const addToDbEl = document.getElementById("add-to-db");
     const lastActivityEl = document.getElementById("last-activity-seconds");
     const timeoutSourceEl = document.getElementById("timeout-seconds");
     const countdownEl = document.getElementById("timeout-countdown-seconds");
 
+    const lockUi = () => {
+      if (scanInputEl) scanInputEl.disabled = true;
+      if (submitScanEl) submitScanEl.disabled = true;
+      if (clearQueueEl) clearQueueEl.disabled = true;
+      if (addToDbEl) addToDbEl.disabled = true;
+      if (intakeFormEl) intakeFormEl.setAttribute("aria-disabled", "true");
+      if (countdownEl) countdownEl.classList.remove("countdown-pulse");
+      if (lockHintEl) {
+        lockHintEl.textContent = LOCK_HINT_TEXT;
+        lockHintEl.hidden = false;
+      }
+    };
+
     if (lastActivityEl && timeoutSourceEl && countdownEl) {
       let lastActivitySeconds = parseInt(lastActivityEl.textContent, 10);
       const timeoutSeconds = parseInt(timeoutSourceEl.textContent, 10);
+      let uiLocked = false;
 
       const update = () => {
         lastActivitySeconds += 1;
@@ -123,24 +159,68 @@
         const remaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
         countdownEl.textContent = remaining;
 
-        if (remaining < 10) {
-          countdownEl.style.color = "red";
-          countdownEl.style.fontWeight = "bold";
+        if (remaining > 0 && remaining < 10) {
+          countdownEl.classList.add("countdown-pulse");
         } else {
-          countdownEl.style.color = "";
-          countdownEl.style.fontWeight = "";
+          countdownEl.classList.remove("countdown-pulse");
         }
+
+        if (remaining === 0 && !uiLocked) {
+          uiLocked = true;
+          lockUi();
+          return true;
+        }
+        return false;
       };
 
       const initialRemaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
       countdownEl.textContent = initialRemaining;
 
-      if (initialRemaining < 11) {
-        countdownEl.style.color = "red";
-        countdownEl.style.fontWeight = "bold";
+      if (initialRemaining > 0 && initialRemaining < 10) {
+        countdownEl.classList.add("countdown-pulse");
+      }
+      if (initialRemaining === 0) {
+        uiLocked = true;
+        lockUi();
       }
 
-      setInterval(update, 1000);
+      const timerId = setInterval(() => {
+        const isLocked = update();
+        if (isLocked) {
+          clearInterval(timerId);
+        }
+      }, 1000);
+    }
+
+    const queueListEl = document.getElementById("queue-list");
+    if (queueListEl) {
+      const nowTime = () => new Date().toLocaleTimeString("en-US", { hour12: false });
+      const queueItems = Array.from(queueListEl.querySelectorAll("li"));
+
+      let storedTimes = [];
+      try {
+        const raw = localStorage.getItem(TS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        storedTimes = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        storedTimes = [];
+      }
+
+      const currentTimes = [];
+      queueItems.forEach((itemEl, idx) => {
+        const tsEl = itemEl.querySelector(".queue-ts");
+        const displayTime = storedTimes[idx] || nowTime();
+        currentTimes[idx] = displayTime;
+        if (tsEl) {
+          tsEl.textContent = `[${displayTime}] `;
+        }
+      });
+
+      try {
+        localStorage.setItem(TS_STORAGE_KEY, JSON.stringify(currentTimes));
+      } catch (error) {
+        // Ignore storage failures to avoid impacting scan responsiveness.
+      }
     }
   </script>
 {% endblock %}
