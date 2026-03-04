@@ -51,6 +51,7 @@
 
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
+      <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
       <button type="submit">Discard batch</button>
     </form>
 

@@ -1,8 +1,8 @@
 <!-- file: assettrack/intake/templates/return_queue.html -->
 {% extends "base.html" %}
 
-{% block title %}Return Assets{% endblock %}
-{% block page_heading %}Return Assets{% endblock %}
+{% block title %}{{ page_title or "Return Assets" }}{% endblock %}
+{% block page_heading %}{{ page_heading or "Return Assets" }}{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -26,11 +26,11 @@
   {% endwith %}
 
   <div class="card">
-    <h2>Scan returns</h2>
+    <h2>{{ scan_heading or "Scan returns" }}</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="{{ url_for('return_queue') }}" />
+      <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
       <input
         type="text"
         name="scan_text"
@@ -41,6 +41,7 @@
     </form>
 
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;">
+      <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
       <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
     </form>
   </div>
@@ -69,6 +70,6 @@
   </div>
 
   <div class="card">
-    <p><a href="{{ url_for('return_preview') }}"><strong>Open Return Assets Preview / Confirm</strong></a></p>
+    <p><a href="{{ preview_url or url_for('return_preview') }}"><strong>{{ preview_label or "Open Return Assets Preview / Confirm" }}</strong></a></p>
   </div>
 {% endblock %}
