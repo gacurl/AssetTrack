@@ -1578,6 +1578,27 @@ def intake():
     return redirect("/dashboard")
 
 
+@app.get("/add-assets")
+def add_assets():
+    if current_user() is None:
+        return redirect(url_for("intake"))
+
+    if session.get("last_seen") is None:
+        touch_session()
+
+    return render_template(
+        "index.html",
+        auth_enabled=auth_enabled(),
+        authed=is_authed(),
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
+        queue=SCAN_QUEUE,
+        queue_len=len(SCAN_QUEUE),
+        latest=(SCAN_QUEUE[-1].asset_tag if SCAN_QUEUE else ""),
+        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+    )
+
+
 @app.route("/bootstrap/admin", methods=["GET", "POST"])
 def bootstrap_admin():
     if count_users() != 0:
