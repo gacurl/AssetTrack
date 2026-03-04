@@ -44,6 +44,14 @@
         color: white;
         font-weight: 600;
       }
+      .chip.mode-badge {
+        background: #f8f1e3;
+        border-color: #dfcfac;
+        color: #5a4b2c;
+        letter-spacing: 0.04em;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+      }
       .card {
         margin-top: 1rem;
         padding: 1rem;
@@ -86,6 +94,9 @@
           {% endif %}
           <a class="chip {% if request.path.startswith('/account/change-password') %}active{% endif %}" href="{{ url_for('account_change_password') }}">Account</a>
           <a class="chip {% if request.path == '/' %}active{% endif %}" href="{{ url_for('intake') }}">Add Assets</a>
+          {% if authenticated_role == 'admin' %}
+            <span class="chip mode-badge" aria-label="Admin mode">ADMIN</span>
+          {% endif %}
           <a class="chip" href="{{ url_for('logout') }}">Logout</a>
         </nav>
       {% endif %}

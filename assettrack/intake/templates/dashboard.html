@@ -72,14 +72,16 @@
     <p class="muted subtitle">Operational + Accountability Command View</p>
   </div>
 
-  <nav class="actions" aria-label="Quick actions">
-    <a class="chip" href="{{ url_for('issue_preview') }}">Issue (Check-out)</a>
-    <a class="chip" href="{{ url_for('return_queue') }}">Return (Check-in)</a>
-    <a class="chip" href="{{ url_for('dashboard_holders') }}">Holder Drilldown</a>
-    <a class="chip" href="{{ url_for('dashboard_cases') }}">Case Drilldown</a>
-    <a class="chip secondary" href="{{ url_for('intake') }}">Add Assets</a>
-    <a class="chip secondary" href="{{ url_for('dashboard') }}">Dashboard</a>
-  </nav>
+  <section class="card" aria-label="Quick actions panel">
+    <h2>Quick Actions</h2>
+    <div class="accent"></div>
+    <div class="actions">
+      <a class="chip" href="{{ url_for('issue_preview') }}">Issue</a>
+      <a class="chip" href="{{ url_for('return_queue') }}">Return</a>
+      <a class="chip" href="{{ url_for('dashboard_holders') }}">Holder Drilldown</a>
+      <a class="chip" href="{{ url_for('dashboard_cases') }}">Case Drilldown</a>
+    </div>
+  </section>
 
   <div class="grid">
     <section class="card">
