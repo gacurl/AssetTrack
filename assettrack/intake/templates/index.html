@@ -60,8 +60,8 @@
 
   <div class="card">
     <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
-    <p><a href="{{ url_for('preview') }}" target="_blank">Preview batch</a></p>
-    <p><a href="{{ url_for('return_queue') }}" target="_blank">Return Assets</a></p>
+    <p><a href="{{ url_for('preview') }}">Preview batch</a></p>
+    <p><a href="{{ url_for('return_queue') }}">Return Assets</a></p>
 
     {% if auth_enabled and not authed %}
       <form method="post">
