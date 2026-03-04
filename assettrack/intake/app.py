@@ -1541,6 +1541,26 @@ def intake():
             return redirect("/dashboard")
         return render_template("splash.html", error=None)
 
+    if current_user() is not None:
+        action = (request.form.get("action") or "").strip().lower()
+        scan_text = (request.form.get("scan_text") or "").strip()
+        return_to = (request.form.get("return_to") or "").strip()
+
+        if action == "clear":
+            SCAN_QUEUE.clear()
+
+        if scan_text:
+            value = sanitize_scan(scan_text)
+            if value:
+                equipment_type = (session.get("equipment_type") or "laptop").strip() or "laptop"
+                SCAN_QUEUE.append(Scan.now(value, equipment_type=equipment_type))
+
+        touch_session()
+
+        if return_to.startswith("/") and not return_to.startswith("//"):
+            return redirect(return_to)
+        return redirect(url_for("intake"))
+
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     user = get_user_by_username(username)
