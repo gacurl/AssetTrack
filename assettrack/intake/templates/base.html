@@ -89,7 +89,7 @@
         <nav class="top-nav" aria-label="Primary">
           <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
           <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
-          <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue_preview') }}">Issue</a>
+          <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue') }}">Issue</a>
           <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="{{ url_for('return_queue') }}">Return</a>
           <a class="chip {% if request.path.startswith('/preview') and not request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('preview') }}">Preview</a>
           {% if authenticated_role == 'admin' %}

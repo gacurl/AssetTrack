@@ -129,6 +129,7 @@
     </form>
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
+      <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
       <button type="submit">Discard batch</button>
     </form>
     <p style="margin-top: 10px;">{{ url_for('issue_commit') }}?json=1</p>

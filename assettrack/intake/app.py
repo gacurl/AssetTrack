@@ -1545,6 +1545,8 @@ def intake():
         action = (request.form.get("action") or "").strip().lower()
         scan_text = (request.form.get("scan_text") or "").strip()
         return_to = (request.form.get("return_to") or "").strip()
+        form_equipment_type = (request.form.get("equipment_type") or "").strip()
+        session["equipment_type"] = form_equipment_type or "laptop"
 
         if action == "clear":
             SCAN_QUEUE.clear()
@@ -1552,8 +1554,7 @@ def intake():
         if scan_text:
             value = sanitize_scan(scan_text)
             if value:
-                equipment_type = (session.get("equipment_type") or "laptop").strip() or "laptop"
-                SCAN_QUEUE.append(Scan.now(value, equipment_type=equipment_type))
+                SCAN_QUEUE.append(Scan.now(value, equipment_type=session["equipment_type"]))
 
         touch_session()
 
@@ -1815,6 +1816,7 @@ def preview_mode():
 def preview_discard():
     # Enforce auth and inactivity timeout for discard requests.
     authed = enforce_inactivity_timeout()
+    return_to = (request.form.get("return_to") or "").strip()
     if auth_enabled() and not authed:
         if wants_json():
             return {"ok": False, "discarded": 0, "error": "Locked"}, 401
@@ -1833,7 +1835,9 @@ def preview_discard():
         return {"ok": True, "discarded": discarded}
 
     flash("Batch discarded.", "success")
-    return redirect(url_for("intake"))
+    if return_to.startswith("/") and not return_to.startswith("//"):
+        return redirect(return_to)
+    return redirect(url_for("add_assets"))
 
 @app.post("/preview/commit")
 @require_login
@@ -1905,8 +1909,10 @@ def preview_commit():
         if wants_json():
             return {"ok": True, "committed": result.committed_count}
 
-        flash(f"Added {result.committed_count} items to the database.", "success")
-        return redirect(url_for("intake"))
+        count = result.committed_count
+        noun = "item" if count == 1 else "items"
+        flash(f"Added {count} {noun} to the database.", "success")
+        return redirect(url_for("add_assets"))
 
     # Issue commit mode
 
@@ -1939,7 +1945,51 @@ def preview_commit():
         return {"ok": True, "committed": committed_count}
 
     flash(f"Issue {committed_count} assets.", "success")
-    return redirect(url_for("intake"))
+    return redirect(url_for("issue"))
+
+
+@app.get("/issue")
+@require_login
+def issue():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("add_assets"))
+
+    if not bool(session.get("issue_mode")):
+        session["issue_mode"] = True
+
+    if session.get("last_seen") is None:
+        touch_session()
+
+    selected_holder = _selected_holder_from_session()
+    if selected_holder is None:
+        flash("Select a holder before issuing assets.", "error")
+        return redirect(url_for("holders_search", return_to=url_for("issue")))
+
+    asset_tags = _queue_asset_tags()
+    issue_state = _build_issue_preview_state(asset_tags, selected_holder)
+
+    return render_template(
+        "return_queue.html",
+        page_title="Issue Assets",
+        page_heading="Issue Assets",
+        scan_heading="Scan issues",
+        return_to=url_for("issue"),
+        preview_url=url_for("issue_preview"),
+        preview_label="Open Issue Assets Preview / Confirm",
+        auth_enabled=auth_enabled(),
+        authed=is_authed(),
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
+        queue=SCAN_QUEUE,
+        queue_len=len(SCAN_QUEUE),
+        latest=(SCAN_QUEUE[-1].asset_tag if SCAN_QUEUE else ""),
+        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+        queued_count=len(asset_tags),
+        ready_count=issue_state["ready_count"],
+        blocking_issues=issue_state["blocking_issues"],
+    )
 
 
 @app.get("/issue/preview")
@@ -1977,7 +2027,7 @@ def issue_commit():
         if wants_json():
             return {"ok": False, "committed": 0, "error": "Locked"}, 401
         flash("Locked. Re-enter access code.", "error")
-        return redirect(url_for("intake"))
+        return redirect(url_for("issue"))
 
     issue_mode = bool(session.get("issue_mode"))
     if not issue_mode:
@@ -2027,7 +2077,7 @@ def issue_commit():
         return {"ok": True, "committed": committed_count, "error": None}
 
     flash(f"Issued {committed_count} assets.", "success")
-    return redirect(url_for("intake"))
+    return redirect(url_for("issue"))
 
 
 @app.get("/return")
@@ -2146,11 +2196,13 @@ def holders_search():
         return redirect(url_for("intake"))
 
     query = (request.args.get("q") or "").strip()
+    return_to = (request.args.get("return_to") or "").strip()
     results = search_holders(query) if query else []
 
     return render_template(
         "holders_search.html",
         query=query,
+        return_to=return_to,
         results=results,
         selected_holder=_selected_holder_from_session(),
     )
@@ -2203,19 +2255,26 @@ def holders_select():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = (request.form.get("return_to") or "").strip()
     holder_id_raw = (request.form.get("holder_id") or "").strip()
     if not holder_id_raw:
         flash("Select a holder first.", "error")
+        if return_to.startswith("/") and not return_to.startswith("//"):
+            return redirect(url_for("holders_search", return_to=return_to))
         return redirect(url_for("holders_search"))
 
     holder = get_holder(holder_id_raw)
     if holder is None:
         flash("Selected holder not found.", "error")
+        if return_to.startswith("/") and not return_to.startswith("//"):
+            return redirect(url_for("holders_search", return_to=return_to))
         return redirect(url_for("holders_search"))
 
     session["holder_id"] = holder["id"]
     touch_session()
     flash(f"Selected holder: {holder['name']}", "success")
+    if return_to.startswith("/") and not return_to.startswith("//"):
+        return redirect(return_to)
     return redirect(url_for("holders_search"))
 
 
