@@ -1559,7 +1559,7 @@ def intake():
 
         if return_to.startswith("/") and not return_to.startswith("//"):
             return redirect(return_to)
-        return redirect(url_for("intake"))
+        return redirect(url_for("add_assets"))
 
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
