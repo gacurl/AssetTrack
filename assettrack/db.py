@@ -3,6 +3,9 @@ import os
 import sqlite3
 from pathlib import Path
 
+REQUIRED_TABLES = {"assets", "holders"}
+EVENT_TABLE_ALIASES = ("events", "asset_events")
+
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     cursor = conn.execute(
@@ -129,6 +132,38 @@ def _rebuild_asset_events_for_corrections(conn: sqlite3.Connection) -> None:
 # - Defaults to local development path (data/assettrack.db)
 # - Can be overridden via ASSETTRACK_DB_PATH for Docker/WSL persistence
 DB_PATH = Path(os.environ.get("ASSETTRACK_DB_PATH", "data/assettrack.db"))
+
+
+def assert_schema_present(db_path: Path) -> None:
+    """
+    Validate that a DB file contains the required AssetTrack tables.
+    Raises RuntimeError when schema is missing/incomplete.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table';
+            """
+        )
+        existing_tables = {str(row[0]) for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+    missing_tables = sorted(REQUIRED_TABLES - existing_tables)
+    if not any(name in existing_tables for name in EVENT_TABLE_ALIASES):
+        missing_tables.append("events")
+
+    if missing_tables:
+        missing_display = ", ".join(missing_tables)
+        raise RuntimeError(
+            "AssetTrack DB schema missing.\n"
+            f"DB: {db_path}\n"
+            f"Missing tables: {missing_display}\n"
+            "Restore a valid database or initialize the approved schema."
+        )
 
 
 def get_connection():
