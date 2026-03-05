@@ -9,8 +9,9 @@
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
-    ul { margin: 0.5rem 0 0 1.25rem; }
     input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
+    .validation-messages { margin-top: 0.5rem; }
+    .validation-message { margin: 0.35rem 0; }
   </style>
 {% endblock %}
 
@@ -62,9 +63,9 @@
       {% endif %}
     </p>
     {% if blocking_issues %}
-      <div role="list" style="margin: 0.5rem 0 0 1.25rem;">
+      <div class="validation-messages">
         {% for issue in blocking_issues %}
-          <div role="listitem">• <span>{{ issue }}</span></div>
+          <p class="validation-message">{{ issue }}</p>
         {% endfor %}
       </div>
     {% endif %}
