@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Admin System Health{% endblock %}
+{% block page_heading %}Admin: System Health{% endblock %}
+
+{% block content %}
+  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+
+  {% if schema_warning %}
+    <div class="flash error">{{ schema_warning }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Database</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>DB path</th>
+          <td><code id="db-path">{{ db_path }}</code></td>
+        </tr>
+        <tr>
+          <th>Holder count</th>
+          <td id="holder-count">{{ holder_count if holder_count is not none else "N/A" }}</td>
+        </tr>
+        <tr>
+          <th>Asset count</th>
+          <td id="asset-count">{{ asset_count if asset_count is not none else "N/A" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
