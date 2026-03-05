@@ -20,9 +20,10 @@ from datetime import datetime, timezone
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 
+import assettrack.db as db_module
 from assettrack.assets import get_asset_table_columns
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
-from assettrack.db import DB_PATH, assert_schema_present, get_connection
+from assettrack.db import assert_schema_present, get_connection
 from assettrack.drilldowns import (
     get_case_slot_detail,
     get_holder_custody_detail,
@@ -55,7 +56,7 @@ from assettrack.users import (
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 
-assert_schema_present(DB_PATH)
+assert_schema_present(db_module.DB_PATH)
 
 # In-memory only: wiped on restart
 SCAN_QUEUE: list[Scan] = []
@@ -2300,6 +2301,34 @@ def holders_clear():
 def admin_users():
     users = list_users()
     return render_template("admin_users.html", users=users)
+
+
+@app.get("/admin/system")
+@require_login
+@require_role("admin")
+def admin_system():
+    resolved_db_path = db_module.DB_PATH.expanduser().resolve()
+    holder_count: int | None = None
+    asset_count: int | None = None
+    schema_warning: str | None = None
+
+    try:
+        conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
+        try:
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+            asset_count = int(conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0])
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        schema_warning = f"Could not read system health data: {exc}"
+
+    return render_template(
+        "admin_system.html",
+        db_path=str(resolved_db_path),
+        holder_count=holder_count,
+        asset_count=asset_count,
+        schema_warning=schema_warning,
+    )
 
 
 @app.post("/admin/users/create")
