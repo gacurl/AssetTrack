@@ -40,8 +40,9 @@
       <button type="submit">Submit</button>
     </form>
 
-    <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;">
+    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
+      <input type="hidden" name="action" value="clear" />
       <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
     </form>
   </div>
