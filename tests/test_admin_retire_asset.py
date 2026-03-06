@@ -86,8 +86,8 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.assertIn(b"Admin: Retire Asset", response.data)
 
     def test_retire_from_storage_is_atomic_and_logs_event(self) -> None:
-        asset_id = self._insert_asset("RET-100", location_type="STORAGE", holder_id=None, home_slot_id=10)
         self._insert_slot(10, "CASE-A", 1, current_asset_tag="RET-100")
+        asset_id = self._insert_asset("RET-100", location_type="STORAGE", holder_id=None, home_slot_id=10)
         self.conn.execute(
             """
             INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
@@ -196,8 +196,8 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.assertEqual(payload["failure_type"], "LOST")
 
     def test_retired_assets_are_blocked_from_issue_and_return(self) -> None:
-        self._insert_asset("RET-300", location_type="DISPOSED", holder_id=None, home_slot_id=20)
         self._insert_slot(20, "CASE-B", 2, current_asset_tag=None)
+        self._insert_asset("RET-300", location_type="DISPOSED", holder_id=None, home_slot_id=20)
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
             intake_app._issue_batch(["RET-300"], holder_id=4)

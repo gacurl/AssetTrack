@@ -36,7 +36,6 @@ from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.auth import current_user, require_login, require_role
 from assettrack.holders import create_holder, get_holder, search_holders
-from assettrack.slots import vacate_slot_by_asset_tag_in_tx
 from assettrack.audit import record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
@@ -1003,7 +1002,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type, current_holder_id
+            SELECT id, asset_tag, location_type, current_holder_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -1019,23 +1018,6 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
             raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
 
         return dict(rows[0])
-
-    def _is_slotted(conn, canon_asset_tag: str) -> bool:
-        t = (canon_asset_tag or "").strip()
-        if not t:
-            return False
-
-        row = conn.execute(
-            """
-            SELECT 1
-            FROM slots
-            WHERE UPPER(current_asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
-            LIMIT 1;
-            """,
-            (t, t),
-        ).fetchone()
-        return bool(row)
 
     conn = get_connection()
     try:
@@ -1054,11 +1036,14 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         for scan_tag in asset_tags:
             row: dict = {
                 "scanned_tag": scan_tag,
+                "asset_tag": scan_tag,
                 "canonical_tag": None,
                 "before_location_type": "UNKNOWN",
                 "after_location_type": "IN_CUSTODY",
                 "before_holder": "null",
                 "after_holder": holder_label or "(select holder)",
+                "before_slot": "null",
+                "after_slot": "null",
                 "before_slot_occupancy": "unknown",
                 "after_slot_occupancy": "vacated",
                 "ready": False,
@@ -1073,6 +1058,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
                 continue
 
             canon_tag = str(asset_row["asset_tag"])
+            row["asset_tag"] = canon_tag
             row["canonical_tag"] = canon_tag
 
             before_location = str(asset_row["location_type"] or "").strip().upper()
@@ -1084,7 +1070,10 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
             before_holder_id = asset_row["current_holder_id"]
             row["before_holder"] = "null" if before_holder_id is None else str(before_holder_id)
 
-            slotted = _is_slotted(conn, canon_tag)
+            current_slot = _asset_current_slot(conn, int(asset_row["id"]), canon_tag)
+            slotted = current_slot is not None
+            if current_slot is not None:
+                row["before_slot"] = f"{current_slot['case_name']} / {current_slot['slot_position']}"
             row["before_slot_occupancy"] = "occupied" if slotted else "vacant"
 
             if before_location != "STORAGE":
@@ -1270,7 +1259,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type
+            SELECT id, asset_tag, location_type
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -1288,28 +1277,6 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
         return dict(rows[0])
 
-    def _is_slotted(conn, canon_asset_tag: str) -> bool:
-        """
-        Slot may store dashed canonical tag. We accept either:
-          - exact match
-          - match where dashes are removed from slot value
-        """
-        t = (canon_asset_tag or "").strip()
-        if not t:
-            return False
-
-        row = conn.execute(
-            """
-            SELECT 1
-            FROM slots
-            WHERE UPPER(current_asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
-            LIMIT 1;
-            """,
-            (t, t),
-        ).fetchone()
-        return bool(row)
-
     conn = get_connection()
     try:
         with conn:
@@ -1324,8 +1291,8 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
             retired_assets: list[str] = []
             not_slotted: list[str] = []
 
-            # Map scan tags -> canonical DB tags (so we update/vacate consistently)
-            canon_tags: list[str] = []
+            # Map scan tags -> canonical DB rows (so we update/vacate consistently)
+            canon_assets: list[tuple[int, str]] = []
 
             for scan_tag in asset_tags:
                 asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
@@ -1334,7 +1301,8 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
                     continue
 
                 canon_tag = str(asset_row["asset_tag"])
-                canon_tags.append(canon_tag)
+                asset_id = int(asset_row["id"])
+                canon_assets.append((asset_id, canon_tag))
 
                 location_type = str(asset_row["location_type"] or "").strip().upper()
                 if _is_terminal_location_type(location_type):
@@ -1342,7 +1310,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
                 if location_type != "STORAGE":
                     not_storage.append(canon_tag)
 
-                if not _is_slotted(conn, canon_tag):
+                if _asset_current_slot(conn, int(asset_row["id"]), canon_tag) is None:
                     not_slotted.append(canon_tag)
 
             if unknown_tags or not_storage or retired_assets or not_slotted:
@@ -1359,7 +1327,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
             now_iso = datetime.now(timezone.utc).isoformat()
 
-            for canon_tag in canon_tags:
+            for asset_id, canon_tag in canon_assets:
                 conn.execute(
                     """
                     UPDATE assets
@@ -1370,8 +1338,25 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
                     ("IN_CUSTODY", holder_id, canon_tag, canon_tag),
                 )
 
-                # Vacate uses canonical dashed form (what you put into slots).
-                vacate_slot_by_asset_tag_in_tx(conn, canon_tag)
+                current_slot = _asset_current_slot(conn, asset_id, canon_tag)
+                if current_slot is None:
+                    raise ValueError(f"Not currently slotted: {canon_tag}")
+
+                conn.execute(
+                    """
+                    DELETE FROM slot_occupancy
+                    WHERE asset_id = ?;
+                    """,
+                    (asset_id,),
+                )
+                conn.execute(
+                    """
+                    UPDATE slots
+                    SET current_asset_tag = NULL
+                    WHERE id = ?;
+                    """,
+                    (int(current_slot["slot_id"]),),
+                )
 
                 conn.execute(
                     """
@@ -1389,7 +1374,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
                     (canon_tag, ISSUE_EVENT_TYPE, now_iso, "system", None, None, holder_id),
                 )
 
-            return len(canon_tags)
+            return len(canon_assets)
     finally:
         conn.close()
 

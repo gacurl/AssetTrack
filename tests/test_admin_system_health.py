@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -123,9 +124,20 @@ def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
     assert response.status_code == 403
 
 
-def test_system_health_renders_warning_when_assets_query_fails(client_with_temp_db) -> None:
+def test_system_health_renders_warning_when_assets_query_fails(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     admin_id = create_test_user(username="admin", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
+    original_connect = sqlite3.connect
+
+    def failing_ro_connect(*args, **kwargs):
+        if kwargs.get("uri") is True and args and isinstance(args[0], str) and args[0].startswith("file:"):
+            raise sqlite3.Error("boom")
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(intake_app.sqlite3, "connect", failing_ro_connect)
 
     response = client_with_temp_db.get("/admin/system")
 

@@ -1,6 +1,7 @@
 # assettrack/db.py
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 REQUIRED_TABLES = {"assets", "holders"}
@@ -259,6 +260,37 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_tag TEXT NOT NULL UNIQUE,
+            serial_number TEXT NULL,
+            equipment_type TEXT NULL,
+            manufacturer TEXT NULL,
+            model TEXT NULL,
+            model_code TEXT NULL,
+            custody_state TEXT NULL,
+            issued_to_name TEXT NULL,
+            issued_to_role TEXT NULL,
+            accountability_status TEXT NULL,
+            condition TEXT NULL,
+            location_site TEXT NULL,
+            building_room TEXT NULL,
+            case_number TEXT NULL,
+            slot_number TEXT NULL,
+            created_date TEXT NULL,
+            updated_date TEXT NULL,
+            location_type TEXT NULL,
+            current_holder_id INTEGER NULL,
+            home_slot_id INTEGER NULL REFERENCES slots(id),
+            notes TEXT NULL,
+            building TEXT NULL,
+            room TEXT NULL
+        );
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS slots (
             id INTEGER PRIMARY KEY,
             case_name TEXT NOT NULL,
@@ -447,3 +479,46 @@ def _create_schema(conn: sqlite3.Connection):
         )
 
     conn.commit()
+
+
+def _run_init_cli() -> int:
+    conn = get_connection()
+    conn.close()
+    print(f"AssetTrack schema initialized at {DB_PATH}")
+    return 0
+
+
+def _run_reset_cli() -> int:
+    if not DB_PATH.exists():
+        print(f"No database found at {DB_PATH}")
+        return 0
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON;")
+        with conn:
+            if _table_exists(conn, "slot_occupancy"):
+                conn.execute("DELETE FROM slot_occupancy;")
+            if _table_exists(conn, "asset_events"):
+                conn.execute("DELETE FROM asset_events;")
+            if _table_exists(conn, "assets"):
+                conn.execute("DELETE FROM assets;")
+            if _table_exists(conn, "slots"):
+                conn.execute("DELETE FROM slots;")
+        conn.execute("VACUUM;")
+    finally:
+        conn.close()
+
+    print("AssetTrack operational tables cleared")
+    return 0
+
+
+if __name__ == "__main__":
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+    if command == "init":
+        raise SystemExit(_run_init_cli())
+    if command == "reset":
+        raise SystemExit(_run_reset_cli())
+
+    print("Usage: python -m assettrack.db init|reset")
+    raise SystemExit(1)

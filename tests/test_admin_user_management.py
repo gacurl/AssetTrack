@@ -46,6 +46,7 @@ def test_admin_can_create_operator_user(client_with_temp_db) -> None:
     assert created is not None
     assert created["role"] == "operator"
     assert int(created["active"]) == 1
+    assert str(created["password_hash"]).startswith("scrypt:")
 
 
 def test_admin_can_toggle_active_for_non_last_admin(client_with_temp_db) -> None:
@@ -97,6 +98,7 @@ def test_admin_can_reset_password_and_new_password_allows_login(client_with_temp
     updated = get_user_by_id(target_user_id)
     assert updated is not None
     assert verify_password(updated, "new-pass-123")
+    assert str(updated["password_hash"]).startswith("scrypt:")
 
 
 def test_admin_can_change_role_and_persists(client_with_temp_db) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import bcrypt
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from assettrack.db import get_connection
 
@@ -14,13 +14,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _bcrypt_hash(password: str) -> str:
+def _password_hash(password: str) -> str:
     if not password:
         raise ValueError("password is required")
-    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-    password_hash = password_hash.decode("utf-8")
-    if not password_hash.startswith("$2"):
-        raise ValueError("bcrypt hash generation failed")
+    password_hash = generate_password_hash(password)
+    if not password_hash:
+        raise ValueError("password hash generation failed")
     return password_hash
 
 
@@ -150,7 +149,7 @@ def create_user(username: str, password: str, role: str, active: bool = True) ->
         raise ValueError("role must be admin or operator")
 
     now_iso = _now_iso()
-    password_hash = _bcrypt_hash(password)
+    password_hash = _password_hash(password)
     active_int = 1 if bool(active) else 0
     conn = get_connection()
     try:
@@ -228,7 +227,7 @@ def set_user_role(user_id: int, role: str) -> dict:
 
 def reset_user_password(user_id: int, new_password: str) -> dict:
     normalized_user_id = int(user_id)
-    password_hash = _bcrypt_hash(new_password)
+    password_hash = _password_hash(new_password)
     now_iso = _now_iso()
 
     conn = get_connection()
@@ -259,7 +258,7 @@ def change_own_password(user_id: int, current_password: str, new_password: str) 
         raise ValueError("Current password is incorrect.")
 
     _validate_new_password(str(user.get("username") or ""), current_password, new_password)
-    password_hash = _bcrypt_hash(new_password)
+    password_hash = _password_hash(new_password)
     now_iso = _now_iso()
 
     conn = get_connection()
@@ -285,9 +284,9 @@ def verify_password(user: dict | None, password: str) -> bool:
     if not user or not password:
         return False
     password_hash = str(user.get("password_hash") or "")
-    if not password_hash.startswith("$2"):
+    if not password_hash:
         return False
     try:
-        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+        return check_password_hash(password_hash, password)
     except ValueError:
         return False
