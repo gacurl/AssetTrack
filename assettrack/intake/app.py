@@ -1950,12 +1950,12 @@ def issue():
     if session.get("last_seen") is None:
         touch_session()
 
+    asset_tags = _queue_asset_tags()
     selected_holder = _selected_holder_from_session()
-    if selected_holder is None:
+    if selected_holder is None and asset_tags:
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("holders_search", return_to=url_for("issue")))
 
-    asset_tags = _queue_asset_tags()
     issue_state = _build_issue_preview_state(asset_tags, selected_holder)
 
     return render_template(

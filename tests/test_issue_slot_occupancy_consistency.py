@@ -86,3 +86,26 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
     assert asset is not None
     assert str(asset["location_type"]) == "IN_CUSTODY"
     assert int(asset["current_holder_id"]) == 1
+
+
+def test_issue_commit_redirect_shows_success_without_holder_warning(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-seam", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+
+    intake_app.SCAN_QUEUE.append(Scan.now("DDC4CY002645"))
+
+    commit_response = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on"},
+        follow_redirects=True,
+    )
+
+    assert commit_response.status_code == 200
+    assert b"Issued 1 assets." in commit_response.data
+    assert b"Select a holder before issuing assets." not in commit_response.data
+    assert b"Queued assets:</strong> 0" in commit_response.data
+    assert len(intake_app.SCAN_QUEUE) == 0
