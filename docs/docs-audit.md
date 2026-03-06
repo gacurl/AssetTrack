@@ -24,7 +24,7 @@ This audit maps repository documentation by in-repo reference status and usage c
 
 ## Unreferenced Docs (In-Repo)
 No in-repo references were found to these markdown docs by full path:
-- `docs/PROJECT_INTENT.md`
+- `docs/legacy/PROJECT_INTENT.md` (archived from `docs/PROJECT_INTENT.md`)
 - `docs/adr/0001-core-architecture-decisions.md`
 - `docs/adr/adr-002-core-asset-model-and-crud-boundaries.md`
 - `docs/adr/adr-003-audit-and-state-transition-discipline.md`
@@ -61,7 +61,7 @@ These are architecture/design/dev/security reference materials.
 
 ### Candidate Legacy Docs
 These appear likely legacy based on present codebase context and/or lack of references.
-- `docs/PROJECT_INTENT.md`
+- `docs/legacy/PROJECT_INTENT.md` (archived from `docs/PROJECT_INTENT.md`)
   - Notes current system "is today" as Tkinter desktop app, which does not match the present Flask web app structure.
 
 ## Notes / Ambiguities
