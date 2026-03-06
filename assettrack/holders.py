@@ -33,6 +33,30 @@ def search_holders(query: str, limit: int = 20) -> list[dict]:
         conn.close()
 
 
+def list_holders() -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                h.id,
+                h.holder_type,
+                h.name,
+                h.identifier,
+                h.contact_info,
+                COUNT(a.id) AS asset_count
+            FROM holders h
+            LEFT JOIN assets a
+              ON a.current_holder_id = h.id
+            GROUP BY h.id, h.holder_type, h.name, h.identifier, h.contact_info
+            ORDER BY h.name COLLATE NOCASE ASC, h.id ASC;
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def get_holder(holder_id: int) -> dict | None:
     if holder_id is None:
         return None

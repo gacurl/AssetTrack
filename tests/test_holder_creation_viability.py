@@ -28,6 +28,11 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Create Holder", response.data)
 
+    def test_get_holders_list_route_exists(self) -> None:
+        response = self.client.get("/holders/list")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"All Holders", response.data)
+
     def test_post_holders_new_persists_holder(self) -> None:
         holder_name = "Viability Gate Holder"
         response = self.client.post(
@@ -85,6 +90,27 @@ class HolderCreationViabilityTests(unittest.TestCase):
         )
         self.assertEqual(select_response.status_code, 200)
         self.assertIn(f"Selected holder: {holder_name}".encode("utf-8"), select_response.data)
+
+    def test_holders_list_shows_holders_and_asset_count(self) -> None:
+        holder_name = "Holder List Person"
+        self.client.post("/holders/new", data={"name": holder_name})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            (holder_name,),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        self.conn.execute(
+            "INSERT INTO assets (asset_tag, current_holder_id) VALUES (?, ?);",
+            ("HOLDER-LIST-ASSET-1", holder_id),
+        )
+        self.conn.commit()
+
+        response = self.client.get("/holders/list")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(holder_name.encode("utf-8"), response.data)
+        self.assertIn(b">1<", response.data)
 
 
 if __name__ == "__main__":
