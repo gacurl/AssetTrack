@@ -55,6 +55,7 @@ def test_authenticated_user_can_change_password_and_session_stays_valid(client_w
     assert updated is not None
     assert verify_password(updated, "NewPassword456")
     assert not verify_password(updated, "OldPassword123")
+    assert str(updated["password_hash"]).startswith("scrypt:")
 
     with client_with_temp_db.session_transaction() as sess:
         assert int(sess["user_id"]) == user_id
