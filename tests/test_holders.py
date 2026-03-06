@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import assettrack.db as db
-from assettrack.holders import get_holder, search_holders
+from assettrack.holders import get_holder, list_holders, search_holders
 
 
 class HoldersTests(unittest.TestCase):
@@ -62,3 +62,22 @@ class HoldersTests(unittest.TestCase):
         by_identifier = search_holders("BR-77")
         self.assertEqual(len(by_identifier), 1)
         self.assertEqual(by_identifier[0]["name"], "Bravo Org")
+
+    def test_list_holders_includes_asset_count(self) -> None:
+        alpha_id = self._insert_holder("Person", "Alpha User", "A-001", None)
+        self._insert_holder("Organization", "Bravo Org", "BR-77", "contact@bravo.org")
+
+        self.conn.execute(
+            "INSERT INTO assets (asset_tag, current_holder_id) VALUES (?, ?);",
+            ("A-TAG-1", alpha_id),
+        )
+        self.conn.execute(
+            "INSERT INTO assets (asset_tag, current_holder_id) VALUES (?, ?);",
+            ("A-TAG-2", alpha_id),
+        )
+        self.conn.commit()
+
+        rows = list_holders()
+        self.assertEqual([row["name"] for row in rows], ["Alpha User", "Bravo Org"])
+        self.assertEqual(int(rows[0]["asset_count"]), 2)
+        self.assertEqual(int(rows[1]["asset_count"]), 0)

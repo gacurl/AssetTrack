@@ -24,7 +24,7 @@
   {% endwith %}
 
   <div class="card">
-    <p><a href="{{ url_for('holders_new') }}">Add Holder</a></p>
+    <p><a href="{{ url_for('holders_new') }}">Add Holder</a> | <a href="{{ url_for('holders_list') }}">View all holders</a></p>
     <form method="get" action="{{ url_for('holders_search') }}">
       {% if return_to %}
         <input type="hidden" name="return_to" value="{{ return_to }}" />

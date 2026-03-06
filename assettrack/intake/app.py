@@ -35,7 +35,7 @@ from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.auth import current_user, require_login, require_role
-from assettrack.holders import create_holder, get_holder, search_holders
+from assettrack.holders import create_holder, get_holder, list_holders, search_holders
 from assettrack.audit import record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
@@ -2194,6 +2194,18 @@ def holders_search():
         results=results,
         selected_holder=_selected_holder_from_session(),
     )
+
+
+@app.get("/holders/list")
+@require_login
+def holders_list():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    holders = list_holders()
+    return render_template("holders_list.html", holders=holders)
 
 
 @app.get("/holders/new")
