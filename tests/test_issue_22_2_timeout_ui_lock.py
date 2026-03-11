@@ -68,6 +68,9 @@ def test_add_assets_and_preview_render_timeout_lock_targets(client_with_temp_db)
     assert preview.status_code == 200
     assert b'id="timeout-lock-panel"' in preview.data
     assert b'id="timeout-lock-state">Active<' in preview.data
+    assert b'class="timeout-countdown"' in preview.data
+    assert b'remainingSeconds <= 10 && remainingSeconds > 0' in preview.data
+    assert b'classList.add("timeout-warning")' in preview.data
     assert b"Session expired. Redirecting to login..." in preview.data
     assert b'let timeoutLocked = false;' in preview.data
     assert b'window.location = "/logout";' in preview.data

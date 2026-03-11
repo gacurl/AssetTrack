@@ -85,6 +85,17 @@
         border-color: #e0b4b4;
         color: #7a1f1f;
       }
+      @keyframes timeoutWarningPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.84; }
+      }
+      .timeout-countdown {
+        font-weight: inherit;
+      }
+      .timeout-countdown.timeout-warning {
+        color: #a54a16;
+        animation: timeoutWarningPulse 1s ease-in-out infinite;
+      }
       .locked-control {
         opacity: 0.6;
         cursor: not-allowed;

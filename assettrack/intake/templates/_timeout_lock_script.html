@@ -9,6 +9,16 @@
   const timeoutLockPanelEl = document.getElementById("timeout-lock-panel");
   const timeoutLockStateEl = document.getElementById("timeout-lock-state");
   const timeoutLockTargets = Array.from(document.querySelectorAll("[data-timeout-lock-target]"));
+  const setWarningState = (remainingSeconds) => {
+    if (!countdownEl) {
+      return;
+    }
+    if (remainingSeconds <= 10 && remainingSeconds > 0) {
+      countdownEl.classList.add("timeout-warning");
+    } else {
+      countdownEl.classList.remove("timeout-warning");
+    }
+  };
 
   const lockUi = () => {
     if (timeoutLocked) {
@@ -27,7 +37,7 @@
       }
     });
 
-    if (countdownEl) countdownEl.classList.remove("countdown-pulse");
+    setWarningState(0);
     if (timeoutLockPanelEl) timeoutLockPanelEl.classList.add("locked");
     if (timeoutLockStateEl) timeoutLockStateEl.textContent = "Locked";
     if (lockHintEl) {
@@ -62,12 +72,7 @@
 
       const remaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
       countdownEl.textContent = remaining;
-
-      if (remaining > 0 && remaining < 10) {
-        countdownEl.classList.add("countdown-pulse");
-      } else {
-        countdownEl.classList.remove("countdown-pulse");
-      }
+      setWarningState(remaining);
 
       if (remaining <= 0 && !timeoutLocked) {
         lockUi();
@@ -79,10 +84,7 @@
 
     const initialRemaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
     countdownEl.textContent = initialRemaining;
-
-    if (initialRemaining > 0 && initialRemaining < 10) {
-      countdownEl.classList.add("countdown-pulse");
-    }
+    setWarningState(initialRemaining);
 
     if (initialRemaining <= 0 && !timeoutLocked) {
       lockUi();
