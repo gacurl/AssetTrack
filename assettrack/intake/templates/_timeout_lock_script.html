@@ -1,0 +1,99 @@
+<script>
+  const LOCK_HINT_TEXT = "Session expired. Redirecting to login...";
+  let timeoutLocked = false;
+
+  const lockHintEl = document.getElementById("lock-hint");
+  const lastActivityEl = document.getElementById("last-activity-seconds");
+  const timeoutSourceEl = document.getElementById("timeout-seconds");
+  const countdownEl = document.getElementById("timeout-countdown-seconds");
+  const timeoutLockPanelEl = document.getElementById("timeout-lock-panel");
+  const timeoutLockStateEl = document.getElementById("timeout-lock-state");
+  const timeoutLockTargets = Array.from(document.querySelectorAll("[data-timeout-lock-target]"));
+
+  const lockUi = () => {
+    if (timeoutLocked) {
+      return;
+    }
+    timeoutLocked = true;
+    window.assetTrackTimeoutLocked = true;
+
+    timeoutLockTargets.forEach((targetEl) => {
+      targetEl.classList.add("locked-control");
+      if ("disabled" in targetEl) {
+        targetEl.disabled = true;
+      } else {
+        targetEl.setAttribute("aria-disabled", "true");
+        targetEl.setAttribute("tabindex", "-1");
+      }
+    });
+
+    if (countdownEl) countdownEl.classList.remove("countdown-pulse");
+    if (timeoutLockPanelEl) timeoutLockPanelEl.classList.add("locked");
+    if (timeoutLockStateEl) timeoutLockStateEl.textContent = "Locked";
+    if (lockHintEl) {
+      lockHintEl.textContent = LOCK_HINT_TEXT;
+      lockHintEl.hidden = false;
+    }
+  };
+
+  const redirectToLogout = () => {
+    if (window.location.pathname !== "/logout") {
+      window.location = "/logout";
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    if (!window.assetTrackTimeoutLocked) {
+      return;
+    }
+    const lockedLink = event.target.closest("a[aria-disabled='true']");
+    if (lockedLink) {
+      event.preventDefault();
+    }
+  });
+
+  if (lastActivityEl && timeoutSourceEl && countdownEl) {
+    let lastActivitySeconds = parseInt(lastActivityEl.textContent, 10);
+    const timeoutSeconds = parseInt(timeoutSourceEl.textContent, 10);
+
+    const update = () => {
+      lastActivitySeconds += 1;
+      lastActivityEl.textContent = lastActivitySeconds;
+
+      const remaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
+      countdownEl.textContent = remaining;
+
+      if (remaining > 0 && remaining < 10) {
+        countdownEl.classList.add("countdown-pulse");
+      } else {
+        countdownEl.classList.remove("countdown-pulse");
+      }
+
+      if (remaining <= 0 && !timeoutLocked) {
+        lockUi();
+        redirectToLogout();
+        return true;
+      }
+      return false;
+    };
+
+    const initialRemaining = Math.max(0, timeoutSeconds - lastActivitySeconds);
+    countdownEl.textContent = initialRemaining;
+
+    if (initialRemaining > 0 && initialRemaining < 10) {
+      countdownEl.classList.add("countdown-pulse");
+    }
+
+    if (initialRemaining <= 0 && !timeoutLocked) {
+      lockUi();
+      redirectToLogout();
+    } else {
+      const timerId = setInterval(() => {
+        const isLocked = update();
+        if (isLocked) {
+          clearInterval(timerId);
+        }
+      }, 1000);
+    }
+  }
+</script>

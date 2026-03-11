@@ -73,6 +73,27 @@
       button { padding: 0.6rem 1rem; font-size: 1rem; }
       .row { margin: 0.75rem 0; }
       .muted { color: #555; }
+      .timeout-panel {
+        margin: 0 0 1rem 0;
+        padding: 0.75rem 1rem;
+        border: 1px solid #d7deea;
+        border-radius: 10px;
+        background: #eef3fb;
+      }
+      .timeout-panel.locked {
+        background: #fff1f1;
+        border-color: #e0b4b4;
+        color: #7a1f1f;
+      }
+      .locked-control {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      a.locked-control {
+        color: #6b7280;
+        pointer-events: none;
+        text-decoration: none;
+      }
     </style>
     {% block extra_head %}{% endblock %}
   </head>

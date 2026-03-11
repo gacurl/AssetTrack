@@ -1764,6 +1764,8 @@ def preview():
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
         selected_holder=_selected_holder_from_session(),
         issue_mode=bool(session.get("issue_mode")),
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
 
 
@@ -2004,6 +2006,8 @@ def issue_preview():
         assets=issue_preview_state["assets"],
         ready_count=issue_preview_state["ready_count"],
         blocking_issues=issue_preview_state["blocking_issues"],
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
 
 
@@ -2096,6 +2100,8 @@ def return_queue():
         queued_count=len(asset_tags),
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
 
 
@@ -2118,6 +2124,8 @@ def return_preview():
         preview_rows=state["assets"],
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
+        last_seen_age_seconds=seconds_since_last_seen(),
+        timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
 
 

@@ -18,6 +18,8 @@
 {% block content %}
   <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
 
+  {% include "_timeout_status.html" %}
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -33,18 +35,20 @@
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
       <input
+        id="scan-input"
         type="text"
         name="scan_text"
         placeholder="Scan here..."
         autofocus
+        data-timeout-lock-target
       />
-      <button type="submit">Submit</button>
+      <button type="submit" data-timeout-lock-target>Submit</button>
     </form>
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
       <input type="hidden" name="action" value="clear" />
-      <button type="submit" onclick="return confirm('Clear the queue?');">Clear queue</button>
+      <button type="submit" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
     </form>
   </div>
 
@@ -72,6 +76,10 @@
   </div>
 
   <div class="card">
-    <p><a href="{{ preview_url or url_for('return_preview') }}"><strong>{{ preview_label or "Open Return Assets Preview / Confirm" }}</strong></a></p>
+    <p><a href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target><strong>{{ preview_label or "Open Return Assets Preview / Confirm" }}</strong></a></p>
   </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% include "_timeout_lock_script.html" %}
 {% endblock %}
