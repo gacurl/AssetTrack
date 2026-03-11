@@ -18,6 +18,8 @@
     <a href="{{ url_for('dashboard') }}">← Back to dashboard</a>
   </div>
 
+  {% include "_timeout_status.html" %}
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -46,13 +48,13 @@
         I reviewed this batch and want to add it to the database.
       </label>
 
-      <button id="add_btn" type="submit" disabled>Add to database</button>
+      <button id="add_btn" type="submit" disabled data-timeout-lock-target>Add to database</button>
     </form>
 
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
       <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
-      <button type="submit">Discard batch</button>
+      <button type="submit" data-timeout-lock-target>Discard batch</button>
     </form>
 
     <p style="margin-top: 10px;">
@@ -148,4 +150,5 @@
       sync();
     }
   </script>
+  {% include "_timeout_lock_script.html" %}
 {% endblock %}

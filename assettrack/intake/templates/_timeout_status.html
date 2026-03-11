@@ -1,0 +1,16 @@
+{% if timeout_seconds is defined and timeout_seconds is not none and last_seen_age_seconds is not none %}
+  <div id="timeout-lock-panel" class="timeout-panel" data-timeout-lock-panel>
+    <p>
+      <strong>Session status:</strong>
+      <span id="timeout-lock-state">Active</span>
+      <br />
+      <strong>Timeout in:</strong>
+      <span id="timeout-countdown-seconds"></span>s
+      <span id="lock-hint" class="muted" hidden>Session expired. Controls locked.</span>
+      <br />
+      <strong>Last activity:</strong>
+      <span id="last-activity-seconds">{{ last_seen_age_seconds }}</span>s ago
+    </p>
+    <span id="timeout-seconds" hidden>{{ timeout_seconds }}</span>
+  </div>
+{% endif %}

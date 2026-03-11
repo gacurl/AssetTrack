@@ -16,6 +16,8 @@
 {% block content %}
   <p><a href="{{ url_for('preview') }}">← Back to batch preview</a></p>
 
+  {% include "_timeout_status.html" %}
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -125,12 +127,12 @@
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
         I reviewed this batch and want to add it to the database.
       </label>
-      <button id="issue_btn" type="submit" disabled>Commit Issue</button>
+      <button id="issue_btn" type="submit" disabled data-timeout-lock-target>Commit Issue</button>
     </form>
     <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
           onsubmit="return confirm('Discard this batch? This clears the queue.');">
       <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
-      <button type="submit">Discard batch</button>
+      <button type="submit" data-timeout-lock-target>Discard batch</button>
     </form>
     <p style="margin-top: 10px;">{{ url_for('issue_commit') }}?json=1</p>
   </div>
@@ -146,4 +148,5 @@
       sync();
     }
   </script>
+  {% include "_timeout_lock_script.html" %}
 {% endblock %}

@@ -15,6 +15,8 @@
 {% block content %}
   <p><a href="{{ url_for('return_queue') }}">← Back to Return Queue</a></p>
 
+  {% include "_timeout_status.html" %}
+
   <div class="card">
     <h2>Validation Summary</h2>
     <p>
@@ -101,7 +103,7 @@
           I have reviewed the changes and confirm this return batch.
         </label>
         <br /><br />
-        <button type="submit">Commit Return</button>
+        <button type="submit" data-timeout-lock-target>Commit Return</button>
       </form>
     {% else %}
       <p class="flash error">
@@ -109,4 +111,8 @@
       </p>
     {% endif %}
   </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% include "_timeout_lock_script.html" %}
 {% endblock %}
