@@ -2105,6 +2105,8 @@ def return_queue():
         queued_count=len(asset_tags),
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
+        queue=SCAN_QUEUE,
+        queue_len=len(SCAN_QUEUE),
         last_seen_age_seconds=seconds_since_last_seen(),
         timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
