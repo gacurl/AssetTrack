@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from assettrack.intake.scan import Scan
 from tests.auth_test_utils import create_test_user, login_session
 
 
@@ -90,6 +92,22 @@ class AdminAddAssetUiTests(unittest.TestCase):
         response = self.client.get("/admin/assets/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Add Asset", response.data)
+
+    def test_add_assets_queue_renders_scan_timestamps_from_queue_items(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(
+            Scan(
+                asset_tag="AT-QUEUE-1",
+                scanned_at=datetime(2026, 1, 1, 14, 3, 22, tzinfo=timezone.utc),
+                equipment_type="laptop",
+            )
+        )
+
+        response = self.client.get("/add-assets")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'14:03:22', response.data)
+        self.assertIn(b'datetime="2026-01-01T14:03:22+00:00"', response.data)
+        self.assertNotIn(b"localStorage.getItem", response.data)
 
     def test_post_creates_unslotted_asset_and_enforces_serial_uniqueness(self) -> None:
         response = self.client.post(
