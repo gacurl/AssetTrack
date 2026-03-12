@@ -109,6 +109,58 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'datetime="2026-01-01T14:03:22+00:00"', response.data)
         self.assertNotIn(b"localStorage.getItem", response.data)
 
+    def test_scans_keep_equipment_type_captured_at_scan_time(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+
+        first = self.client.post(
+            "/",
+            data={"scan_text": "AT-QUEUE-1", "equipment_type": "tablet"},
+        )
+        self.assertEqual(first.status_code, 302)
+
+        second = self.client.post(
+            "/",
+            data={"scan_text": "AT-QUEUE-2", "equipment_type": "laptop"},
+        )
+        self.assertEqual(second.status_code, 302)
+
+        self.assertEqual([scan.equipment_type for scan in intake_app.SCAN_QUEUE], ["tablet", "laptop"])
+
+        preview = self.client.get("/preview?json=1")
+        self.assertEqual(preview.status_code, 200)
+        rows = preview.json["rows"]
+        self.assertEqual(rows[0]["equipment_type"], "tablet")
+        self.assertEqual(rows[1]["equipment_type"], "laptop")
+
+    def test_blank_equipment_type_uses_default_and_missing_field_preserves_selection(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+
+        select_tablet = self.client.post(
+            "/",
+            data={"scan_text": "AT-QUEUE-1", "equipment_type": "tablet"},
+        )
+        self.assertEqual(select_tablet.status_code, 302)
+
+        preserve_selection = self.client.post(
+            "/",
+            data={"action": "clear", "return_to": "/add-assets"},
+        )
+        self.assertEqual(preserve_selection.status_code, 302)
+
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess["equipment_type"], "tablet")
+
+        default_scan = self.client.post(
+            "/",
+            data={"scan_text": "AT-QUEUE-2", "equipment_type": ""},
+        )
+        self.assertEqual(default_scan.status_code, 302)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 1)
+        self.assertEqual(intake_app.SCAN_QUEUE[0].equipment_type, "laptop")
+
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess["equipment_type"], "laptop")
+
     def test_post_creates_unslotted_asset_and_enforces_serial_uniqueness(self) -> None:
         response = self.client.post(
             "/admin/assets/new",
