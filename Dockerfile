@@ -11,6 +11,8 @@ WORKDIR /app
 # Keep base OS packages patched (pulls fixed libpng, etc.)
 RUN apk update && apk upgrade --no-cache
 
+RUN addgroup -S assettrack && adduser -S -G assettrack -h /app assettrack
+
 # System deps for common scientific + imaging stacks
 RUN apk add --no-cache \
         libjpeg-turbo \
@@ -49,8 +51,15 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # Copy the app (includes assettrack/ + templates/)
 COPY . /app
+RUN mkdir -p /app/data \
+    && chown -R assettrack:assettrack /app
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import sys, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3); sys.exit(0)"
+
+USER assettrack
 
 # Run the intake app exactly like local
 CMD ["python", "-m", "assettrack.intake.app"]
