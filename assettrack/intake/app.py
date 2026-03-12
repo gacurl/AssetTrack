@@ -124,7 +124,7 @@ def build_parsed_rows_from_queue() -> list[dict]:
     """
     Build rows in the validator/committer format:
       [{"row_number": 1, "data": {...}}, ...]
-    Also inject session equipment_type for SCAN rows missing it.
+    Each queued Scan already carries its own equipment_type.
     """
     rows: list[dict] = []
 
@@ -1533,8 +1533,13 @@ def intake():
         action = (request.form.get("action") or "").strip().lower()
         scan_text = (request.form.get("scan_text") or "").strip()
         return_to = (request.form.get("return_to") or "").strip()
-        form_equipment_type = (request.form.get("equipment_type") or "").strip()
-        session["equipment_type"] = form_equipment_type or "laptop"
+        submitted_equipment_type = request.form.get("equipment_type")
+        current_equipment_type = (session.get("equipment_type") or "laptop").strip() or "laptop"
+        if submitted_equipment_type is None:
+            selected_equipment_type = current_equipment_type
+        else:
+            selected_equipment_type = (submitted_equipment_type or "").strip() or "laptop"
+        session["equipment_type"] = selected_equipment_type
 
         if action == "clear":
             SCAN_QUEUE.clear()
@@ -1542,7 +1547,7 @@ def intake():
         if scan_text:
             value = sanitize_scan(scan_text)
             if value:
-                SCAN_QUEUE.append(Scan.now(value, equipment_type=session["equipment_type"]))
+                SCAN_QUEUE.append(Scan.now(value, equipment_type=selected_equipment_type))
 
         touch_session()
 
