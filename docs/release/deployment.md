@@ -36,6 +36,7 @@ What this does:
 1. Builds the AssetTrack Docker image.
 2. Starts the AssetTrack container in the background.
 3. Exposes the application on port `8000`.
+4. On first run, initializes the approved SQLite schema in `/app/data/assettrack.db` if the database file is missing or empty.
 
 After startup, open:
 

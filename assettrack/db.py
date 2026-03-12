@@ -135,6 +135,35 @@ def _rebuild_asset_events_for_corrections(conn: sqlite3.Connection) -> None:
 DB_PATH = Path(os.environ.get("ASSETTRACK_DB_PATH", "data/assettrack.db"))
 
 
+def initialize_schema(db_path: Path) -> None:
+    """
+    Create the approved AssetTrack schema at the given path.
+    Safe to run repeatedly against an existing valid database.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        # SQLite only enforces foreign keys when enabled.
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _create_schema(conn)
+    finally:
+        conn.close()
+
+
+def initialize_if_missing_or_empty(db_path: Path) -> bool:
+    """
+    Initialize schema only for first-run DB paths.
+    Returns True when schema bootstrap was performed.
+    """
+    if db_path.exists() and db_path.stat().st_size > 0:
+        return False
+
+    initialize_schema(db_path)
+    return True
+
+
 def assert_schema_present(db_path: Path) -> None:
     """
     Validate that a DB file contains the required AssetTrack tables.
@@ -172,15 +201,12 @@ def get_connection():
     Returns a SQLite connection to the AssetTrack database.
     Ensures the database and schema exist.
     """
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
+    initialize_schema(DB_PATH)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
 
     # SQLite only enforces foreign keys when enabled.
     conn.execute("PRAGMA foreign_keys = ON;")
-
-    _create_schema(conn)
     return conn
 
 
