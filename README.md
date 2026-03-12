@@ -5,22 +5,19 @@ This software is an independent tool and is **not affiliated with, endorsed by, 
 
 ---
 
-# 🚜 AssetTrack
+# AssetTrack
 
-AssetTrack is an **offline-first asset intake and accountability system** built for operational environments where reliability, determinism, and auditability matter more than visual polish.
+## Project Overview
 
-It provides a disciplined workflow for:
+AssetTrack is an offline-first asset custody tracking system designed for field deployment.
 
-* Scanning physical assets
-* Reviewing staged intake data
-* Committing records atomically
-* Preserving a durable, auditable event log
+The system maintains a complete append-only audit trail of asset movement while providing simple workflows for issuing, returning, and managing assets.
 
-The system is intentionally minimal, portable, and designed to fail closed.
+AssetTrack runs as a Dockerized web application with a persistent SQLite database.
 
 ---
 
-## System Model (Authoritative)
+## System Model
 
 AssetTrack operates under three core principles:
 
@@ -78,51 +75,34 @@ Not included:
 
 ---
 
-# 🚀 Quick Start
+## Quick Start
 
-AssetTrack supports:
+Clone the repository and start the system:
 
-* Local virtual environment execution
-* Docker (recommended for operational parity)
-* Windows via WSL2 + Docker Desktop
-
----
-
-## Option 1 — Local (venv)
-
-From the repository root:
-
-```
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-python -m assettrack.intake.app
-```
-
-Then open:
-
-[http://127.0.0.1:8000](http://127.0.0.1:8000)
-
----
-
-## Option 2 — Docker (Recommended)
-
-Docker Compose is the authoritative deployment path.
-
-Run:
-
-```
+```bash
+git clone https://github.com/gacurl/AssetTrack.git
+cd AssetTrack
 docker compose up -d --build
 ```
 
-Then open:
+Open the application:
 
-[http://localhost:8000](http://localhost:8000)
+`http://localhost:8000`
 
 If this is a fresh database with no users yet, bootstrap the first admin at:
 
-[http://localhost:8000/bootstrap/admin](http://localhost:8000/bootstrap/admin)
+`http://localhost:8000/bootstrap/admin`
+
+## Release Documentation
+
+AssetTrack includes a full release documentation package.
+
+- Deployment guide: `docs/release/deployment.md`
+- User manual: `docs/release/user-manual.md`
+- Smoke test: `docs/release/smoke-test.md`
+- Troubleshooting: `docs/release/troubleshooting.md`
+- Security report: `docs/release/security-report.md`
+- Release notes: `docs/release/release-notes.md`
 
 ---
 
@@ -166,7 +146,7 @@ Default resolves to:
 
 ---
 
-## Verifying Docker persistence (data survives restarts)
+## Verifying Docker Persistence
 
 Use this manual check to prove holder data survives container restarts.
 
@@ -222,7 +202,7 @@ Data is wiped only if you explicitly remove volumes (for example `docker compose
 
 ---
 
-## 🪟 Windows (WSL2 + Docker Desktop)
+## Windows Notes
 
 ### Recommended Windows Setup
 
@@ -259,21 +239,27 @@ Then open:
 
 ---
 
-## 🔐 Security Posture
+## Security
 
-The container image is scanned using Trivy.
+The MVP release includes a clean Trivy security scan.
 
-Current baseline:
+Detailed scan results and remediation notes are available here:
 
-* OS vulnerabilities: 0
-* Python package vulnerabilities: 0
-* LOW / MED / HIGH / CRIT: all zero
+`docs/security/trivy-readable.md`
 
-Latest readable scan report:
+## Project Status
 
-docs/security/trivy-readable.md
+Current release:
 
-The reproducible scan command is documented inside that file.
+`v0.1.0-mvp`
+
+Key characteristics:
+
+- Offline-first architecture
+- Append-only event history
+- Audit-safe asset state transitions
+- Docker-based deployment
+- Persistent SQLite database
 
 ---
 
@@ -294,7 +280,8 @@ That is a feature.
 
 ## Documentation
 
-* [Operator Manual](docs/user-guide.md)
+- Release documentation index: `docs/release/`
+- Legacy operator manual: `docs/user-guide.md`
 
 ---
 
