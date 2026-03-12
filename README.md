@@ -85,6 +85,8 @@ cd AssetTrack
 docker compose up -d --build
 ```
 
+On a first run with no database file, AssetTrack initializes the approved SQLite schema automatically in the mounted `/app/data/assettrack.db` path before the web app starts.
+
 Open the application:
 
 `http://localhost:8000`
