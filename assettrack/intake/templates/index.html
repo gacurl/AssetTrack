@@ -7,14 +7,7 @@
 {% block extra_head %}
   <style>
     input[type="text"], input[type="password"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-    @keyframes countdownPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.03); }
-    }
-    .countdown-pulse {
-      display: inline-block;
-      animation: countdownPulse 0.9s ease-in-out infinite;
-    }
+    .queue-ts { color: #5b6878; font-size: 0.9rem; margin-right: 0.4rem; }
   </style>
 {% endblock %}
 
@@ -95,7 +88,7 @@
     <ul id="queue-list" role="list">
       {% for s in queue %}
         <li data-asset-tag="{{ s.asset_tag }}">
-          <span class="queue-ts"></span>
+          <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }}</time>
           <code>{{ s.asset_tag }}</code>
         </li>
       {% endfor %}
@@ -104,39 +97,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-  <script>
-    const TS_STORAGE_KEY = "assettrack:intake:queue_ts";
-
-    const queueListEl = document.getElementById("queue-list");
-    if (queueListEl) {
-      const nowTime = () => new Date().toLocaleTimeString("en-US", { hour12: false });
-      const queueItems = Array.from(queueListEl.querySelectorAll("li"));
-
-      let storedTimes = [];
-      try {
-        const raw = localStorage.getItem(TS_STORAGE_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        storedTimes = Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        storedTimes = [];
-      }
-
-      const currentTimes = [];
-      queueItems.forEach((itemEl, idx) => {
-        const tsEl = itemEl.querySelector(".queue-ts");
-        const displayTime = storedTimes[idx] || nowTime();
-        currentTimes[idx] = displayTime;
-        if (tsEl) {
-          tsEl.textContent = `[${displayTime}] `;
-        }
-      });
-
-      try {
-        localStorage.setItem(TS_STORAGE_KEY, JSON.stringify(currentTimes));
-      } catch (error) {
-        // Ignore storage failures to avoid impacting scan responsiveness.
-      }
-    }
-  </script>
   {% include "_timeout_lock_script.html" %}
 {% endblock %}
