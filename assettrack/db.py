@@ -367,6 +367,7 @@ def _create_schema(conn: sqlite3.Connection):
             id INTEGER PRIMARY KEY,
             holder_type TEXT NOT NULL,
             name TEXT NOT NULL,
+            organization TEXT NULL,
             identifier TEXT NULL,
             contact_info TEXT NULL,
             created_at TEXT NOT NULL,
@@ -410,6 +411,14 @@ def _create_schema(conn: sqlite3.Connection):
             ON holders(identifier);
         """
     )
+    # Issue 23-5: startup migration for nullable holder organization metadata.
+    if _table_exists(conn, "holders") and not _column_exists(conn, "holders", "organization"):
+        cursor.execute(
+            """
+            ALTER TABLE holders
+            ADD COLUMN organization TEXT NULL;
+            """
+        )
 
     if _table_exists(conn, "assets"):
         if not _column_exists(conn, "assets", "location_type"):

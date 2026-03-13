@@ -1,8 +1,8 @@
-<!-- file: assettrack/intake/templates/holder_new.html -->
+<!-- file: assettrack/intake/templates/holder_edit.html -->
 {% extends "base.html" %}
 
-{% block title %}AssetTrack New Holder{% endblock %}
-{% block page_heading %}Create Holder{% endblock %}
+{% block title %}Edit Holder{% endblock %}
+{% block page_heading %}Edit Holder{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -26,8 +26,8 @@
   {% endif %}
 
   <div class="card">
-    <h2>New Holder</h2>
-    <form method="post" action="{{ url_for('holders_create') }}">
+    <h2>Edit Holder</h2>
+    <form method="post" action="{{ url_for('holders_edit_submit', holder_id=holder.id) }}">
       <div class="row">
         <label for="name"><strong>Name</strong> (required)</label><br />
         <input type="text" id="name" name="name" value="{{ form.name or '' }}" required autofocus />
@@ -36,7 +36,7 @@
         <label for="organization"><strong>Organization</strong> (optional)</label><br />
         <input type="text" id="organization" name="organization" value="{{ form.organization or '' }}" />
       </div>
-      <button type="submit">Create Holder</button>
+      <button type="submit">Save Holder</button>
     </form>
   </div>
 {% endblock %}

@@ -22,9 +22,11 @@
             <th style="width: 90px;">ID</th>
             <th style="width: 120px;">Type</th>
             <th style="width: 250px;">Name</th>
+            <th style="width: 220px;">Organization</th>
             <th style="width: 200px;">Identifier</th>
             <th>Contact</th>
             <th style="width: 120px;">Assets</th>
+            <th style="width: 120px;">Edit</th>
           </tr>
         </thead>
         <tbody>
@@ -33,9 +35,11 @@
               <td><code>{{ h["id"] }}</code></td>
               <td>{{ h["holder_type"] }}</td>
               <td>{{ h["name"] }}</td>
+              <td>{{ h["organization"] or "" }}</td>
               <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["contact_info"] or "" }}</td>
               <td>{{ h["asset_count"] }}</td>
+              <td><a href="{{ url_for('holders_edit', holder_id=h['id']) }}">Edit</a></td>
             </tr>
           {% endfor %}
         </tbody>

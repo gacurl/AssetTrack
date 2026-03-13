@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import assettrack.db as db
-from assettrack.holders import get_holder, list_holders, search_holders
+from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
 
 
 class HoldersTests(unittest.TestCase):
@@ -50,10 +50,13 @@ class HoldersTests(unittest.TestCase):
         self.assertIsNotNone(holder)
         self.assertEqual(holder["name"], "Jane Doe")
         self.assertEqual(holder["identifier"], "ID-123")
+        self.assertIsNone(holder["organization"])
 
     def test_search_holders_by_name_and_identifier(self) -> None:
         self._insert_holder("Person", "Alpha User", "A-001", None)
         self._insert_holder("Organization", "Bravo Org", "BR-77", "contact@bravo.org")
+        self.conn.execute("UPDATE holders SET organization = 'Bravo Group' WHERE name = 'Bravo Org';")
+        self.conn.commit()
 
         by_name = search_holders("Alpha")
         self.assertEqual(len(by_name), 1)
@@ -62,6 +65,10 @@ class HoldersTests(unittest.TestCase):
         by_identifier = search_holders("BR-77")
         self.assertEqual(len(by_identifier), 1)
         self.assertEqual(by_identifier[0]["name"], "Bravo Org")
+
+        by_organization = search_holders("Bravo Group")
+        self.assertEqual(len(by_organization), 1)
+        self.assertEqual(by_organization[0]["name"], "Bravo Org")
 
     def test_list_holders_includes_asset_count(self) -> None:
         alpha_id = self._insert_holder("Person", "Alpha User", "A-001", None)
@@ -81,3 +88,14 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual([row["name"] for row in rows], ["Alpha User", "Bravo Org"])
         self.assertEqual(int(rows[0]["asset_count"]), 2)
         self.assertEqual(int(rows[1]["asset_count"]), 0)
+
+    def test_create_and_update_holder_organization(self) -> None:
+        created = create_holder("Org Holder", organization="Alpha Org")
+        self.assertEqual(created["organization"], "Alpha Org")
+
+        updated = update_holder(int(created["id"]), name="Org Holder", organization="Bravo Org")
+        self.assertEqual(updated["organization"], "Bravo Org")
+
+        fetched = get_holder(int(created["id"]))
+        self.assertIsNotNone(fetched)
+        self.assertEqual(fetched["organization"], "Bravo Org")

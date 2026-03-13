@@ -37,16 +37,17 @@ class HolderCreationViabilityTests(unittest.TestCase):
         holder_name = "Viability Gate Holder"
         response = self.client.post(
             "/holders/new",
-            data={"name": holder_name},
+            data={"name": holder_name, "organization": "Alpha Org"},
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/holders"))
 
         row = self.conn.execute(
-            "SELECT id, name FROM holders WHERE name = ?;",
+            "SELECT id, name, organization FROM holders WHERE name = ?;",
             (holder_name,),
         ).fetchone()
         self.assertIsNotNone(row)
+        self.assertEqual(row["organization"], "Alpha Org")
 
     def test_post_holders_new_rejects_blank_name(self) -> None:
         response = self.client.post(
@@ -64,7 +65,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         create_response = self.client.post(
             "/holders/new",
-            data={"name": holder_name},
+            data={"name": holder_name, "organization": "Bravo Org"},
         )
         self.assertEqual(create_response.status_code, 302)
         self.assertTrue(create_response.headers["Location"].endswith("/holders"))
@@ -90,6 +91,33 @@ class HolderCreationViabilityTests(unittest.TestCase):
         )
         self.assertEqual(select_response.status_code, 200)
         self.assertIn(f"Selected holder: {holder_name}".encode("utf-8"), select_response.data)
+        self.assertIn(b"Bravo Org", select_response.data)
+
+    def test_edit_holder_updates_organization(self) -> None:
+        self.client.post("/holders/new", data={"name": "Editable Holder", "organization": "Org One"})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Editable Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        edit_get = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
+        self.assertEqual(edit_get.status_code, 200)
+        self.assertIn(b"Edit Holder", edit_get.data)
+
+        edit_post = self.client.post(
+            f"/holders/edit/{int(holder_row['id'])}",
+            data={"name": "Editable Holder", "organization": "Org Two"},
+            follow_redirects=True,
+        )
+        self.assertEqual(edit_post.status_code, 200)
+        self.assertIn(b"Updated holder: Editable Holder", edit_post.data)
+
+        updated = self.conn.execute(
+            "SELECT organization FROM holders WHERE id = ?;",
+            (int(holder_row["id"]),),
+        ).fetchone()
+        self.assertEqual(updated["organization"], "Org Two")
 
     def test_holders_list_shows_holders_and_asset_count(self) -> None:
         holder_name = "Holder List Person"
