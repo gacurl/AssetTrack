@@ -26,6 +26,9 @@ def scan_to_ingest_row(scan: Scan) -> dict:
 
     operator_id = (scan.operator_id or DEFAULT_OPERATOR_ID or "").strip()
     equipment_type = (getattr(scan, "equipment_type", "") or "").strip() or "laptop"
+    case_name = (getattr(scan, "case_name", "") or "").strip().upper()
+    slot_position = getattr(scan, "slot_position", None)
+    home_slot_id = getattr(scan, "home_slot_id", None)
 
     return {
         "asset_tag": (scan.asset_tag or "").strip().upper(),
@@ -33,8 +36,9 @@ def scan_to_ingest_row(scan: Scan) -> dict:
         "event_type": "SCAN",
         "issued_to_name": "",   # not required for SCAN
         "operator_id": operator_id,
-        "case_number": "",      # optional for SCAN (validator controls)
-        "slot_number": "",      # optional for SCAN (validator controls)
+        "case_number": case_name,
+        "slot_number": "" if slot_position is None else str(slot_position),
+        "home_slot_id": home_slot_id,
         "building_room": "",    # optional
         "notes": "",            # optional
         "row_number": None,     # preview convenience

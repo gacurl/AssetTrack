@@ -6,8 +6,9 @@
 
 {% block extra_head %}
   <style>
-    input[type="text"], input[type="password"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    input[type="text"], input[type="password"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
     .queue-ts { color: #5b6878; font-size: 0.9rem; margin-right: 0.4rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
   </style>
 {% endblock %}
 
@@ -58,6 +59,31 @@
           />
         </div>
 
+        {% if authenticated_role == 'admin' %}
+          <div class="grid">
+            <div class="row">
+              <label for="case_name"><strong>Case</strong> (optional per scanned asset)</label><br />
+              <select id="case_name" name="case_name" data-timeout-lock-target>
+                <option value="">Unassigned</option>
+                {% for case_name in case_options %}
+                  <option value="{{ case_name }}">{{ case_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="row">
+              <label for="slot_id"><strong>Slot</strong> (optional per scanned asset)</label><br />
+              <select id="slot_id" name="slot_id" data-timeout-lock-target>
+                <option value="">Unassigned</option>
+                {% for slot in slot_options %}
+                  <option value="{{ slot.id }}" data-case="{{ slot.case_name }}">
+                    {{ slot.case_name }} / Slot {{ slot.slot_position }}{% if slot.occupied_asset_tag %} - occupied by {{ slot.occupied_asset_tag }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        {% endif %}
+
         <div class="row">
           <input
             type="text"
@@ -90,6 +116,9 @@
         <li data-asset-tag="{{ s.asset_tag }}">
           <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }}</time>
           <code>{{ s.asset_tag }}</code>
+          {% if s.case_name and s.slot_position is not none %}
+            <span class="muted">→ {{ s.case_name }} / Slot {{ s.slot_position }}</span>
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
@@ -97,5 +126,38 @@
 {% endblock %}
 
 {% block extra_scripts %}
+  {% if authenticated_role == 'admin' %}
+    <script>
+      const addAssetsCaseSelect = document.getElementById("case_name");
+      const addAssetsSlotSelect = document.getElementById("slot_id");
+
+      if (addAssetsCaseSelect && addAssetsSlotSelect) {
+        const addAssetsSlotOptions = Array.from(addAssetsSlotSelect.options);
+
+        function syncAddAssetsSlotOptions() {
+          const selectedCase = addAssetsCaseSelect.value;
+          const selectedSlot = addAssetsSlotSelect.value;
+
+          addAssetsSlotOptions.forEach((option) => {
+            if (!option.value) {
+              option.hidden = false;
+              return;
+            }
+            const matchesCase = !selectedCase || option.dataset.case === selectedCase;
+            const isSelected = option.value === selectedSlot;
+            option.hidden = !matchesCase && !isSelected;
+          });
+
+          const selectedOption = addAssetsSlotSelect.selectedOptions[0];
+          if (selectedOption && selectedOption.value && selectedOption.dataset.case !== selectedCase) {
+            addAssetsSlotSelect.value = "";
+          }
+        }
+
+        addAssetsCaseSelect.addEventListener("change", syncAddAssetsSlotOptions);
+        syncAddAssetsSlotOptions();
+      }
+    </script>
+  {% endif %}
   {% include "_timeout_lock_script.html" %}
 {% endblock %}

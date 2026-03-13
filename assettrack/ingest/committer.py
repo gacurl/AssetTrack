@@ -102,6 +102,139 @@ def _asset_exists(conn: sqlite3.Connection, asset_tag: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def _assign_new_asset_to_home_slot(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    event_date: str,
+    actor: str | None,
+    notes: str | None,
+    data: dict[str, Any],
+) -> None:
+    home_slot_raw = data.get("home_slot_id")
+    case_number = str(data.get("case_number", "")).strip().upper()
+    slot_number_raw = str(data.get("slot_number", "")).strip()
+
+    slot_row: sqlite3.Row | None = None
+    if home_slot_raw not in {None, ""}:
+        try:
+            home_slot_id = int(str(home_slot_raw).strip())
+        except ValueError as e:
+            raise BatchCommitError("home_slot_id must be an integer") from e
+        slot_row = conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            (home_slot_id,),
+        ).fetchone()
+        if slot_row is None:
+            raise BatchCommitError(f"home_slot_id does not reference an existing slot for {asset_tag}")
+    elif case_number or slot_number_raw:
+        if not case_number or not slot_number_raw:
+            raise BatchCommitError(f"case_number and slot_number must both be present for {asset_tag}")
+        try:
+            slot_position = int(slot_number_raw)
+        except ValueError as e:
+            raise BatchCommitError(f"slot_number must be an integer for {asset_tag}") from e
+        slot_row = conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            WHERE UPPER(case_name) = UPPER(?)
+              AND slot_position = ?
+            LIMIT 1;
+            """,
+            (case_number, slot_position),
+        ).fetchone()
+        if slot_row is None:
+            raise BatchCommitError(f"Selected slot does not exist for {asset_tag}")
+
+    asset_row = conn.execute(
+        """
+        SELECT id
+        FROM assets
+        WHERE UPPER(asset_tag) = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag,),
+    ).fetchone()
+    if asset_row is None:
+        raise BatchCommitError(f"Asset {asset_tag} was not created")
+
+    # Normalize new intake-created assets into storage semantics used by issue/return flows.
+    asset_columns = {row[1] for row in conn.execute("PRAGMA table_info(assets);").fetchall()}
+    update_clauses: list[str] = []
+    update_values: list[Any] = []
+    if "location_type" in asset_columns:
+        update_clauses.append("location_type = ?")
+        update_values.append("STORAGE")
+    if "current_holder_id" in asset_columns:
+        update_clauses.append("current_holder_id = NULL")
+    if "home_slot_id" in asset_columns:
+        update_clauses.append("home_slot_id = ?")
+        update_values.append(None if slot_row is None else int(slot_row["id"]))
+    if "updated_date" in asset_columns:
+        update_clauses.append("updated_date = ?")
+        update_values.append(event_date)
+    if update_clauses:
+        update_values.append(int(asset_row["id"]))
+        conn.execute(
+            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+            tuple(update_values),
+        )
+
+    if slot_row is None:
+        return
+
+    occupied = conn.execute(
+        """
+        SELECT 1
+        FROM slot_occupancy
+        WHERE slot_id = ?
+        LIMIT 1;
+        """,
+        (int(slot_row["id"]),),
+    ).fetchone()
+    if occupied:
+        raise BatchCommitError(f"Selected slot is already occupied for {asset_tag}")
+    if str(slot_row["current_asset_tag"] or "").strip():
+        raise BatchCommitError(f"Selected slot is already occupied for {asset_tag}")
+
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (?, ?, ?);
+        """,
+        (int(slot_row["id"]), int(asset_row["id"]), event_date),
+    )
+    conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = ?
+        WHERE id = ?;
+        """,
+        (asset_tag, int(slot_row["id"])),
+    )
+
+    record_event(
+        conn,
+        asset_tag=asset_tag,
+        event_type="SLOT_ASSIGN",
+        event_date=event_date,
+        actor=actor,
+        notes=notes,
+        payload={
+            "slot_id": int(slot_row["id"]),
+            "case_number": str(slot_row["case_name"] or ""),
+            "slot_number": int(slot_row["slot_position"]),
+            "equipment_type": str(data.get("equipment_type", "") or "").strip(),
+        },
+    )
+
+
 def _apply_one_event(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     """
     Apply a single ingest event to the DB.
@@ -141,6 +274,14 @@ def _apply_one_event(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     # SCAN creates the asset if it's new; otherwise treat as an update of location-ish fields.
     if event_type == "SCAN" and not exists:
         create_asset(conn, asset_data=data)
+        _assign_new_asset_to_home_slot(
+            conn,
+            asset_tag=asset_tag,
+            event_date=event_date,
+            actor=actor,
+            notes=notes,
+            data=data,
+        )
     else:
         update_asset(
             conn,

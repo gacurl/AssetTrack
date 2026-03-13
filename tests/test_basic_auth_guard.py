@@ -64,6 +64,8 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     _login(client_with_temp_db, "admin", "admin-pass")
     response = client_with_temp_db.get("/admin/assets/new")
     assert response.status_code == 200
+    edit_response = client_with_temp_db.get("/admin/assets/edit")
+    assert edit_response.status_code == 200
 
 
 def test_bootstrap_only_when_empty(client_with_temp_db) -> None:

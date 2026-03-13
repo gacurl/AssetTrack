@@ -7,13 +7,14 @@
 {% block extra_head %}
   <style>
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    input[type="text"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
     .hidden { display: none; }
   </style>
 {% endblock %}
 
 {% block content %}
   <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+  <p><a href="{{ url_for('admin_edit_asset') }}">Edit an existing asset</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -70,19 +71,31 @@
         </div>
       </div>
 
-      <div class="row">
-        <label for="assign_now"><strong>Assign to slot now?</strong></label><br />
-        <input type="checkbox" id="assign_now" name="assign_now" value="yes" {% if form.assign_now == "yes" %}checked{% endif %} />
-      </div>
-
-      <div id="assign-fields" class="{% if form.assign_now != 'yes' %}hidden{% endif %}">
+      <div class="grid">
         <div class="row">
-          <label for="case_number"><strong>case_number</strong> (required when assigning)</label><br />
-          <input type="text" id="case_number" name="case_number" value="{{ form.case_number or '' }}" />
+          <label for="case_name"><strong>case</strong> (optional)</label><br />
+          <select id="case_name" name="case_name">
+            <option value="">Unassigned</option>
+            {% for case_name in case_options %}
+              <option value="{{ case_name }}" {% if form.case_name == case_name %}selected{% endif %}>{{ case_name }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="row">
-          <label for="slot_number"><strong>slot_number</strong> (required when assigning)</label><br />
-          <input type="text" id="slot_number" name="slot_number" value="{{ form.slot_number or '' }}" />
+          <label for="slot_id"><strong>slot</strong> (optional)</label><br />
+          <select id="slot_id" name="slot_id">
+            <option value="">Unassigned</option>
+            {% for slot in slot_options %}
+              <option
+                value="{{ slot.id }}"
+                data-case="{{ slot.case_name }}"
+                {% if form.slot_id == (slot.id|string) %}selected{% endif %}
+              >
+                {{ slot.case_name }} / Slot {{ slot.slot_position }}{% if slot.occupied_asset_tag %} - occupied by {{ slot.occupied_asset_tag }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <p class="muted">Choose both case and slot to assign a home location, or leave both blank.</p>
         </div>
       </div>
 
@@ -93,19 +106,31 @@
 
 {% block extra_scripts %}
   <script>
-    const assignNow = document.getElementById("assign_now");
-    const assignFields = document.getElementById("assign-fields");
-    const caseNumber = document.getElementById("case_number");
-    const slotNumber = document.getElementById("slot_number");
+    const caseSelect = document.getElementById("case_name");
+    const slotSelect = document.getElementById("slot_id");
+    const slotOptions = Array.from(slotSelect.options);
 
-    function syncAssignFields() {
-      const enabled = assignNow.checked;
-      assignFields.classList.toggle("hidden", !enabled);
-      caseNumber.required = enabled;
-      slotNumber.required = enabled;
+    function syncSlotOptions() {
+      const selectedCase = caseSelect.value;
+      const selectedSlot = slotSelect.value;
+
+      slotOptions.forEach((option) => {
+        if (!option.value) {
+          option.hidden = false;
+          return;
+        }
+        const matchesCase = !selectedCase || option.dataset.case === selectedCase;
+        const isSelected = option.value === selectedSlot;
+        option.hidden = !matchesCase && !isSelected;
+      });
+
+      const selectedOption = slotSelect.selectedOptions[0];
+      if (selectedOption && selectedOption.value && selectedOption.dataset.case !== selectedCase) {
+        slotSelect.value = "";
+      }
     }
 
-    assignNow.addEventListener("change", syncAssignFields);
-    syncAssignFields();
+    caseSelect.addEventListener("change", syncSlotOptions);
+    syncSlotOptions();
   </script>
 {% endblock %}
