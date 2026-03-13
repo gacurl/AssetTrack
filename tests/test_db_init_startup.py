@@ -45,6 +45,19 @@ def test_initialize_if_missing_or_empty_preserves_existing_db(tmp_path: Path) ->
     db.assert_schema_present(db_path)
 
 
+def test_initialize_schema_adds_holders_organization_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(holders);").fetchall()}
+    finally:
+        conn.close()
+
+    assert "organization" in columns
+
+
 def test_initialize_if_missing_or_empty_does_not_mask_invalid_nonempty_db(tmp_path: Path) -> None:
     db_path = tmp_path / "assettrack.db"
     db_path.write_bytes(b"not-a-valid-schema")

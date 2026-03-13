@@ -21,11 +21,11 @@ def search_holders(query: str, limit: int = 20) -> list[dict]:
         cursor = conn.execute(
             """
             SELECT * FROM holders
-            WHERE name LIKE ? OR identifier LIKE ?
+            WHERE name LIKE ? OR identifier LIKE ? OR organization LIKE ?
             ORDER BY name ASC, id ASC
             LIMIT ?;
             """,
-            (pattern, pattern, limit),
+            (pattern, pattern, pattern, limit),
         )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -42,13 +42,14 @@ def list_holders() -> list[dict]:
                 h.id,
                 h.holder_type,
                 h.name,
+                h.organization,
                 h.identifier,
                 h.contact_info,
                 COUNT(a.id) AS asset_count
             FROM holders h
             LEFT JOIN assets a
               ON a.current_holder_id = h.id
-            GROUP BY h.id, h.holder_type, h.name, h.identifier, h.contact_info
+            GROUP BY h.id, h.holder_type, h.name, h.organization, h.identifier, h.contact_info
             ORDER BY h.name COLLATE NOCASE ASC, h.id ASC;
             """
         ).fetchall()
@@ -85,22 +86,24 @@ def create_holder(
     name: str,
     *,
     holder_type: str = "PERSON",
+    organization: str | None = None,
     identifier: str | None = None,
     contact_info: str | None = None,
 ) -> dict:
     normalized_name = (name or "").strip()
     if not normalized_name:
         raise ValueError("name is required")
+    normalized_organization = (organization or "").strip() or None
 
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
         cursor = conn.execute(
             """
-            INSERT INTO holders (holder_type, name, identifier, contact_info, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?);
+            INSERT INTO holders (holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
             """,
-            (holder_type, normalized_name, identifier, contact_info, now_iso, now_iso),
+            (holder_type, normalized_name, normalized_organization, identifier, contact_info, now_iso, now_iso),
         )
         conn.commit()
         created_id = int(cursor.lastrowid)
@@ -110,6 +113,48 @@ def create_holder(
             WHERE id = ?;
             """,
             (created_id,),
+        ).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def update_holder(
+    holder_id: int,
+    *,
+    name: str,
+    organization: str | None = None,
+) -> dict:
+    try:
+        normalized_id = int(holder_id)
+    except (TypeError, ValueError) as e:
+        raise ValueError("holder_id is required") from e
+
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise ValueError("name is required")
+    normalized_organization = (organization or "").strip() or None
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE holders
+            SET name = ?, organization = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            (normalized_name, normalized_organization, now_iso, normalized_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("holder not found")
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT * FROM holders
+            WHERE id = ?;
+            """,
+            (normalized_id,),
         ).fetchone()
         return dict(row)
     finally:

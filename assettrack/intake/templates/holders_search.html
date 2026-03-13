@@ -48,6 +48,7 @@
       <p>
         <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
         <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+        <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
       <form method="post" action="{{ url_for('holders_clear') }}">
@@ -66,8 +67,10 @@
           <tr>
             <th style="width: 120px;">Type</th>
             <th style="width: 220px;">Name</th>
+            <th style="width: 200px;">Organization</th>
             <th style="width: 180px;">Identifier</th>
             <th>Contact</th>
+            <th style="width: 120px;">Edit</th>
             <th style="width: 120px;">Select</th>
           </tr>
         </thead>
@@ -76,8 +79,10 @@
             <tr>
               <td>{{ h["holder_type"] }}</td>
               <td>{{ h["name"] }}</td>
+              <td>{{ h["organization"] or "" }}</td>
               <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["contact_info"] or "" }}</td>
+              <td><a href="{{ url_for('holders_edit', holder_id=h['id']) }}">Edit</a></td>
               <td>
                 <form method="post" action="{{ url_for('holders_select') }}">
                   <input type="hidden" name="holder_id" value="{{ h['id'] }}" />

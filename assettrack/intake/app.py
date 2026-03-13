@@ -35,7 +35,7 @@ from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.auth import current_user, require_login, require_role
-from assettrack.holders import create_holder, get_holder, list_holders, search_holders
+from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
 from assettrack.audit import record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
@@ -2632,7 +2632,7 @@ def holders_new():
 
     return render_template(
         "holder_new.html",
-        form={"name": ""},
+        form={"name": "", "organization": ""},
         error_message=None,
     )
 
@@ -2646,10 +2646,11 @@ def holders_create():
         return redirect(url_for("intake"))
 
     name = (request.form.get("name") or "").strip()
-    form = {"name": name}
+    organization = (request.form.get("organization") or "").strip()
+    form = {"name": name, "organization": organization}
 
     try:
-        created = create_holder(name)
+        created = create_holder(name, organization=organization)
     except ValueError:
         return render_template(
             "holder_new.html",
@@ -2659,6 +2660,64 @@ def holders_create():
 
     flash(f"Created holder: {created['name']}", "success")
     return redirect(url_for("holders_search"))
+
+
+@app.get("/holders/edit/<int:holder_id>")
+@require_login
+def holders_edit(holder_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    holder = get_holder(holder_id)
+    if holder is None:
+        abort(404)
+
+    return render_template(
+        "holder_edit.html",
+        holder=holder,
+        form={
+            "name": str(holder.get("name") or ""),
+            "organization": str(holder.get("organization") or ""),
+        },
+        error_message=None,
+    )
+
+
+@app.post("/holders/edit/<int:holder_id>")
+@require_login
+def holders_edit_submit(holder_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    form = {
+        "name": (request.form.get("name") or "").strip(),
+        "organization": (request.form.get("organization") or "").strip(),
+    }
+
+    holder = get_holder(holder_id)
+    if holder is None:
+        abort(404)
+
+    try:
+        updated = update_holder(
+            holder_id,
+            name=form["name"],
+            organization=form["organization"],
+        )
+    except ValueError as e:
+        return render_template(
+            "holder_edit.html",
+            holder=holder,
+            form=form,
+            error_message="Name is required." if str(e) == "name is required" else str(e),
+        )
+
+    flash(f"Updated holder: {updated['name']}", "success")
+    return redirect(url_for("holders_search", q=updated["name"]))
 
 
 @app.post("/holders/select")
