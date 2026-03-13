@@ -239,6 +239,97 @@ def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
     return dict(legacy_row) if legacy_row else None
 
 
+def _asset_home_slot(conn, home_slot_id: object) -> Optional[dict]:
+    if home_slot_id is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT id AS slot_id, case_name, slot_position
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (int(home_slot_id),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _list_slot_options(conn) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            s.id,
+            s.case_name,
+            s.slot_position,
+            so.asset_id AS occupied_asset_id,
+            a.asset_tag AS occupied_asset_tag,
+            s.current_asset_tag AS legacy_asset_tag
+        FROM slots s
+        LEFT JOIN slot_occupancy so ON so.slot_id = s.id
+        LEFT JOIN assets a ON a.id = so.asset_id
+        ORDER BY UPPER(s.case_name) ASC, s.slot_position ASC, s.id ASC;
+        """
+    ).fetchall()
+    return [
+        {
+            "id": int(row["id"]),
+            "case_name": str(row["case_name"] or ""),
+            "slot_position": int(row["slot_position"]),
+            "occupied_asset_id": None if row["occupied_asset_id"] is None else int(row["occupied_asset_id"]),
+            "occupied_asset_tag": str(row["occupied_asset_tag"] or row["legacy_asset_tag"] or ""),
+        }
+        for row in rows
+    ]
+
+
+def _slot_case_options(slot_options: list[dict]) -> list[str]:
+    return sorted({str(row["case_name"]) for row in slot_options if str(row["case_name"]).strip()})
+
+
+def _resolve_slot_selection(
+    conn: sqlite3.Connection,
+    *,
+    case_name: str,
+    slot_id_raw: str,
+) -> tuple[Optional[dict], list[str]]:
+    case_name_clean = str(case_name or "").strip().upper()
+    slot_id_text = str(slot_id_raw or "").strip()
+    errors: list[str] = []
+
+    if bool(case_name_clean) != bool(slot_id_text):
+        errors.append("case and slot must both be selected.")
+        return None, errors
+
+    if not case_name_clean and not slot_id_text:
+        return None, errors
+
+    try:
+        slot_id = int(slot_id_text)
+    except ValueError:
+        errors.append("slot selection is invalid.")
+        return None, errors
+
+    slot_row = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (slot_id,),
+    ).fetchone()
+    if slot_row is None:
+        errors.append("selected slot does not exist.")
+        return None, errors
+
+    resolved_case = str(slot_row["case_name"] or "").strip().upper()
+    if resolved_case != case_name_clean:
+        errors.append("selected slot does not belong to the selected case.")
+        return None, errors
+
+    return dict(slot_row), errors
+
+
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     errors: list[str] = []
     asset = _find_asset_for_scan_tag(conn, scan_tag)
@@ -286,6 +377,40 @@ def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
         "home_slot_id": asset.get("home_slot_id"),
     }
     return view, errors
+
+
+def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
+    asset = _find_asset_for_scan_tag(conn, scan_tag)
+    if not asset:
+        return None, ["asset_tag not found"]
+
+    location_type = _normalize_location_type(asset.get("location_type"))
+    if _is_terminal_location_type(location_type):
+        return None, ["Asset is retired/disposed and cannot be edited."]
+
+    current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset["asset_tag"]))
+    home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+
+    return (
+        {
+            "id": int(asset["id"]),
+            "asset_tag": str(asset.get("asset_tag") or ""),
+            "serial_number": str(asset.get("serial_number") or ""),
+            "manufacturer": str(asset.get("manufacturer") or ""),
+            "equipment_type": str(asset.get("equipment_type") or ""),
+            "building": str(asset.get("building") or ""),
+            "room": str(asset.get("room") or ""),
+            "model": str(asset.get("model") or ""),
+            "model_code": str(asset.get("model_code") or ""),
+            "notes": str(asset.get("notes") or ""),
+            "location_type": location_type,
+            "current_holder_id": asset.get("current_holder_id"),
+            "home_slot_id": asset.get("home_slot_id"),
+            "current_slot": current_slot,
+            "home_slot": home_slot,
+        },
+        [],
+    )
 
 
 def _build_admin_slot_move_source_view(conn, slot_id: int) -> Optional[dict]:
@@ -833,6 +958,235 @@ def _create_admin_asset_in_tx(
         "home_slot_id": home_slot_id,
         "location_type": "STORAGE",
         "current_holder_id": None,
+    }
+
+
+def _update_admin_asset_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    asset_id: int,
+    actor: str,
+    serial_number: str,
+    manufacturer: str,
+    equipment_type: str,
+    building: str,
+    room: str,
+    model: Optional[str],
+    model_code: Optional[str],
+    notes: Optional[str],
+    selected_slot: Optional[dict],
+) -> dict:
+    locked = conn.execute(
+        """
+        SELECT *
+        FROM assets
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (asset_id,),
+    ).fetchone()
+    if not locked:
+        raise ValueError("asset not found.")
+
+    asset = dict(locked)
+    asset_tag = str(asset.get("asset_tag") or "")
+    location_type = _normalize_location_type(asset.get("location_type"))
+    if _is_terminal_location_type(location_type):
+        raise ValueError("Asset is retired/disposed and cannot be edited.")
+
+    if serial_number:
+        duplicate_serial = conn.execute(
+            """
+            SELECT id
+            FROM assets
+            WHERE id <> ?
+              AND TRIM(COALESCE(serial_number, '')) <> ''
+              AND UPPER(serial_number) = UPPER(?)
+            LIMIT 1;
+            """,
+            (asset_id, serial_number),
+        ).fetchone()
+        if duplicate_serial:
+            raise ValueError("serial_number already exists.")
+
+    current_slot = _asset_current_slot(conn, asset_id, asset_tag)
+    current_slot_id = None if current_slot is None else int(current_slot["slot_id"])
+    target_slot_id = None if selected_slot is None else int(selected_slot["id"])
+
+    if target_slot_id is None and asset.get("home_slot_id") is not None:
+        raise ValueError("Clearing an existing home slot is not supported here.")
+
+    if current_slot is not None and location_type != "STORAGE":
+        raise ValueError("Asset slot occupancy is inconsistent with its location_type.")
+
+    if selected_slot is not None:
+        occupied_row = conn.execute(
+            """
+            SELECT asset_id
+            FROM slot_occupancy
+            WHERE slot_id = ?
+            LIMIT 1;
+            """,
+            (target_slot_id,),
+        ).fetchone()
+        if occupied_row and int(occupied_row["asset_id"]) != asset_id:
+            raise ValueError("Selected slot is already occupied.")
+
+        legacy_occupied = str(selected_slot.get("current_asset_tag") or "").strip()
+        if legacy_occupied and legacy_occupied.upper() != asset_tag.upper():
+            raise ValueError("Selected slot is already occupied.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    building_room = f"{building}/{room}"
+    asset_columns = get_asset_table_columns(conn)
+
+    changed_fields: dict[str, object] = {}
+    field_values = {
+        "serial_number": serial_number,
+        "manufacturer": manufacturer,
+        "equipment_type": equipment_type,
+        "building": building,
+        "room": room,
+        "building_room": building_room,
+        "model": model,
+        "model_code": model_code,
+        "notes": notes,
+    }
+    for key, value in field_values.items():
+        if key in asset_columns and asset.get(key) != value:
+            changed_fields[key] = value
+
+    if "home_slot_id" in asset_columns and asset.get("home_slot_id") != target_slot_id:
+        changed_fields["home_slot_id"] = target_slot_id
+    if "case_number" in asset_columns:
+        next_case_number = None if selected_slot is None else str(selected_slot["case_name"])
+        if asset.get("case_number") != next_case_number:
+            changed_fields["case_number"] = next_case_number
+    if "slot_number" in asset_columns:
+        next_slot_number = None if selected_slot is None else str(selected_slot["slot_position"])
+        if asset.get("slot_number") != next_slot_number:
+            changed_fields["slot_number"] = next_slot_number
+
+    if location_type == "STORAGE" and current_slot_id != target_slot_id:
+        if current_slot_id is not None:
+            conn.execute("DELETE FROM slot_occupancy WHERE asset_id = ?;", (asset_id,))
+            conn.execute("UPDATE slots SET current_asset_tag = NULL WHERE id = ?;", (current_slot_id,))
+        if target_slot_id is not None:
+            conn.execute(
+                """
+                INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                VALUES (?, ?, ?);
+                """,
+                (target_slot_id, asset_id, now_iso),
+            )
+            conn.execute(
+                """
+                UPDATE slots
+                SET current_asset_tag = ?
+                WHERE id = ?;
+                """,
+                (asset_tag, target_slot_id),
+            )
+    elif location_type not in {"STORAGE", "IN_CUSTODY", ""}:
+        raise ValueError("Asset location_type is not supported for admin edit.")
+
+    update_clauses: list[str] = []
+    update_values: list[object] = []
+    for key, value in changed_fields.items():
+        update_clauses.append(f"{key} = ?")
+        update_values.append(value)
+    if "updated_date" in asset_columns:
+        update_clauses.append("updated_date = ?")
+        update_values.append(now_iso)
+    if update_clauses:
+        update_values.append(asset_id)
+        conn.execute(
+            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+            tuple(update_values),
+        )
+
+    if current_slot_id != target_slot_id:
+        if location_type == "STORAGE" and current_slot_id is None and selected_slot is not None:
+            payload = {
+                "slot_id": target_slot_id,
+                "case_number": str(selected_slot["case_name"]),
+                "slot_number": int(selected_slot["slot_position"]),
+                "building": building,
+                "room": room,
+                "equipment_type": equipment_type,
+            }
+            conn.execute(
+                """
+                INSERT INTO asset_events (
+                    asset_tag,
+                    event_type,
+                    event_date,
+                    actor,
+                    notes,
+                    payload,
+                    holder_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                (asset_tag, "SLOT_ASSIGN", now_iso, actor, notes, json.dumps(payload), None),
+            )
+        else:
+            payload = {
+                "from_slot_id": current_slot_id,
+                "to_slot_id": target_slot_id,
+                "case_number": None if selected_slot is None else str(selected_slot["case_name"]),
+                "slot_number": None if selected_slot is None else int(selected_slot["slot_position"]),
+                "location_type": location_type,
+            }
+            conn.execute(
+                """
+                INSERT INTO asset_events (
+                    asset_tag,
+                    event_type,
+                    event_date,
+                    actor,
+                    notes,
+                    payload,
+                    holder_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                (asset_tag, "ASSET_UPDATED", now_iso, actor, notes, json.dumps(payload), asset.get("current_holder_id")),
+            )
+
+    metadata_payload = dict(changed_fields)
+    if metadata_payload:
+        metadata_payload["asset_id"] = asset_id
+        conn.execute(
+            """
+            INSERT INTO asset_events (
+                asset_tag,
+                event_type,
+                event_date,
+                actor,
+                notes,
+                payload,
+                holder_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                asset_tag,
+                "ASSET_UPDATED",
+                now_iso,
+                actor,
+                notes,
+                json.dumps(metadata_payload),
+                asset.get("current_holder_id"),
+            ),
+        )
+
+    return {
+        "asset_id": asset_id,
+        "asset_tag": asset_tag,
+        "location_type": location_type,
+        "home_slot_id": target_slot_id,
+        "current_holder_id": asset.get("current_holder_id"),
     }
 
 
@@ -1548,7 +1902,40 @@ def intake():
         if scan_text:
             value = sanitize_scan(scan_text)
             if value:
-                SCAN_QUEUE.append(Scan.now(value, equipment_type=selected_equipment_type))
+                case_name = (request.form.get("case_name") or "").strip().upper()
+                slot_id_raw = (request.form.get("slot_id") or "").strip()
+                home_slot_id: Optional[int] = None
+                slot_position: Optional[int] = None
+                if case_name or slot_id_raw:
+                    conn = get_connection()
+                    try:
+                        selected_slot, slot_errors = _resolve_slot_selection(
+                            conn,
+                            case_name=case_name,
+                            slot_id_raw=slot_id_raw,
+                        )
+                    finally:
+                        conn.close()
+                    if slot_errors:
+                        flash("; ".join(slot_errors), "error")
+                        touch_session()
+                        if return_to.startswith("/") and not return_to.startswith("//"):
+                            return redirect(return_to)
+                        return redirect(url_for("add_assets"))
+                    if selected_slot is not None:
+                        home_slot_id = int(selected_slot["id"])
+                        case_name = str(selected_slot["case_name"])
+                        slot_position = int(selected_slot["slot_position"])
+
+                SCAN_QUEUE.append(
+                    Scan.now(
+                        value,
+                        equipment_type=selected_equipment_type,
+                        home_slot_id=home_slot_id,
+                        case_name=case_name,
+                        slot_position=slot_position,
+                    )
+                )
 
         touch_session()
 
@@ -1581,6 +1968,15 @@ def add_assets():
     if session.get("last_seen") is None:
         touch_session()
 
+    slot_options: list[dict] = []
+    case_options: list[str] = []
+    conn = get_connection()
+    try:
+        slot_options = _list_slot_options(conn)
+        case_options = _slot_case_options(slot_options)
+    finally:
+        conn.close()
+
     return render_template(
         "index.html",
         auth_enabled=auth_enabled(),
@@ -1591,6 +1987,8 @@ def add_assets():
         queue_len=len(SCAN_QUEUE),
         latest=(SCAN_QUEUE[-1].asset_tag if SCAN_QUEUE else ""),
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+        slot_options=slot_options,
+        case_options=case_options,
     )
 
 
@@ -2438,62 +2836,61 @@ def admin_new_asset():
         "model": "",
         "model_code": "",
         "notes": "",
-        "assign_now": "no",
-        "case_number": "",
-        "slot_number": "",
+        "case_name": "",
+        "slot_id": "",
     }
     error_message: Optional[str] = None
+    conn = get_connection()
+    try:
+        slot_options = _list_slot_options(conn)
+        case_options = _slot_case_options(slot_options)
 
-    if request.method == "POST":
-        form_state = {
-            "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
-            "serial_number": (request.form.get("serial_number") or "").strip(),
-            "manufacturer": (request.form.get("manufacturer") or "").strip(),
-            "equipment_type": (request.form.get("equipment_type") or "").strip() or "laptop",
-            "building": (request.form.get("building") or "").strip(),
-            "room": (request.form.get("room") or "").strip(),
-            "model": (request.form.get("model") or "").strip(),
-            "model_code": (request.form.get("model_code") or "").strip(),
-            "notes": (request.form.get("notes") or "").strip(),
-            "assign_now": "yes" if _is_truthy(request.form.get("assign_now")) else "no",
-            "case_number": (request.form.get("case_number") or "").strip().upper(),
-            "slot_number": (request.form.get("slot_number") or "").strip(),
-        }
+        if request.method == "POST":
+            form_state = {
+                "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
+                "serial_number": (request.form.get("serial_number") or "").strip(),
+                "manufacturer": (request.form.get("manufacturer") or "").strip(),
+                "equipment_type": (request.form.get("equipment_type") or "").strip() or "laptop",
+                "building": (request.form.get("building") or "").strip(),
+                "room": (request.form.get("room") or "").strip(),
+                "model": (request.form.get("model") or "").strip(),
+                "model_code": (request.form.get("model_code") or "").strip(),
+                "notes": (request.form.get("notes") or "").strip(),
+                "case_name": (request.form.get("case_name") or "").strip().upper(),
+                "slot_id": (request.form.get("slot_id") or "").strip(),
+            }
 
-        errors: list[str] = []
-        if not form_state["asset_tag"]:
-            errors.append("asset_tag is required.")
-        if not form_state["serial_number"]:
-            errors.append("serial_number is required.")
-        if not form_state["manufacturer"]:
-            errors.append("manufacturer is required.")
-        if not form_state["equipment_type"]:
-            errors.append("equipment_type is required.")
-        if not form_state["building"]:
-            errors.append("building is required.")
-        if not form_state["room"]:
-            errors.append("room is required.")
+            errors: list[str] = []
+            if not form_state["asset_tag"]:
+                errors.append("asset_tag is required.")
+            if not form_state["serial_number"]:
+                errors.append("serial_number is required.")
+            if not form_state["manufacturer"]:
+                errors.append("manufacturer is required.")
+            if not form_state["equipment_type"]:
+                errors.append("equipment_type is required.")
+            if not form_state["building"]:
+                errors.append("building is required.")
+            if not form_state["room"]:
+                errors.append("room is required.")
 
-        assign_slot_number: Optional[int] = None
-        assign_case_number: Optional[str] = None
-        if form_state["assign_now"] == "yes":
-            if not form_state["case_number"]:
-                errors.append("case_number is required when assign_now is enabled.")
-            if not form_state["slot_number"]:
-                errors.append("slot_number is required when assign_now is enabled.")
-            if form_state["slot_number"]:
-                try:
-                    assign_slot_number = int(form_state["slot_number"])
-                except ValueError:
-                    errors.append("slot_number must be an integer.")
-            assign_case_number = form_state["case_number"] or None
+            selected_slot, slot_errors = _resolve_slot_selection(
+                conn,
+                case_name=form_state["case_name"],
+                slot_id_raw=form_state["slot_id"],
+            )
+            errors.extend(slot_errors)
 
-        if errors:
-            error_message = "; ".join(errors)
-            return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+            if errors:
+                error_message = "; ".join(errors)
+                return render_template(
+                    "admin_new_asset.html",
+                    form=form_state,
+                    error_message=error_message,
+                    slot_options=slot_options,
+                    case_options=case_options,
+                )
 
-        conn = get_connection()
-        try:
             try:
                 conn.execute("BEGIN;")
                 _create_admin_asset_in_tx(
@@ -2508,28 +2905,244 @@ def admin_new_asset():
                     model=form_state["model"] or None,
                     model_code=form_state["model_code"] or None,
                     notes=form_state["notes"] or None,
-                    assign_case_number=assign_case_number,
-                    assign_slot_number=assign_slot_number,
+                    assign_case_number=None if selected_slot is None else str(selected_slot["case_name"]),
+                    assign_slot_number=None if selected_slot is None else int(selected_slot["slot_position"]),
                 )
                 conn.commit()
             except ValueError as e:
                 conn.rollback()
                 error_message = str(e)
-                return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+                return render_template(
+                    "admin_new_asset.html",
+                    form=form_state,
+                    error_message=error_message,
+                    slot_options=slot_options,
+                    case_options=case_options,
+                )
             except sqlite3.IntegrityError as e:
                 conn.rollback()
                 error_message = f"create failed: {e}"
-                return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+                return render_template(
+                    "admin_new_asset.html",
+                    form=form_state,
+                    error_message=error_message,
+                    slot_options=slot_options,
+                    case_options=case_options,
+                )
             except Exception:
                 conn.rollback()
                 raise
-        finally:
-            conn.close()
 
-        flash(f"Created asset {form_state['asset_tag']}.", "success")
-        return redirect(url_for("admin_new_asset"))
+            flash(f"Created asset {form_state['asset_tag']}.", "success")
+            return redirect(url_for("admin_new_asset"))
+    finally:
+        conn.close()
 
-    return render_template("admin_new_asset.html", form=form_state, error_message=error_message)
+    return render_template(
+        "admin_new_asset.html",
+        form=form_state,
+        error_message=error_message,
+        slot_options=slot_options,
+        case_options=case_options,
+    )
+
+
+@app.route("/admin/assets/edit", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_edit_asset():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    form_state = {
+        "lookup_asset_tag": (request.args.get("asset_tag") or "").strip().upper(),
+        "asset_tag": "",
+        "serial_number": "",
+        "manufacturer": "",
+        "equipment_type": "",
+        "building": "",
+        "room": "",
+        "model": "",
+        "model_code": "",
+        "notes": "",
+        "case_name": "",
+        "slot_id": "",
+    }
+    asset_view: Optional[dict] = None
+    error_message: Optional[str] = None
+
+    conn = get_connection()
+    try:
+        slot_options = _list_slot_options(conn)
+        case_options = _slot_case_options(slot_options)
+
+        if form_state["lookup_asset_tag"]:
+            asset_view, blocking_errors = _build_admin_edit_asset_view(conn, form_state["lookup_asset_tag"])
+            if asset_view:
+                selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
+                form_state.update(
+                    {
+                        "asset_tag": asset_view["asset_tag"],
+                        "serial_number": asset_view["serial_number"],
+                        "manufacturer": asset_view["manufacturer"],
+                        "equipment_type": asset_view["equipment_type"],
+                        "building": asset_view["building"],
+                        "room": asset_view["room"],
+                        "model": asset_view["model"],
+                        "model_code": asset_view["model_code"],
+                        "notes": asset_view["notes"],
+                        "case_name": "" if selected_home_slot is None else str(selected_home_slot["case_name"]),
+                        "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
+                    }
+                )
+            elif blocking_errors:
+                error_message = "; ".join(blocking_errors)
+
+        if request.method == "POST":
+            action = (request.form.get("action") or "lookup").strip().lower()
+            lookup_asset_tag = (request.form.get("lookup_asset_tag") or "").strip().upper()
+            form_state["lookup_asset_tag"] = lookup_asset_tag
+
+            if action == "lookup":
+                asset_view, blocking_errors = _build_admin_edit_asset_view(conn, lookup_asset_tag)
+                if asset_view:
+                    selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
+                    form_state.update(
+                        {
+                            "asset_tag": asset_view["asset_tag"],
+                            "serial_number": asset_view["serial_number"],
+                            "manufacturer": asset_view["manufacturer"],
+                            "equipment_type": asset_view["equipment_type"],
+                            "building": asset_view["building"],
+                            "room": asset_view["room"],
+                            "model": asset_view["model"],
+                            "model_code": asset_view["model_code"],
+                            "notes": asset_view["notes"],
+                            "case_name": "" if selected_home_slot is None else str(selected_home_slot["case_name"]),
+                            "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
+                        }
+                    )
+                elif not lookup_asset_tag:
+                    error_message = "asset_tag is required."
+                elif blocking_errors:
+                    error_message = "; ".join(blocking_errors)
+            elif action == "update":
+                form_state.update(
+                    {
+                        "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
+                        "serial_number": (request.form.get("serial_number") or "").strip(),
+                        "manufacturer": (request.form.get("manufacturer") or "").strip(),
+                        "equipment_type": (request.form.get("equipment_type") or "").strip(),
+                        "building": (request.form.get("building") or "").strip(),
+                        "room": (request.form.get("room") or "").strip(),
+                        "model": (request.form.get("model") or "").strip(),
+                        "model_code": (request.form.get("model_code") or "").strip(),
+                        "notes": (request.form.get("notes") or "").strip(),
+                        "case_name": (request.form.get("case_name") or "").strip().upper(),
+                        "slot_id": (request.form.get("slot_id") or "").strip(),
+                    }
+                )
+                asset_view, blocking_errors = _build_admin_edit_asset_view(conn, lookup_asset_tag or form_state["asset_tag"])
+                if asset_view is None:
+                    error_message = "; ".join(blocking_errors or ["asset_tag not found"])
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+
+                errors: list[str] = []
+                if not form_state["serial_number"]:
+                    errors.append("serial_number is required.")
+                if not form_state["manufacturer"]:
+                    errors.append("manufacturer is required.")
+                if not form_state["equipment_type"]:
+                    errors.append("equipment_type is required.")
+                if not form_state["building"]:
+                    errors.append("building is required.")
+                if not form_state["room"]:
+                    errors.append("room is required.")
+
+                selected_slot, slot_errors = _resolve_slot_selection(
+                    conn,
+                    case_name=form_state["case_name"],
+                    slot_id_raw=form_state["slot_id"],
+                )
+                errors.extend(slot_errors)
+
+                if errors:
+                    error_message = "; ".join(errors)
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+
+                try:
+                    conn.execute("BEGIN;")
+                    _update_admin_asset_in_tx(
+                        conn,
+                        asset_id=int(asset_view["id"]),
+                        actor="admin",
+                        serial_number=form_state["serial_number"],
+                        manufacturer=form_state["manufacturer"],
+                        equipment_type=form_state["equipment_type"],
+                        building=form_state["building"],
+                        room=form_state["room"],
+                        model=form_state["model"] or None,
+                        model_code=form_state["model_code"] or None,
+                        notes=form_state["notes"] or None,
+                        selected_slot=selected_slot,
+                    )
+                    conn.commit()
+                except ValueError as e:
+                    conn.rollback()
+                    error_message = str(e)
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    error_message = f"update failed: {e}"
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                flash(f"Updated asset {form_state['asset_tag']}.", "success")
+                return redirect(url_for("admin_edit_asset", asset_tag=form_state["asset_tag"]))
+            else:
+                error_message = "Unknown action."
+    finally:
+        conn.close()
+
+    return render_template(
+        "admin_edit_asset.html",
+        form=form_state,
+        asset=asset_view,
+        error_message=error_message,
+        slot_options=slot_options,
+        case_options=case_options,
+    )
 
 
 @app.route("/admin/assets/retire", methods=["GET", "POST"])

@@ -92,6 +92,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         response = self.client.get("/admin/assets/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Add Asset", response.data)
+        self.assertIn(b'name="case_name"', response.data)
+        self.assertIn(b'name="slot_id"', response.data)
 
     def test_add_assets_queue_renders_scan_timestamps_from_queue_items(self) -> None:
         intake_app.SCAN_QUEUE.clear()
@@ -108,6 +110,15 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'14:03:22', response.data)
         self.assertIn(b'datetime="2026-01-01T14:03:22+00:00"', response.data)
         self.assertNotIn(b"localStorage.getItem", response.data)
+
+    def test_add_assets_route_shows_case_and_slot_selectors_for_admin(self) -> None:
+        self._insert_slot(110, "CASE-LIVE", 4)
+
+        response = self.client.get("/add-assets")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'name="case_name"', response.data)
+        self.assertIn(b'name="slot_id"', response.data)
+        self.assertIn(b"CASE-LIVE", response.data)
 
     def test_scans_keep_equipment_type_captured_at_scan_time(self) -> None:
         intake_app.SCAN_QUEUE.clear()
@@ -221,9 +232,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
                 "equipment_type": "tablet",
                 "building": "HQ",
                 "room": "220",
-                "assign_now": "yes",
-                "case_number": "CASE-A",
-                "slot_number": "7",
+                "case_name": "CASE-A",
+                "slot_id": "101",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -269,9 +279,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
                 "equipment_type": "laptop",
                 "building": "HQ",
                 "room": "330",
-                "assign_now": "yes",
-                "case_number": "CASE-B",
-                "slot_number": "1",
+                "case_name": "CASE-B",
+                "slot_id": "102",
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -303,9 +312,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
                 "equipment_type": "laptop",
                 "building": "HQ",
                 "room": "331",
-                "assign_now": "yes",
-                "case_number": "CASE-C",
-                "slot_number": "9",
+                "case_name": "CASE-C",
+                "slot_id": "103",
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -315,6 +323,104 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIsNone(created)
         event = self.conn.execute("SELECT 1 FROM asset_events WHERE asset_tag = ?;", ("AT-801",)).fetchone()
         self.assertIsNone(event)
+
+    def test_add_assets_live_seam_commits_new_asset_with_selected_slot(self) -> None:
+        self._insert_slot(120, "CASE-Q", 5)
+        stored_tag = "ATLIVE1"
+
+        queued = self.client.post(
+            "/",
+            data={
+                "scan_text": "AT-LIVE-1",
+                "equipment_type": "tablet",
+                "case_name": "CASE-Q",
+                "slot_id": "120",
+                "return_to": "/add-assets",
+            },
+        )
+        self.assertEqual(queued.status_code, 302)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 1)
+        self.assertEqual(intake_app.SCAN_QUEUE[0].asset_tag, stored_tag)
+        self.assertEqual(intake_app.SCAN_QUEUE[0].home_slot_id, 120)
+        self.assertEqual(intake_app.SCAN_QUEUE[0].case_name, "CASE-Q")
+        self.assertEqual(intake_app.SCAN_QUEUE[0].slot_position, 5)
+
+        committed = self.client.post(
+            "/preview/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=True,
+        )
+        self.assertEqual(committed.status_code, 200)
+        self.assertIn(b"Added 1 item to the database.", committed.data)
+
+        verify_conn = db.get_connection()
+        try:
+            asset_row = verify_conn.execute(
+                """
+                SELECT asset_tag, equipment_type, location_type, current_holder_id, home_slot_id
+                FROM assets
+                WHERE asset_tag = ?;
+                """,
+                (stored_tag,),
+            ).fetchone()
+            self.assertIsNotNone(asset_row)
+            self.assertEqual(asset_row["asset_tag"], stored_tag)
+            self.assertEqual(asset_row["equipment_type"], "tablet")
+            self.assertEqual(asset_row["location_type"], "STORAGE")
+            self.assertIsNone(asset_row["current_holder_id"])
+            self.assertEqual(asset_row["home_slot_id"], 120)
+
+            occ = verify_conn.execute(
+                "SELECT slot_id FROM slot_occupancy WHERE asset_id = (SELECT id FROM assets WHERE asset_tag = ?);",
+                (stored_tag,),
+            ).fetchone()
+            self.assertIsNotNone(occ)
+            self.assertEqual(occ["slot_id"], 120)
+
+            slot = verify_conn.execute("SELECT current_asset_tag FROM slots WHERE id = 120;").fetchone()
+            self.assertEqual(slot["current_asset_tag"], stored_tag)
+        finally:
+            verify_conn.close()
+
+    def test_add_assets_live_seam_rejects_occupied_slot_on_commit(self) -> None:
+        existing_id = self._insert_asset("AT-OCC-LIVE", "SER-OCC-LIVE")
+        self._insert_slot(130, "CASE-O", 8, current_asset_tag="AT-OCC-LIVE")
+        stored_tag = "ATLIVE2"
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (130, ?, '2026-01-02T00:00:00Z');
+            """,
+            (existing_id,),
+        )
+        self.conn.commit()
+
+        queued = self.client.post(
+            "/",
+            data={
+                "scan_text": "AT-LIVE-2",
+                "equipment_type": "laptop",
+                "case_name": "CASE-O",
+                "slot_id": "130",
+                "return_to": "/add-assets",
+            },
+        )
+        self.assertEqual(queued.status_code, 302)
+
+        blocked = self.client.post(
+            "/preview/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=True,
+        )
+        self.assertEqual(blocked.status_code, 200)
+        self.assertIn(b"Selected slot is already occupied", blocked.data)
+
+        verify_conn = db.get_connection()
+        try:
+            created = verify_conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", (stored_tag,)).fetchone()
+            self.assertIsNone(created)
+        finally:
+            verify_conn.close()
 
 
 if __name__ == "__main__":
