@@ -11,7 +11,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('holders_search') }}">← Back to holder search</a></p>
+  <p><a href="{{ url_for('holders_search') }}">← Back to holders</a></p>
 
   <div class="card">
     <h2>Holders</h2>
@@ -34,7 +34,7 @@
             <tr>
               <td><code>{{ h["id"] }}</code></td>
               <td>{{ h["holder_type"] }}</td>
-              <td>{{ h["name"] }}</td>
+              <td><a href="{{ url_for('holder_detail', holder_id=h['id']) }}">{{ h["name"] }}</a></td>
               <td>{{ h["organization"] or "" }}</td>
               <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["contact_info"] or "" }}</td>

@@ -2599,7 +2599,7 @@ def holders_search():
 
     query = (request.args.get("q") or "").strip()
     return_to = (request.args.get("return_to") or "").strip()
-    results = search_holders(query) if query else []
+    results = search_holders(query) if query else list_holders()
 
     return render_template(
         "holders_search.html",
@@ -2613,13 +2613,36 @@ def holders_search():
 @app.get("/holders/list")
 @require_login
 def holders_list():
+    return redirect(url_for("holders_search"))
+
+
+@app.get("/holders/<int:holder_id>")
+@require_login
+def holder_detail(holder_id: int):
     authed = enforce_inactivity_timeout()
     if auth_enabled() and not authed:
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
-    holders = list_holders()
-    return render_template("holders_list.html", holders=holders)
+    return_to = (request.args.get("return_to") or "").strip()
+    holder = get_holder(holder_id)
+    if holder is None:
+        abort(404)
+
+    conn = get_connection()
+    try:
+        detail = get_holder_custody_detail(conn, holder_id)
+    finally:
+        conn.close()
+
+    assigned_assets = detail["assets"] if detail is not None else []
+    return render_template(
+        "holder_detail.html",
+        holder=holder,
+        assigned_assets=assigned_assets,
+        asset_count=len(assigned_assets),
+        return_to=return_to,
+    )
 
 
 @app.get("/holders/new")
