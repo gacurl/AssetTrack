@@ -157,6 +157,32 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNotNone(event_row)
         self.assertEqual(event_row["event_type"], "RETURN")
 
+    def test_single_asset_return_success_message_shows_final_location(self) -> None:
+        self._insert_slot(30, "CASE-13", 6, None)
+        self._insert_asset("MVPLAPTOP02", location_type="IN_CUSTODY", holder_id=7, home_slot_id=30)
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="MVPLAPTOP02", equipment_type="laptop"))
+
+        response = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Returned MVPLAPTOP02.", response.data)
+        self.assertIn(b"Location: STORAGE.", response.data)
+        self.assertIn(b"Slot: CASE-13 / 6.", response.data)
+
+        asset_after = self.conn.execute(
+            "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
+            ("MVPLAPTOP02",),
+        ).fetchone()
+        self.assertIsNotNone(asset_after)
+        self.assertEqual(asset_after["location_type"], "STORAGE")
+        self.assertIsNone(asset_after["current_holder_id"])
+
 
 if __name__ == "__main__":
     unittest.main()
