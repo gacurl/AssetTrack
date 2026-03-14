@@ -2590,7 +2590,17 @@ def return_commit():
     if wants_json():
         return {"ok": True, "committed": committed_count, "error": None}
 
-    flash(f"Returned {committed_count} assets.", "success")
+    if committed_count == 1 and len(state["assets"]) == 1:
+        returned_asset = state["assets"][0]
+        flash(
+            "Returned "
+            f"{returned_asset['canonical_tag'] or returned_asset['scanned_tag']}. "
+            f"Location: {returned_asset['after_location_type']}. "
+            f"Slot: {returned_asset['destination_slot']}.",
+            "success",
+        )
+    else:
+        flash(f"Returned {committed_count} assets.", "success")
     return redirect(url_for("return_queue"))
 
 @app.get("/lock")
