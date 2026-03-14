@@ -9,6 +9,7 @@
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+    .state-section + .state-section { margin-top: 0.75rem; }
   </style>
 {% endblock %}
 
@@ -60,15 +61,24 @@
               <td><code>{{ row.canonical_tag or row.scanned_tag }}</code></td>
 
               <td>
-                Location: {{ row.before_location_type }}<br />
-                Holder: {{ row.before_holder if row.before_holder != "null" else "—" }}<br />
-                Home Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                <div class="state-section">
+                  <strong>Current State</strong><br />
+                  Location: {{ row.before_location_type }}<br />
+                  Holder: {{ row.before_holder if row.before_holder != "null" else "—" }}
+                </div>
+                <div class="state-section">
+                  <strong>Home Location</strong><br />
+                  Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                </div>
               </td>
 
               <td>
-                Location: {{ row.after_location_type }}<br />
-                Holder: —<br />
-                Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                <div class="state-section">
+                  <strong>After Return</strong><br />
+                  Location: {{ row.after_location_type }}<br />
+                  Holder: —<br />
+                  Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "—" }}
+                </div>
               </td>
 
               <td>
