@@ -29,6 +29,21 @@
     {% endif %}
   {% endwith %}
 
+  {% if selected_holder %}
+    <div class="card">
+      <h2>Issuing Assets To</h2>
+      <p>
+        <strong>Holder:</strong> {{ selected_holder["name"] }}<br />
+        {% if selected_holder["organization"] %}
+          <strong>Organization:</strong> {{ selected_holder["organization"] }}<br />
+        {% endif %}
+        {% if selected_holder["identifier"] %}
+          <strong>Identifier:</strong> {{ selected_holder["identifier"] }}
+        {% endif %}
+      </p>
+    </div>
+  {% endif %}
+
   <div class="card">
     <h2>{{ scan_heading or "Scan returns" }}</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>

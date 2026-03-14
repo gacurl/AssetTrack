@@ -2383,6 +2383,7 @@ def issue():
         queued_count=len(asset_tags),
         ready_count=issue_state["ready_count"],
         blocking_issues=issue_state["blocking_issues"],
+        selected_holder=selected_holder,
     )
 
 
