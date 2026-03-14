@@ -18,6 +18,10 @@
 
   {% include "_timeout_status.html" %}
 
+  {% if workflow_banner_title %}
+    {% include "_workflow_context_banner.html" %}
+  {% endif %}
+
   <div class="card">
     <h2>Validation Summary</h2>
     <p>

@@ -29,19 +29,8 @@
     {% endif %}
   {% endwith %}
 
-  {% if selected_holder %}
-    <div class="card">
-      <h2>Issuing Assets To</h2>
-      <p>
-        <strong>Holder:</strong> {{ selected_holder["name"] }}<br />
-        {% if selected_holder["organization"] %}
-          <strong>Organization:</strong> {{ selected_holder["organization"] }}<br />
-        {% endif %}
-        {% if selected_holder["identifier"] %}
-          <strong>Identifier:</strong> {{ selected_holder["identifier"] }}
-        {% endif %}
-      </p>
-    </div>
+  {% if workflow_banner_title %}
+    {% include "_workflow_context_banner.html" %}
   {% endif %}
 
   <div class="card">

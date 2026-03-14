@@ -88,6 +88,7 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
     response = client_with_temp_db.get("/issue")
 
     assert response.status_code == 200
-    assert b"Issuing Assets To" in response.data
+    assert b"Issuing Assets" in response.data
     assert b"Holder:</strong> Issue Holder" in response.data
     assert b"Organization:</strong> Issue Org" in response.data
+    assert b"Queued:</strong> 0 assets" in response.data

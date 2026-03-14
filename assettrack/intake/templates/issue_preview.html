@@ -26,6 +26,10 @@
     {% endif %}
   {% endwith %}
 
+  {% if workflow_banner_title %}
+    {% include "_workflow_context_banner.html" %}
+  {% endif %}
+
   <div class="card">
     <h2>Selected Holder</h2>
     {% if selected_holder %}
