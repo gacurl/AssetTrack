@@ -16,8 +16,8 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn = db.get_connection()
     conn.execute(
         """
-        INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
-        VALUES (1, 'PERSON', 'Issue Holder', 'IH-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        INSERT INTO holders (id, holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+        VALUES (1, 'PERSON', 'Issue Holder', 'Issue Org', 'IH-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
         """
     )
     conn.commit()
@@ -76,3 +76,18 @@ def test_issue_with_selected_holder_still_loads_normally(client_with_temp_db) ->
     assert response.status_code == 200
     assert b"Select a holder before issuing assets." not in response.data
     assert b"Issue Assets" in response.data
+
+
+def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-holder-display", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+
+    response = client_with_temp_db.get("/issue")
+
+    assert response.status_code == 200
+    assert b"Issuing Assets To" in response.data
+    assert b"Holder:</strong> Issue Holder" in response.data
+    assert b"Organization:</strong> Issue Org" in response.data
