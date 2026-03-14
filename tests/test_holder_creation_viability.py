@@ -30,8 +30,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_get_holders_list_route_exists(self) -> None:
         response = self.client.get("/holders/list")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"All Holders", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/holders"))
 
     def test_post_holders_new_persists_holder(self) -> None:
         holder_name = "Viability Gate Holder"
@@ -135,10 +135,64 @@ class HolderCreationViabilityTests(unittest.TestCase):
         )
         self.conn.commit()
 
-        response = self.client.get("/holders/list")
+        response = self.client.get("/holders")
         self.assertEqual(response.status_code, 200)
         self.assertIn(holder_name.encode("utf-8"), response.data)
         self.assertIn(b">1<", response.data)
+        self.assertIn(f'href="/holders/{holder_id}"'.encode("utf-8"), response.data)
+
+    def test_holders_directory_loads_by_default_without_search(self) -> None:
+        self.client.post("/holders/new", data={"name": "Alpha Holder"})
+        self.client.post("/holders/new", data={"name": "Bravo Holder"})
+
+        response = self.client.get("/holders")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Holder Directory", response.data)
+        self.assertIn(b"Alpha Holder", response.data)
+        self.assertIn(b"Bravo Holder", response.data)
+        self.assertIn(b"Search by name or identifier", response.data)
+
+    def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
+        self.client.post("/holders/new", data={"name": "Detail Holder", "organization": "Org Detail"})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Detail Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        self.conn.execute(
+            """
+            INSERT INTO assets (asset_tag, equipment_type, manufacturer, model, location_type, current_holder_id)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            ("DETAIL-ASSET-1", "LAPTOP", "Dell", "Latitude", "IN_CUSTODY", holder_id),
+        )
+        self.conn.commit()
+
+        response = self.client.get(f"/holders/{holder_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Holder: Detail Holder", response.data)
+        self.assertIn(b"Organization:</strong> Org Detail", response.data)
+        self.assertIn(b"Assigned Assets (1)", response.data)
+        self.assertIn(b"DETAIL-ASSET-1", response.data)
+        self.assertIn(f'href="/holders/edit/{holder_id}"'.encode("utf-8"), response.data)
+
+    def test_holder_detail_shows_zero_assets_state(self) -> None:
+        self.client.post("/holders/new", data={"name": "Empty Holder", "organization": "None"})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Empty Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.get(f"/holders/{int(holder_row['id'])}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Assigned Assets (0)", response.data)
+        self.assertIn(b"No assigned assets.", response.data)
 
 
 if __name__ == "__main__":

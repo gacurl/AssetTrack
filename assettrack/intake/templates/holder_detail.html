@@ -1,0 +1,68 @@
+<!-- file: assettrack/intake/templates/holder_detail.html -->
+{% extends "base.html" %}
+
+{% block title %}Holder Detail{% endblock %}
+{% block page_heading %}Holder: {{ holder.name }}{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .actions form { margin: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="actions" aria-label="Holder navigation">
+    <a class="chip" href="{{ url_for('holders_search', return_to=return_to) }}">Back to Holders</a>
+    <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id) }}">Edit Holder</a>
+    <form method="post" action="{{ url_for('holders_select') }}">
+      <input type="hidden" name="holder_id" value="{{ holder.id }}" />
+      {% if return_to %}
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
+      <button type="submit">Select Holder</button>
+    </form>
+  </nav>
+
+  <section class="card">
+    <p>
+      <strong>Holder:</strong> {{ holder.name }}<br />
+      <strong>Organization:</strong> {{ holder.organization or "" }}<br />
+      <strong>Identifier:</strong> {{ holder.identifier or "" }}<br />
+      <strong>Contact information:</strong> {{ holder.contact_info or "" }}
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Assigned Assets ({{ asset_count }})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Asset Tag</th>
+          <th>Equipment Type</th>
+          <th>Manufacturer</th>
+          <th>Model</th>
+          <th>Days Out</th>
+          <th>Last Issued Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in assigned_assets %}
+          <tr>
+            <td class="mono">{{ row.asset_tag }}</td>
+            <td>{{ row.equipment_type or "" }}</td>
+            <td>{{ row.manufacturer or "" }}</td>
+            <td>{{ row.model or "" }}</td>
+            <td>{{ row.days_out if row.days_out is not none else "Unknown" }}</td>
+            <td>{{ row.last_issued_date if row.last_issued_date else "Unknown" }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6">No assigned assets.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}
