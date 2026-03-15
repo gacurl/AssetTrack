@@ -77,6 +77,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(preview_render.status_code, 200)
         self.assertIn("Return Assets — Preview / Confirm".encode("utf-8"), preview_render.data)
         self.assertIn(b"Confirm Return", preview_render.data)
+        self.assertIn(b"Ready to Return", preview_render.data)
+        self.assertIn(b"Commit Return is the next step.", preview_render.data)
         self.assertIn(b"Destination:</strong> Home slots", preview_render.data)
         self.assertIn(b"Queued:</strong> 1 asset", preview_render.data)
         self.assertIn(b"Current State", preview_render.data)
