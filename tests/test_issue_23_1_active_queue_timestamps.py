@@ -47,7 +47,7 @@ def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) 
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Queued at 14:03:22" in issue_page.data
+    assert b"Queued at 14:03:22 UTC" in issue_page.data
     assert b"QUEUE-TAG-1" in issue_page.data
 
     with client_with_temp_db.session_transaction() as sess:
@@ -55,5 +55,5 @@ def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) 
 
     return_page = client_with_temp_db.get("/return")
     assert return_page.status_code == 200
-    assert b"Queued at 14:03:22" in return_page.data
+    assert b"Queued at 14:03:22 UTC" in return_page.data
     assert b"QUEUE-TAG-1" in return_page.data

@@ -89,7 +89,7 @@
     <ul id="queue-list" role="list">
       {% for s in queue %}
         <li data-asset-tag="{{ s.asset_tag }}">
-          <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }}</time>
+          <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
           <code>{{ s.asset_tag }}</code>
         </li>
       {% endfor %}
