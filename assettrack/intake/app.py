@@ -2350,7 +2350,6 @@ def preview_commit():
         return redirect(url_for("preview"))
 
     SCAN_QUEUE.clear()
-    session.pop("holder_id", None)
     touch_session()
 
     if wants_json():
@@ -2489,7 +2488,6 @@ def issue_commit():
         return redirect(url_for("issue_preview"))
 
     SCAN_QUEUE.clear()
-    session.pop("holder_id", None)
     touch_session()
 
     if wants_json():
