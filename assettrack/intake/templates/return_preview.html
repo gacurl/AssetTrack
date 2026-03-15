@@ -10,6 +10,14 @@
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
     .state-section + .state-section { margin-top: 0.75rem; }
+    .review-signal {
+      border-left: 4px solid #2f6f3e;
+      background: #f4fbf5;
+    }
+    .review-signal.blocked {
+      border-left-color: #9f3a38;
+      background: #fff5f5;
+    }
   </style>
 {% endblock %}
 
@@ -21,6 +29,17 @@
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
   {% endif %}
+
+  <div class="card review-signal {% if blocking_issues %}blocked{% endif %}">
+    <h2>{% if blocking_issues %}Review Before Returning{% else %}Ready to Return{% endif %}</h2>
+    <p>
+      {% if blocking_issues %}
+        Check the issues below before you commit this return batch.
+      {% else %}
+        Review the listed assets below. Commit Return is the next step.
+      {% endif %}
+    </p>
+  </div>
 
   <div class="card">
     <h2>Validation Summary</h2>

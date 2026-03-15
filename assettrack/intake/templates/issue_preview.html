@@ -10,6 +10,14 @@
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
     ul { margin: 0.5rem 0 0 1.25rem; }
+    .review-signal {
+      border-left: 4px solid #2f6f3e;
+      background: #f4fbf5;
+    }
+    .review-signal.blocked {
+      border-left-color: #9f3a38;
+      background: #fff5f5;
+    }
   </style>
 {% endblock %}
 
@@ -29,6 +37,17 @@
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
   {% endif %}
+
+  <div class="card review-signal {% if blocking_issues %}blocked{% endif %}">
+    <h2>{% if blocking_issues %}Review Before Issuing{% else %}Ready to Issue{% endif %}</h2>
+    <p>
+      {% if blocking_issues %}
+        Check the issues below before you commit this issue batch.
+      {% else %}
+        Review the listed assets below. Commit Issue is the next step.
+      {% endif %}
+    </p>
+  </div>
 
   <div class="card">
     <h2>Selected Holder</h2>

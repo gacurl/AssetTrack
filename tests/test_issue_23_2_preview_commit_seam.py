@@ -71,6 +71,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200
     assert b"Confirm Issue" in issue_preview.data
+    assert b"Ready to Issue" in issue_preview.data
+    assert b"Commit Issue is the next step." in issue_preview.data
     assert b"Holder:</strong> Issue Holder" in issue_preview.data
     assert b"Queued:</strong> 1 asset" in issue_preview.data
 
