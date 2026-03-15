@@ -208,6 +208,20 @@ def test_holders_and_cases_deterministic_ordering(app_client) -> None:
     assert [row["case_name"] for row in cases] == ["CASE-B", "CASE-A"]
 
 
+def test_case_summaries_sort_case_numbers_naturally(app_client) -> None:
+    conn, _ = app_client
+    _insert_slot(conn, 10, "CASE-13", 1)
+    _insert_slot(conn, 11, "CASE-2", 1)
+    _insert_slot(conn, 12, "CASE-111", 1)
+    _insert_slot(conn, 13, "CASE-1", 1)
+    _insert_slot(conn, 14, "CASE-16", 1)
+    conn.commit()
+
+    cases = list_case_summaries(conn)
+
+    assert [row["case_name"] for row in cases] == ["CASE-1", "CASE-2", "CASE-13", "CASE-16", "CASE-111"]
+
+
 def test_holder_detail_uses_most_recent_issue_event_and_unknown_when_missing(app_client) -> None:
     conn, _ = app_client
     _insert_holder(conn, 1, "Holder")

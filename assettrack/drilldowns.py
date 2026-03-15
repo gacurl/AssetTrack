@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 import sqlite3
 
 from assettrack.assets import get_asset_table_columns
@@ -188,7 +189,16 @@ def list_case_summaries(conn: sqlite3.Connection) -> list[dict]:
                 "utilization_percent": utilization_percent,
             }
         )
-    return results
+
+    def _sort_key(item: tuple[int, dict]) -> tuple[int, int, int]:
+        original_index, case = item
+        case_name = str(case["case_name"] or "").strip().upper()
+        match = re.fullmatch(r"CASE-(\d+)", case_name)
+        if match:
+            return (0, int(match.group(1)), original_index)
+        return (1, original_index, 0)
+
+    return [case for _, case in sorted(enumerate(results), key=_sort_key)]
 
 
 def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | None:
