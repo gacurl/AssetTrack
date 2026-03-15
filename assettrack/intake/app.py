@@ -67,6 +67,13 @@ TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 
 
+@app.after_request
+def refresh_session_activity(response):
+    if _should_refresh_session_activity():
+        touch_session()
+    return response
+
+
 @app.context_processor
 def inject_auth_user():
     user = current_user()
@@ -84,6 +91,17 @@ def now_seconds() -> int:
 
 def touch_session() -> None:
     session["last_seen"] = now_seconds()
+
+
+def _should_refresh_session_activity() -> bool:
+    if current_user() is None:
+        return False
+
+    endpoint = str(request.endpoint or "").strip()
+    if endpoint in {"logout", "static"}:
+        return False
+
+    return True
 
 
 def sanitize_scan(raw: str) -> str:
