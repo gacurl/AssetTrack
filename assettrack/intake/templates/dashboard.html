@@ -128,20 +128,27 @@
   </div>
 
   <h2 class="section-title">Snapshots</h2>
-  <p class="muted">Collapsed by default to keep the command view clean. Expand only when needed.</p>
+  <p class="muted">Immediate reference for holder accountability, available space, and problems that need attention.</p>
 
   <details class="collapsible">
     <summary>
-      <span>Top Custody Holders (Top 5)</span>
-      <span class="summary-hint">click to expand</span>
+      <span>Outstanding Holders Summary</span>
+      <span class="summary-hint">
+        {% if dashboard.snapshots.top_custody_holders %}
+          {{ dashboard.snapshots.top_custody_holders|length }} holders, {{ dashboard.snapshots.top_custody_holders|sum(attribute='asset_count') }} assets out
+        {% else %}
+          0 holders, 0 assets out
+        {% endif %}
+      </span>
     </summary>
     <div class="collapsible-body">
+      <div class="accent"></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Holder Name</th>
-              <th>Count In Custody</th>
+              <th>Outstanding Assets</th>
             </tr>
           </thead>
           <tbody>
@@ -152,7 +159,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="2">None</td>
+                <td colspan="2">No holders currently have assets out.</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -163,29 +170,37 @@
 
   <details class="collapsible">
     <summary>
-      <span>Case Utilization (Top 5 by Occupied Slots)</span>
-      <span class="summary-hint">click to expand</span>
+      <span>Available Space by Case</span>
+      <span class="summary-hint">
+        {% if dashboard.snapshots.case_utilization %}
+          {% set best_case = dashboard.snapshots.case_utilization|sort(attribute='case_name')|first %}
+          {% set best_available = best_case.total_slots - best_case.occupied_slots %}
+          {{ best_case.case_name }}: {{ best_available }} open
+        {% else %}
+          No case slot data is available.
+        {% endif %}
+      </span>
     </summary>
     <div class="collapsible-body">
+      <div class="accent"></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Case Name</th>
-              <th>Occupied / Total</th>
-              <th>Utilization %</th>
+              <th>Available Slots</th>
             </tr>
           </thead>
           <tbody>
             {% for row in dashboard.snapshots.case_utilization %}
+              {% set available_slots = row.total_slots - row.occupied_slots %}
               <tr>
                 <td>{{ row.case_name }}</td>
-                <td>{{ row.occupied_slots }} / {{ row.total_slots }}</td>
-                <td>{{ row.utilization_percent }}%</td>
+                <td>{{ available_slots }} open</td>
               </tr>
             {% else %}
               <tr>
-                <td colspan="3">None</td>
+                <td colspan="2">No case slot data is available.</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -196,104 +211,66 @@
 
   <details class="collapsible">
     <summary>
-      <span>Exceptions Preview</span>
-      <span class="summary-hint">click to expand</span>
+      <span>Problems</span>
+      <span class="summary-hint">
+        {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
+      </span>
     </summary>
     <div class="collapsible-body">
+      <div class="accent"></div>
 
-      <details class="collapsible">
-        <summary>
-          <span>Unslotted Assets (Top 10)</span>
-          <span class="summary-hint">click to expand</span>
-        </summary>
-        <div class="collapsible-body">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Asset Tag</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for asset_tag in dashboard.snapshots.exceptions.unslotted_assets %}
-                  <tr>
-                    <td class="mono">{{ asset_tag }}</td>
-                  </tr>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Problem</th>
+              <th>Count</th>
+              <th>Preview</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Unslotted Assets</td>
+              <td>{{ dashboard.summary.exceptions.unslotted_assets }}</td>
+              <td>
+                {% if dashboard.snapshots.exceptions.unslotted_assets %}
+                  {% for asset_tag in dashboard.snapshots.exceptions.unslotted_assets %}
+                    <span class="mono">{{ asset_tag }}</span>{% if not loop.last %}, {% endif %}
+                  {% endfor %}
                 {% else %}
-                  <tr>
-                    <td>None</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
-      <details class="collapsible">
-        <summary>
-          <span>In Custody &gt; {{ custody_days_threshold }} Days (Top 10)</span>
-          <span class="summary-hint">click to expand</span>
-        </summary>
-        <div class="collapsible-body">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Asset Tag</th>
-                  <th>Days Out</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in dashboard.snapshots.exceptions.in_custody_over_threshold %}
-                  <tr>
-                    <td class="mono">{{ row.asset_tag }}</td>
-                    <td>{{ row.days_out }}</td>
-                  </tr>
+                  No unslotted assets.
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>In Custody &gt; {{ custody_days_threshold }} Days</td>
+              <td>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</td>
+              <td>
+                {% if dashboard.snapshots.exceptions.in_custody_over_threshold %}
+                  {% for row in dashboard.snapshots.exceptions.in_custody_over_threshold %}
+                    <span class="mono">{{ row.asset_tag }}</span> ({{ row.days_out }} days){% if not loop.last %}, {% endif %}
+                  {% endfor %}
                 {% else %}
-                  <tr>
-                    <td colspan="2">None</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
-      <details class="collapsible">
-        <summary>
-          <span>Slot Conflicts (Top 10)</span>
-          <span class="summary-hint">click to expand</span>
-        </summary>
-        <div class="collapsible-body">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Slot ID</th>
-                  <th>Case Name</th>
-                  <th>Slot Position</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in dashboard.snapshots.exceptions.slot_conflicts %}
-                  <tr>
-                    <td>{{ row.slot_id }}</td>
-                    <td>{{ row.case_name or "None" }}</td>
-                    <td>{{ row.slot_position if row.slot_position is not none else "None" }}</td>
-                  </tr>
+                  No overdue in-custody assets.
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>Slot Conflicts</td>
+              <td>{{ dashboard.summary.exceptions.slot_conflicts }}</td>
+              <td>
+                {% if dashboard.snapshots.exceptions.slot_conflicts %}
+                  {% for row in dashboard.snapshots.exceptions.slot_conflicts %}
+                    Slot {{ row.slot_id }}{% if row.case_name %} in {{ row.case_name }}{% endif %}{% if row.slot_position is not none %} position {{ row.slot_position }}{% endif %}{% if not loop.last %}, {% endif %}
+                  {% endfor %}
                 {% else %}
-                  <tr>
-                    <td colspan="3">None</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
+                  No slot conflicts detected.
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </details>
 {% endblock %}
