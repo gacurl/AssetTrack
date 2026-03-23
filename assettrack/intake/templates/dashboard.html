@@ -53,6 +53,24 @@
     .summary-hint { font-weight: 500; font-size: 0.9rem; color: #5b6878; }
     .collapsible-body { padding: 0.75rem 1rem 1rem 1rem; }
     .collapsible-body .table-wrap { margin-top: 0.25rem; }
+    .status-cell { white-space: nowrap; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 700;
+    }
+    .status-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      display: inline-block;
+      border: 1px solid rgba(18, 32, 47, 0.18);
+      flex: 0 0 auto;
+    }
+    .status-dot.full { background: #b42318; }
+    .status-dot.low { background: #f79009; }
+    .status-dot.open { background: #12b76a; }
 
     .section-title { margin-top: 1.25rem; }
     .accent {
@@ -173,9 +191,19 @@
       <span>Available Space by Case</span>
       <span class="summary-hint">
         {% if dashboard.snapshots.case_utilization %}
-          {% set best_case = dashboard.snapshots.case_utilization|sort(attribute='case_name')|first %}
-          {% set best_available = best_case.total_slots - best_case.occupied_slots %}
-          {{ best_case.case_name }}: {{ best_available }} open
+          {% set ns = namespace(best_case=None, best_available=-1) %}
+          {% for row in dashboard.snapshots.case_utilization %}
+            {% set available_slots = row.total_slots - row.occupied_slots %}
+            {% if available_slots > ns.best_available %}
+              {% set ns.best_case = row %}
+              {% set ns.best_available = available_slots %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.best_available > 0 %}
+            Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
+          {% else %}
+            No open slots available.
+          {% endif %}
         {% else %}
           No case slot data is available.
         {% endif %}
@@ -185,26 +213,43 @@
       <div class="accent"></div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Case Name</th>
-              <th>Available Slots</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in dashboard.snapshots.case_utilization %}
-              {% set available_slots = row.total_slots - row.occupied_slots %}
-              <tr>
-                <td>{{ row.case_name }}</td>
-                <td>{{ available_slots }} open</td>
-              </tr>
+        <thead>
+          <tr>
+            <th>Case Name</th>
+            <th>Available Slots</th>
+            <th>Stoplight Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in dashboard.snapshots.case_utilization %}
+            {% set available_slots = row.total_slots - row.occupied_slots %}
+            {% if available_slots == 0 %}
+              {% set status_label = "FULL" %}
+              {% set status_class = "full" %}
+            {% elif available_slots <= 3 %}
+              {% set status_label = "LOW" %}
+              {% set status_class = "low" %}
             {% else %}
-              <tr>
-                <td colspan="2">No case slot data is available.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+              {% set status_label = "OPEN" %}
+              {% set status_class = "open" %}
+            {% endif %}
+            <tr>
+              <td>{{ row.case_name }}</td>
+              <td>{{ available_slots }} open</td>
+              <td class="status-cell">
+                <span class="status-badge">
+                  <span class="status-dot {{ status_class }}" aria-hidden="true"></span>
+                  <span>{{ status_label }}</span>
+                </span>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="3">No case slot data is available.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
       </div>
     </div>
   </details>

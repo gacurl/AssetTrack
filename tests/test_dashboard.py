@@ -158,9 +158,10 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Available Space by Case", response.data)
         self.assertIn(b"Problems", response.data)
         self.assertIn(b"1 holders, 1 assets out", response.data)
-        self.assertIn(b"CASE-A: 0 open", response.data)
+        self.assertIn(b"No open slots available.", response.data)
         self.assertIn(b"1 unslotted, 1 over 30 days, 0 conflicts", response.data)
         self.assertIn(b"0 open", response.data)
+        self.assertIn(b"FULL", response.data)
         self.assertNotIn(b"0 / 1", response.data)
         self.assertIn(b"AT-UNSLOT", response.data)
 
@@ -175,6 +176,58 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"No unslotted assets.", response.data)
         self.assertIn(b"No overdue in-custody assets.", response.data)
         self.assertIn(b"No slot conflicts detected.", response.data)
+
+    def test_available_space_summary_and_stoplight_statuses(self) -> None:
+        self._insert_slot(1, "CASE-B", 1)
+        self._insert_slot(2, "CASE-B", 2)
+        self._insert_slot(3, "CASE-B", 3)
+        self._insert_slot(4, "CASE-B", 4)
+        self._insert_slot(10, "CASE-C", 1)
+        self._insert_slot(11, "CASE-C", 2)
+        self._insert_slot(12, "CASE-C", 3)
+        self._insert_slot(13, "CASE-C", 4)
+        self._insert_slot(14, "CASE-C", 5)
+        self._insert_slot(20, "CASE-A", 1)
+        self._insert_slot(21, "CASE-A", 2)
+
+        asset_a1 = self._insert_asset("AT-A1", location_type="STORAGE", home_slot_id=20)
+        asset_a2 = self._insert_asset("AT-A2", location_type="STORAGE", home_slot_id=21)
+        asset_b1 = self._insert_asset("AT-B1", location_type="STORAGE", home_slot_id=1)
+        asset_c1 = self._insert_asset("AT-C1", location_type="STORAGE", home_slot_id=10)
+        asset_c2 = self._insert_asset("AT-C2", location_type="STORAGE", home_slot_id=11)
+        asset_c3 = self._insert_asset("AT-C3", location_type="STORAGE", home_slot_id=12)
+        asset_c4 = self._insert_asset("AT-C4", location_type="STORAGE", home_slot_id=13)
+
+        self.conn.executemany(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, '2026-01-01T00:00:00Z');
+            """,
+            [
+                (20, asset_a1),
+                (21, asset_a2),
+                (1, asset_b1),
+                (10, asset_c1),
+                (11, asset_c2),
+                (12, asset_c3),
+                (13, asset_c4),
+            ],
+        )
+        self.conn.commit()
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Best available case: CASE-B with 3 open", response.data)
+        self.assertIn(b"CASE-A", response.data)
+        self.assertIn(b"0 open", response.data)
+        self.assertIn(b"FULL", response.data)
+        self.assertIn(b"CASE-B", response.data)
+        self.assertIn(b"3 open", response.data)
+        self.assertIn(b"LOW", response.data)
+        self.assertIn(b"CASE-C", response.data)
+        self.assertIn(b"1 open", response.data)
+        self.assertNotIn(b"0 / 2", response.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()
