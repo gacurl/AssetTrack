@@ -27,7 +27,7 @@ jobs:
           python -m compileall .
       
       - name: Trivy scan (non-blocking)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         continue-on-error: true
         with:
           scan-type: fs
