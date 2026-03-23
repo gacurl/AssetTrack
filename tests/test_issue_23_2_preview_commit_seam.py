@@ -75,6 +75,9 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Commit Issue is the next step." in issue_preview.data
     assert b"Holder:</strong> Issue Holder" in issue_preview.data
     assert b"Queued:</strong> 1 asset" in issue_preview.data
+    assert b"Holder:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"Slot:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"null" not in issue_preview.data
 
     commit = client_with_temp_db.post(
         "/issue/commit",
