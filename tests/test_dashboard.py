@@ -154,9 +154,27 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Slot Summary", response.data)
         self.assertIn(b"Custody Summary", response.data)
         self.assertIn(b"Exceptions Summary", response.data)
-        self.assertIn(b"Top Custody Holders", response.data)
-        self.assertIn(b"Case Utilization", response.data)
-        self.assertIn(b"Exceptions Preview", response.data)
+        self.assertIn(b"Outstanding Holders Summary", response.data)
+        self.assertIn(b"Available Space by Case", response.data)
+        self.assertIn(b"Problems", response.data)
+        self.assertIn(b"1 holders, 1 assets out", response.data)
+        self.assertIn(b"CASE-A: 0 open", response.data)
+        self.assertIn(b"1 unslotted, 1 over 30 days, 0 conflicts", response.data)
+        self.assertIn(b"0 open", response.data)
+        self.assertNotIn(b"0 / 1", response.data)
+        self.assertIn(b"AT-UNSLOT", response.data)
+
+    def test_dashboard_empty_states_are_operator_facing(self) -> None:
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"0 holders, 0 assets out", response.data)
+        self.assertIn(b"No holders currently have assets out.", response.data)
+        self.assertIn(b"No case slot data is available.", response.data)
+        self.assertIn(b"0 unslotted, 0 over 30 days, 0 conflicts", response.data)
+        self.assertIn(b"No unslotted assets.", response.data)
+        self.assertIn(b"No overdue in-custody assets.", response.data)
+        self.assertIn(b"No slot conflicts detected.", response.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()
