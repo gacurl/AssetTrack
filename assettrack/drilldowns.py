@@ -32,13 +32,14 @@ def list_holders_in_custody(conn: sqlite3.Connection) -> list[dict]:
         SELECT
             h.id AS holder_id,
             h.name AS holder_name,
+            h.organization AS organization,
             COUNT(*) AS asset_count
         FROM assets a
         JOIN holders h
           ON h.id = a.current_holder_id
         WHERE a.location_type = 'IN_CUSTODY'
           AND a.current_holder_id IS NOT NULL
-        GROUP BY h.id, h.name
+        GROUP BY h.id, h.name, h.organization
         ORDER BY asset_count DESC, h.name ASC, h.id ASC;
         """
     ).fetchall()
@@ -47,6 +48,7 @@ def list_holders_in_custody(conn: sqlite3.Connection) -> list[dict]:
         {
             "holder_id": int(row["holder_id"]),
             "holder_name": str(row["holder_name"]),
+            "organization": str(row["organization"] or ""),
             "asset_count": int(row["asset_count"] or 0),
         }
         for row in rows
@@ -61,7 +63,7 @@ def get_holder_custody_detail(
 ) -> dict | None:
     holder_row = conn.execute(
         """
-        SELECT id, name
+        SELECT id, name, organization
         FROM holders
         WHERE id = ?;
         """,
@@ -106,6 +108,7 @@ def get_holder_custody_detail(
         return {
             "holder_id": int(holder_row["id"]),
             "holder_name": str(holder_row["name"]),
+            "organization": str(holder_row["organization"] or ""),
             "assets": [],
         }
 
@@ -155,6 +158,7 @@ def get_holder_custody_detail(
     return {
         "holder_id": int(holder_row["id"]),
         "holder_name": str(holder_row["name"]),
+        "organization": str(holder_row["organization"] or ""),
         "assets": assets,
     }
 

@@ -44,14 +44,14 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn.close()
 
 
-def _insert_holder(conn, holder_id: int, name: str) -> None:
+def _insert_holder(conn, holder_id: int, name: str, *, organization: str | None = None) -> None:
     now = "2026-01-01T00:00:00Z"
     conn.execute(
         """
-        INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
-        VALUES (?, 'PERSON', ?, NULL, NULL, ?, ?);
+        INSERT INTO holders (id, holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+        VALUES (?, 'PERSON', ?, ?, NULL, NULL, ?, ?);
         """,
-        (holder_id, name, now, now),
+        (holder_id, name, organization, now, now),
     )
 
 
@@ -120,7 +120,7 @@ def test_dashboard_holders_route_returns_200_and_is_read_only(app_client) -> Non
 
     response = client.get("/dashboard/holders")
     assert response.status_code == 200
-    assert b"Holders in Custody" in response.data
+    assert b"Holders With Assets Out" in response.data
 
     counts_after = (
         conn.execute("SELECT COUNT(*) AS c FROM assets;").fetchone()["c"],
@@ -143,7 +143,7 @@ def test_dashboard_holder_detail_200_none_when_no_assets(app_client) -> None:
 
     response = client.get("/dashboard/holders/1")
     assert response.status_code == 200
-    assert b"None" in response.data
+    assert b"No assets are currently out for this holder." in response.data
 
 
 def test_dashboard_cases_route_200_and_missing_case_404(app_client) -> None:
@@ -224,7 +224,7 @@ def test_case_summaries_sort_case_numbers_naturally(app_client) -> None:
 
 def test_holder_detail_uses_most_recent_issue_event_and_unknown_when_missing(app_client) -> None:
     conn, _ = app_client
-    _insert_holder(conn, 1, "Holder")
+    _insert_holder(conn, 1, "Holder", organization="Operations")
     _insert_asset(
         conn,
         "AT-RECENT",
@@ -251,9 +251,44 @@ def test_holder_detail_uses_most_recent_issue_event_and_unknown_when_missing(app
         now_utc=datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc),
     )
     assert detail is not None
+    assert detail["organization"] == "Operations"
 
     rows = {row["asset_tag"]: row for row in detail["assets"]}
     assert rows["AT-RECENT"]["last_issued_date"] == "2026-02-01T00:00:00Z"
     assert rows["AT-RECENT"]["days_out"] == 19
     assert rows["AT-UNKNOWN"]["last_issued_date"] is None
     assert rows["AT-UNKNOWN"]["days_out"] is None
+
+
+def test_dashboard_holders_only_lists_holders_with_outstanding_assets_and_shows_organization(app_client) -> None:
+    conn, client = app_client
+    _insert_holder(conn, 1, "Alpha", organization="Ops")
+    _insert_holder(conn, 2, "Bravo", organization="Admin")
+    _insert_asset(conn, "AT-1", location_type="IN_CUSTODY", holder_id=1)
+    _insert_asset(conn, "AT-2", location_type="STORAGE", holder_id=2)
+    conn.commit()
+
+    response = client.get("/dashboard/holders")
+
+    assert response.status_code == 200
+    assert b"Alpha" in response.data
+    assert b"Ops" in response.data
+    assert b"Bravo" not in response.data
+    assert b"Admin" not in response.data
+
+
+def test_dashboard_holder_detail_shows_organization_and_outstanding_count(app_client) -> None:
+    conn, client = app_client
+    _insert_holder(conn, 1, "Field Team", organization="Ops")
+    _insert_asset(conn, "AT-100", location_type="IN_CUSTODY", holder_id=1)
+    _insert_asset(conn, "AT-101", location_type="IN_CUSTODY", holder_id=1)
+    conn.commit()
+
+    response = client.get("/dashboard/holders/1")
+
+    assert response.status_code == 200
+    assert b"Outstanding Assets: Field Team" in response.data
+    assert b"Organization:</strong> Ops" in response.data
+    assert b"Outstanding Assets:</strong> 2" in response.data
+    assert b"AT-100" in response.data
+    assert b"AT-101" in response.data
