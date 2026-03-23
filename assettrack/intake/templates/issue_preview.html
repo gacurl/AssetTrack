@@ -105,20 +105,23 @@
         </thead>
         <tbody>
           {% for row in assets %}
+            {% set before_holder_display = "Not assigned" if row.before_holder == "null" else row.before_holder %}
+            {% set before_slot_display = "Not assigned" if row.before_slot == "null" else row.before_slot %}
+            {% set after_slot_display = "Not assigned" if row.after_slot == "null" else row.after_slot %}
             <tr>
               <td><code>{{ row.asset_tag }}</code></td>
 
               <td>
                 <strong>Location:</strong> <code>{{ row.before_location_type }}</code><br />
-                <strong>Holder:</strong> <code>{{ row.before_holder }}</code><br />
-                <strong>Slot:</strong> <code>{{ row.before_slot }}</code><br />
+                <strong>Holder:</strong> <code>{{ before_holder_display }}</code><br />
+                <strong>Slot:</strong> <code>{{ before_slot_display }}</code><br />
                 <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code>
               </td>
 
               <td>
                 <strong>Location:</strong> <code>{{ row.after_location_type }}</code><br />
                 <strong>Holder:</strong> <code>{{ row.after_holder }}</code><br />
-                <strong>Slot:</strong> <code>{{ row.after_slot }}</code><br />
+                <strong>Slot:</strong> <code>{{ after_slot_display }}</code><br />
                 <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
               </td>
 

@@ -87,6 +87,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Location: IN_CUSTODY", preview_render.data)
         self.assertIn(b"Holder: holder_id 5", preview_render.data)
         self.assertIn(b"Slot: A / 1", preview_render.data)
+        self.assertNotIn(b"null", preview_render.data)
 
         unreviewed = self.client.post("/return/commit?json=1")
         self.assertEqual(unreviewed.status_code, 400)
