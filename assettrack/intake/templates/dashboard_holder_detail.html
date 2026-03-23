@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block title %}Holder Detail{% endblock %}
-{% block page_heading %}Holder Detail: {{ holder.holder_name }}{% endblock %}
+{% block page_heading %}Outstanding Assets: {{ holder.holder_name }}{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -18,7 +18,15 @@
   </nav>
 
   <section class="card">
-    <h2>Current Custody Assets</h2>
+    <p>
+      <strong>Holder:</strong> {{ holder.holder_name }}<br />
+      <strong>Organization:</strong> {{ holder.organization or "" }}<br />
+      <strong>Outstanding Assets:</strong> {{ holder.assets|length }}
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Assets Currently Out</h2>
     <table>
       <thead>
         <tr>
@@ -42,7 +50,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="6">None</td>
+            <td colspan="6">No assets are currently out for this holder.</td>
           </tr>
         {% endfor %}
       </tbody>

@@ -16,23 +16,25 @@
   </nav>
 
   <section class="card">
-    <h2>Holders in Custody</h2>
+    <h2>Holders With Assets Out</h2>
     <table>
       <thead>
         <tr>
           <th>Holder Name</th>
-          <th>Asset Count</th>
+          <th>Organization</th>
+          <th>Outstanding Assets</th>
         </tr>
       </thead>
       <tbody>
         {% for row in holders %}
           <tr>
             <td><a href="{{ url_for('dashboard_holder_detail', holder_id=row.holder_id) }}">{{ row.holder_name }}</a></td>
+            <td>{{ row.organization or "" }}</td>
             <td>{{ row.asset_count }}</td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="2">None</td>
+            <td colspan="3">No holders currently have assets out.</td>
           </tr>
         {% endfor %}
       </tbody>
