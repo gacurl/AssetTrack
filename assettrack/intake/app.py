@@ -1546,6 +1546,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 "before_holder": "null",
                 "after_holder": "null",
                 "destination_slot": "unknown",
+                "destination_case_name": None,
                 "before_slot_occupancy": "empty",
                 "after_slot_occupancy": "occupied",
                 "ready": False,
@@ -1599,6 +1600,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 assets.append(row)
                 continue
 
+            row["destination_case_name"] = str(slot["case_name"])
             row["destination_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
             if slot["current_asset_tag"] is not None:
                 row["asset_issues"].append(f"Home slot occupied by {slot['current_asset_tag']}")
@@ -2551,6 +2553,8 @@ def return_queue():
 
     asset_tags = _queue_asset_tags()
     state = _build_return_preview_state(asset_tags)
+    recent_return_cases_raw = session.pop("recent_return_cases", [])
+    recent_return_cases = [str(case_name) for case_name in recent_return_cases_raw if str(case_name or "").strip()]
 
     if wants_json():
         return {
@@ -2570,6 +2574,7 @@ def return_queue():
         queued_count=len(asset_tags),
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
+        recent_return_cases=recent_return_cases,
         queue=SCAN_QUEUE,
         queue_len=len(SCAN_QUEUE),
         last_seen_age_seconds=seconds_since_last_seen(),
@@ -2644,6 +2649,12 @@ def return_commit():
 
     SCAN_QUEUE.clear()
     touch_session()
+    returned_cases: list[str] = []
+    for row in state["assets"]:
+        case_name = str(row.get("destination_case_name") or "").strip()
+        if case_name and case_name not in returned_cases:
+            returned_cases.append(case_name)
+    session["recent_return_cases"] = returned_cases
 
     if wants_json():
         return {"ok": True, "committed": committed_count, "error": None}
