@@ -200,12 +200,12 @@
             {% endif %}
           {% endfor %}
           {% if ns.best_available > 0 %}
-            Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
+            Based on open slots. Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
           {% else %}
-            No open slots available.
+            Based on open slots. No open slots available.
           {% endif %}
         {% else %}
-          No case slot data is available.
+          Based on open slots. No case slot data is available.
         {% endif %}
       </span>
     </summary>
