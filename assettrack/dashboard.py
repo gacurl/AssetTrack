@@ -86,7 +86,15 @@ def _slot_summary(conn: sqlite3.Connection) -> dict:
     total_slots = int(total_row["total_slots"] or 0)
     occupied_slots = int(occupied_row["occupied_slots"] or 0)
     empty_slots = max(0, total_slots - occupied_slots)
-    utilization_percent = int((occupied_slots * 100.0 / total_slots) + 0.5) if total_slots > 0 else 0
+    utilization_percent: str
+    if total_slots <= 0:
+        utilization_percent = "0"
+    elif occupied_slots >= total_slots:
+        utilization_percent = "100"
+    else:
+        percent = occupied_slots * 100.0 / total_slots
+        rounded = round(percent, 1)
+        utilization_percent = str(int(rounded)) if float(rounded).is_integer() else f"{rounded:.1f}"
 
     return {
         "total_slots": total_slots,

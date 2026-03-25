@@ -273,6 +273,49 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(overdue_rows[0]["asset_tag"], "AT-OLD")
         self.assertEqual(overdue_rows[0]["days_out"], 50)
 
+    def test_slot_utilization_does_not_round_up_to_100_unless_full(self) -> None:
+        for slot_id in range(1, 245):
+            self._insert_slot(slot_id, "CASE-Z", slot_id)
+
+        for slot_id in range(1, 244):
+            asset_id = self._insert_asset(f"AT-{slot_id}", location_type="STORAGE", home_slot_id=slot_id)
+            self.conn.execute(
+                """
+                INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                VALUES (?, ?, '2026-01-01T00:00:00Z');
+                """,
+                (slot_id, asset_id),
+            )
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+
+        self.assertEqual(data["summary"]["slots"]["total_slots"], 244)
+        self.assertEqual(data["summary"]["slots"]["occupied_slots"], 243)
+        self.assertEqual(data["summary"]["slots"]["empty_slots"], 1)
+        self.assertEqual(data["summary"]["slots"]["utilization_percent"], "99.6")
+
+    def test_slot_utilization_displays_100_only_when_full(self) -> None:
+        self._insert_slot(1, "CASE-FULL", 1)
+        self._insert_slot(2, "CASE-FULL", 2)
+        asset_a = self._insert_asset("AT-FULL-1", location_type="STORAGE", home_slot_id=1)
+        asset_b = self._insert_asset("AT-FULL-2", location_type="STORAGE", home_slot_id=2)
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES
+                (1, ?, '2026-01-01T00:00:00Z'),
+                (2, ?, '2026-01-01T00:00:00Z');
+            """,
+            (asset_a, asset_b),
+        )
+        self.conn.commit()
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Utilization %: <strong>100%</strong>", response.data)
+
     def test_root_redirects_to_dashboard_when_logged_in(self):
         resp = self.client.get("/", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
