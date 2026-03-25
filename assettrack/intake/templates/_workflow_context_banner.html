@@ -11,6 +11,10 @@
     {% if workflow_banner_destination %}
       <strong>Destination:</strong> {{ workflow_banner_destination }}<br />
     {% endif %}
-    <strong>Queued:</strong> {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %}
+    {% if workflow_banner_outcome %}
+      <strong>Status:</strong> {{ workflow_banner_outcome }}
+    {% else %}
+      <strong>Queued:</strong> {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %}
+    {% endif %}
   </p>
 </div>
