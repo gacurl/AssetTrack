@@ -80,3 +80,30 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
     assert b"Queue (2)" in issue_page.data
+
+
+def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-clear-preview", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+
+    intake_app.SCAN_QUEUE.extend([Scan.now("TAG-1"), Scan.now("TAG-2")])
+
+    preview_page = client_with_temp_db.get("/issue/preview")
+    assert preview_page.status_code == 200
+    assert b"Clear Queue" in preview_page.data
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"action": "clear", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert len(intake_app.SCAN_QUEUE) == 0
+    assert b"Issuing Assets" in response.data
+    assert b"Queue (0)" in response.data
+    assert b"Queued assets:</strong> 0" in response.data
