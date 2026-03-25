@@ -8,6 +8,7 @@ from pathlib import Path
 
 import assettrack.db as db
 from assettrack.dashboard import build_dashboard_data
+from assettrack.drilldowns import list_case_summaries
 from assettrack.event_types import issue_event_type_values
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
@@ -228,6 +229,44 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"CASE-C", response.data)
         self.assertIn(b"1 open", response.data)
         self.assertNotIn(b"0 / 2", response.data)
+
+    def test_available_space_uses_full_case_coverage_not_limited_top_five(self) -> None:
+        slot_id = 1
+        for case_name, occupied_slots in [
+            ("CASE-1", 5),
+            ("CASE-2", 4),
+            ("CASE-3", 3),
+            ("CASE-4", 2),
+            ("CASE-5", 1),
+            ("CASE-6", 0),
+        ]:
+            for _ in range(10):
+                self._insert_slot(slot_id, case_name, slot_id)
+                if occupied_slots > 0:
+                    asset_id = self._insert_asset(f"AT-{case_name}-{slot_id}", location_type="STORAGE", home_slot_id=slot_id)
+                    self.conn.execute(
+                        """
+                        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                        VALUES (?, ?, '2026-01-01T00:00:00Z');
+                        """,
+                        (slot_id, asset_id),
+                    )
+                    occupied_slots -= 1
+                slot_id += 1
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+        rendered = self.client.get("/dashboard")
+
+        self.assertEqual([row["case_name"] for row in data["snapshots"]["case_utilization"]], [row["case_name"] for row in list_case_summaries(self.conn)])
+        self.assertIn("CASE-6", [row["case_name"] for row in data["snapshots"]["case_utilization"]])
+        self.assertEqual(
+            next(row for row in data["snapshots"]["case_utilization"] if row["case_name"] == "CASE-6")["empty_slots"],
+            10,
+        )
+        self.assertEqual(rendered.status_code, 200)
+        self.assertIn(b"Best available case: CASE-6 with 10 open", rendered.data)
+        self.assertIn(b"CASE-6", rendered.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()

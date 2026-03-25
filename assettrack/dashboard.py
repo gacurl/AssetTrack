@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE
 from assettrack.event_types import issue_event_type_values
+from assettrack.drilldowns import list_case_summaries
 
 from datetime import datetime, timezone
 import sqlite3
@@ -294,39 +295,6 @@ def _exceptions_summary(
     }
 
 
-def _case_utilization_preview(conn: sqlite3.Connection, limit: int) -> list[dict]:
-    rows = conn.execute(
-        """
-        SELECT
-            s.case_name,
-            COUNT(*) AS total_slots,
-            COUNT(DISTINCT so.slot_id) AS occupied_slots
-        FROM slots s
-        LEFT JOIN slot_occupancy so
-          ON so.slot_id = s.id
-        GROUP BY s.case_name
-        ORDER BY occupied_slots DESC, s.case_name ASC
-        LIMIT ?;
-        """,
-        (limit,),
-    ).fetchall()
-
-    results: list[dict] = []
-    for row in rows:
-        total_slots = int(row["total_slots"] or 0)
-        occupied_slots = int(row["occupied_slots"] or 0)
-        utilization_percent = int((occupied_slots * 100.0 / total_slots) + 0.5) if total_slots > 0 else 0
-        results.append(
-            {
-                "case_name": str(row["case_name"] or ""),
-                "total_slots": total_slots,
-                "occupied_slots": occupied_slots,
-                "utilization_percent": utilization_percent,
-            }
-        )
-    return results
-
-
 def build_dashboard_data(
     conn: sqlite3.Connection,
     *,
@@ -359,7 +327,7 @@ def build_dashboard_data(
         },
         "snapshots": {
             "top_custody_holders": _top_custody_holders(conn, limit=5),
-            "case_utilization": _case_utilization_preview(conn, limit=5),
+            "case_utilization": list_case_summaries(conn),
             "exceptions": {
                 "unslotted_assets": _unslotted_assets(conn, limit=10),
                 "in_custody_over_threshold": [
