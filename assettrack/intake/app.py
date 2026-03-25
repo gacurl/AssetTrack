@@ -106,7 +106,18 @@ def _should_refresh_session_activity() -> bool:
 
 def sanitize_scan(raw: str) -> str:
     """Keep only letters and numbers; drop tabs/newlines/suffix junk."""
-    return "".join(ch for ch in raw if ch.isalnum())
+    return "".join(ch for ch in raw if ch.isalnum()).upper()
+
+
+def _queue_contains_asset_tag(asset_tag: str) -> bool:
+    normalized = (asset_tag or "").strip().upper()
+    if not normalized:
+        return False
+
+    for queued in SCAN_QUEUE:
+        if str(queued.asset_tag or "").strip().upper() == normalized:
+            return True
+    return False
 
 
 def auth_enabled() -> bool:
@@ -1929,6 +1940,13 @@ def intake():
         if scan_text:
             value = sanitize_scan(scan_text)
             if value:
+                if _queue_contains_asset_tag(value):
+                    flash(f"Asset {value} is already queued.", "error")
+                    touch_session()
+                    if return_to.startswith("/") and not return_to.startswith("//"):
+                        return redirect(return_to)
+                    return redirect(url_for("add_assets"))
+
                 case_name = (request.form.get("case_name") or "").strip().upper()
                 slot_id_raw = (request.form.get("slot_id") or "").strip()
                 home_slot_id: Optional[int] = None

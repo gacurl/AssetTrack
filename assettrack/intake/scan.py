@@ -36,6 +36,7 @@ class Scan:
     ) -> "Scan":
         """Convenience constructor for 'scan happened right now'."""
         equipment_type = (equipment_type or "").strip() or "laptop"
+        asset_tag = (asset_tag or "").strip().upper()
         return Scan(
             asset_tag=asset_tag,
             scanned_at=datetime.now(timezone.utc),
