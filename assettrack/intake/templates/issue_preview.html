@@ -190,6 +190,11 @@
       <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
       <button type="submit" data-timeout-lock-target>Discard batch</button>
     </form>
+    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+      <input type="hidden" name="action" value="clear" />
+      <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
+      <button type="submit" data-timeout-lock-target>Clear Queue</button>
+    </form>
     <p style="margin-top: 10px;">{{ url_for('issue_commit') }}?json=1</p>
   </div>
 {% endblock %}
