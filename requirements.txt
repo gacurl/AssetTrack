@@ -4,7 +4,7 @@ numpy==2.4.1
 openpyxl==3.1.5
 pandas==3.0.0
 pillow==12.1.1
-pypdf==6.8.0
+pypdf==6.9.1
 python-dateutil==2.9.0.post0
 reportlab==4.4.9
 six==1.17.0
