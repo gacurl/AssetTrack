@@ -47,6 +47,18 @@
       font-size: 0.95rem;
       font-weight: 600;
     }
+    .queue-item form {
+      margin-left: auto;
+    }
+    .queue-remove {
+      padding: 0.3rem 0.55rem;
+      border: 1px solid #d7deea;
+      border-radius: 999px;
+      background: #fff;
+      color: #243447;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
   </style>
 {% endblock %}
 
@@ -125,6 +137,12 @@
         <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
           <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
           <code>{{ s.asset_tag }}</code>
+          <form method="post" action="{{ url_for('intake') }}">
+            <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
+            <input type="hidden" name="action" value="remove" />
+            <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+            <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+          </form>
         </li>
       {% endfor %}
     </ul>

@@ -50,3 +50,33 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
     assert b"Queued assets:</strong> 0" in issue_page.data
+
+
+def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicates(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-remove-one", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+
+    intake_app.SCAN_QUEUE.extend(
+        [
+            Scan.now("DUP-TAG"),
+            Scan.now("DUP-TAG"),
+            Scan.now("KEEP-TAG"),
+        ]
+    )
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"action": "remove", "queue_index": "1", "return_to": "/issue"},
+    )
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DUP-TAG", "KEEP-TAG"]
+
+    issue_page = client_with_temp_db.get("/issue")
+    assert issue_page.status_code == 200
+    assert b"Queue (2)" in issue_page.data
