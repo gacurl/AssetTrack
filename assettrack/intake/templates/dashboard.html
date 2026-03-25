@@ -225,12 +225,15 @@
             {% set available_slots = row.total_slots - row.occupied_slots %}
             {% if available_slots == 0 %}
               {% set status_label = "FULL" %}
+              {% set status_text = "FULL - No space" %}
               {% set status_class = "full" %}
             {% elif available_slots <= 3 %}
               {% set status_label = "LOW" %}
+              {% set status_text = "LOW - Getting tight" %}
               {% set status_class = "low" %}
             {% else %}
               {% set status_label = "OPEN" %}
+              {% set status_text = "OPEN - Use now" %}
               {% set status_class = "open" %}
             {% endif %}
             <tr>
@@ -239,7 +242,7 @@
               <td class="status-cell">
                 <span class="status-badge">
                   <span class="status-dot {{ status_class }}" aria-hidden="true"></span>
-                  <span>{{ status_label }}</span>
+                  <span>{{ status_text }}</span>
                 </span>
               </td>
             </tr>
