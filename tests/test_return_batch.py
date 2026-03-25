@@ -176,6 +176,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Returned MVPLAPTOP02.", response.data)
         self.assertIn(b"Location: STORAGE.", response.data)
         self.assertIn(b"Slot: CASE-13 / 6.", response.data)
+        self.assertIn(b"Verify home slots:", response.data)
+        self.assertIn(b'href="/dashboard/cases/CASE-13"', response.data)
 
         asset_after = self.conn.execute(
             "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
@@ -184,6 +186,49 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNotNone(asset_after)
         self.assertEqual(asset_after["location_type"], "STORAGE")
         self.assertIsNone(asset_after["current_holder_id"])
+
+    def test_multi_asset_return_same_case_shows_one_case_drilldown_link(self) -> None:
+        self._insert_slot(40, "CASE-SAME", 1, None)
+        self._insert_slot(41, "CASE-SAME", 2, None)
+        self._insert_asset("SAME-1", location_type="IN_CUSTODY", holder_id=7, home_slot_id=40)
+        self._insert_asset("SAME-2", location_type="IN_CUSTODY", holder_id=8, home_slot_id=41)
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="SAME-1", equipment_type="laptop"))
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="SAME-2", equipment_type="laptop"))
+
+        response = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Returned 2 assets.", response.data)
+        self.assertIn(b"Verify home slots:", response.data)
+        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-SAME"'), 1)
+
+    def test_multi_asset_return_different_cases_shows_one_link_per_case(self) -> None:
+        self._insert_slot(50, "CASE-X", 1, None)
+        self._insert_slot(60, "CASE-Y", 1, None)
+        self._insert_asset("DIFF-1", location_type="IN_CUSTODY", holder_id=7, home_slot_id=50)
+        self._insert_asset("DIFF-2", location_type="IN_CUSTODY", holder_id=8, home_slot_id=60)
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="DIFF-1", equipment_type="laptop"))
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="DIFF-2", equipment_type="laptop"))
+
+        response = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Returned 2 assets.", response.data)
+        self.assertIn(b"Verify home slots:", response.data)
+        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-X"'), 1)
+        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-Y"'), 1)
 
     def test_return_queue_can_remove_one_item_and_preview_only_remaining_items(self) -> None:
         intake_app.SCAN_QUEUE.clear()

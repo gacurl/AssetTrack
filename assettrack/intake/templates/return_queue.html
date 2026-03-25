@@ -75,6 +75,15 @@
     {% endif %}
   {% endwith %}
 
+  {% if recent_return_cases %}
+    <div class="flash success">
+      Verify home slots:
+      {% for case_name in recent_return_cases %}
+        <a href="{{ url_for('dashboard_case_detail', case_name=case_name) }}">{{ case_name }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
   {% endif %}
