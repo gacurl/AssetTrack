@@ -2380,6 +2380,20 @@ def issue():
 
     asset_tags = _queue_asset_tags()
     issue_state = _build_issue_preview_state(asset_tags, selected_holder)
+    issued_count_raw = (request.args.get("issued") or "").strip()
+    issued_count = 0
+    if issued_count_raw:
+        try:
+            issued_count = max(0, int(issued_count_raw))
+        except ValueError:
+            issued_count = 0
+    workflow_banner_outcome = None
+    if issued_count > 0 and not asset_tags:
+        workflow_banner_outcome = (
+            f"Issued {issued_count} asset successfully."
+            if issued_count == 1
+            else f"Issued {issued_count} assets successfully."
+        )
 
     return render_template(
         "return_queue.html",
@@ -2388,6 +2402,7 @@ def issue():
         scan_heading="Scan issues",
         workflow_banner_title="Issuing Assets",
         workflow_banner_queued_count=len(asset_tags),
+        workflow_banner_outcome=workflow_banner_outcome,
         return_to=url_for("issue"),
         preview_url=url_for("issue_preview"),
         preview_label="Open Issue Assets Preview / Confirm",
@@ -2494,7 +2509,7 @@ def issue_commit():
         return {"ok": True, "committed": committed_count, "error": None}
 
     flash(f"Issued {committed_count} assets.", "success")
-    return redirect(url_for("issue"))
+    return redirect(url_for("issue", issued=committed_count))
 
 
 @app.get("/return")

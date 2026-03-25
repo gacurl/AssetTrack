@@ -89,6 +89,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Issued 1 assets." in commit.data
     assert b"Issuing Assets" in commit.data
     assert b"Holder:</strong> Issue Holder" in commit.data
+    assert b"Status:</strong> Issued 1 asset successfully." in commit.data
+    assert b"Queued:</strong> 0 assets" not in commit.data
     assert len(intake_app.SCAN_QUEUE) == 0
 
     with client_with_temp_db.session_transaction() as sess:
