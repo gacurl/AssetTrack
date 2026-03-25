@@ -10,6 +10,26 @@
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
     ul { margin: 0.5rem 0 0 1.25rem; }
+    .workflow-card h2 { margin: 0 0 0.55rem 0; }
+    .workflow-summary { margin: 0; line-height: 1.55; }
+    .holder-summary { margin: 0; line-height: 1.55; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .workflow-table td strong { color: #344054; }
+    .workflow-table code {
+      font-size: 0.94rem;
+      font-weight: 600;
+    }
+    .state-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.15rem 0;
+    }
+    .state-block + .state-block {
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+      border-top: 1px solid #e8edf6;
+    }
     .review-signal {
       border-left: 4px solid #2f6f3e;
       background: #f4fbf5;
@@ -22,7 +42,9 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('preview') }}">← Back to batch preview</a></p>
+  <nav class="actions" aria-label="Issue preview navigation">
+    <a class="chip" href="{{ url_for('preview') }}">Back to batch preview</a>
+  </nav>
 
   {% include "_timeout_status.html" %}
 
@@ -38,7 +60,7 @@
     {% include "_workflow_context_banner.html" %}
   {% endif %}
 
-  <div class="card review-signal {% if blocking_issues %}blocked{% endif %}">
+  <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Review Before Issuing{% else %}Ready to Issue{% endif %}</h2>
     <p>
       {% if blocking_issues %}
@@ -49,24 +71,28 @@
     </p>
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Selected Holder</h2>
     {% if selected_holder %}
-      <p>
+      <p class="holder-summary">
         <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
         <strong>Name:</strong> {{ selected_holder["name"] }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
-      <p><a href="{{ url_for('holders_search') }}">Change holder selection</a></p>
+      <div class="actions" style="margin-top: 0.75rem;">
+        <a class="chip" href="{{ url_for('holders_search') }}">Change holder selection</a>
+      </div>
     {% else %}
       <p>No holder selected.</p>
-      <p><a href="{{ url_for('holders_search') }}">Select holder</a></p>
+      <div class="actions" style="margin-top: 0.75rem;">
+        <a class="chip" href="{{ url_for('holders_search') }}">Select holder</a>
+      </div>
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Validation Summary</h2>
-    <p>
+    <p class="workflow-summary">
       <strong>Queued assets:</strong> {{ queued_count }}
       &nbsp;|&nbsp;
       <strong>Ready to commit:</strong> {{ ready_count }}
@@ -90,11 +116,11 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Items to Be Issued</h2>
 
     {% if assets %}
-      <table>
+      <table class="workflow-table">
         <thead>
           <tr>
             <th>Asset</th>
@@ -112,17 +138,21 @@
               <td><code>{{ row.asset_tag }}</code></td>
 
               <td>
-                <strong>Location:</strong> <code>{{ row.before_location_type }}</code><br />
-                <strong>Issued to:</strong> <code>{{ before_holder_display }}</code><br />
-                <strong>Home location:</strong> <code>{{ before_slot_display }}</code><br />
-                <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code>
+                <div class="state-block">
+                  <strong>Location:</strong> <code>{{ row.before_location_type }}</code><br />
+                  <strong>Issued to:</strong> <code>{{ before_holder_display }}</code><br />
+                  <strong>Home location:</strong> <code>{{ before_slot_display }}</code><br />
+                  <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code>
+                </div>
               </td>
 
               <td>
-                <strong>Location:</strong> <code>{{ row.after_location_type }}</code><br />
-                <strong>Issued to:</strong> <code>{{ row.after_holder }}</code><br />
-                <strong>Home location:</strong> <code>{{ after_slot_display }}</code><br />
-                <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
+                <div class="state-block">
+                  <strong>Location:</strong> <code>{{ row.after_location_type }}</code><br />
+                  <strong>Issued to:</strong> <code>{{ row.after_holder }}</code><br />
+                  <strong>Home location:</strong> <code>{{ after_slot_display }}</code><br />
+                  <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
+                </div>
               </td>
 
               <td>
@@ -146,7 +176,7 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Confirm Commit</h2>
     <form method="post" action="{{ url_for('issue_commit') }}">
       <label style="display:block; margin-bottom: 10px;">
