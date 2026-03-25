@@ -12,7 +12,41 @@
     input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
     .validation-messages { margin-top: 0.5rem; }
     .validation-message { margin: 0.35rem 0; }
-    .queue-ts { color: #5b6878; font-size: 0.9rem; margin-right: 0.4rem; }
+    .queue-ts {
+      color: #5b6878;
+      font-size: 0.82rem;
+      margin-right: 0.25rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      background: #eef3fb;
+      border: 1px solid #d7deea;
+      white-space: nowrap;
+    }
+    .workflow-card h2 { margin: 0 0 0.55rem 0; }
+    .workflow-summary { margin: 0; line-height: 1.55; }
+    .workflow-action { margin: 0; }
+    .queue-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid #d7deea;
+      border-radius: 12px;
+      background: #f8fbff;
+    }
+    .queue-item code {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
   </style>
 {% endblock %}
 
@@ -33,7 +67,7 @@
     {% include "_workflow_context_banner.html" %}
   {% endif %}
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>{{ scan_heading or "Scan returns" }}</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
 
@@ -57,9 +91,9 @@
     </form>
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Validation Summary</h2>
-    <p>
+    <p class="workflow-summary">
       <strong>Queued assets:</strong> {{ queued_count }}
       &nbsp;|&nbsp;
       <strong>Ready:</strong> {{ ready_count }}
@@ -80,15 +114,15 @@
     {% endif %}
   </div>
 
-  <div class="card">
-    <p><a href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target><strong>{{ preview_label or "Open Return Assets Preview / Confirm" }}</strong></a></p>
+  <div class="card workflow-card">
+    <p class="workflow-action"><a class="chip" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Open Return Assets Preview / Confirm" }}</a></p>
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Queue ({{ queue_len }})</h2>
-    <ul id="queue-list" role="list">
+    <ul id="queue-list" class="queue-list" role="list">
       {% for s in queue %}
-        <li data-asset-tag="{{ s.asset_tag }}">
+        <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
           <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
           <code>{{ s.asset_tag }}</code>
         </li>
