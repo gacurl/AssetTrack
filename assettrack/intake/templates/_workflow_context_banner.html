@@ -3,13 +3,11 @@
   <h2>{{ workflow_banner_title }}</h2>
   <p>
     {% if selected_holder %}
-      <strong>Holder:</strong> {{ selected_holder["name"] }}<br />
-      {% if selected_holder["organization"] %}
-        <strong>Organization:</strong> {{ selected_holder["organization"] }}<br />
-      {% endif %}
+      <strong>Issued to:</strong>
+      {{ selected_holder["name"] }}{% if selected_holder["organization"] %} ({{ selected_holder["organization"] }}){% endif %}<br />
     {% endif %}
     {% if workflow_banner_destination %}
-      <strong>Destination:</strong> {{ workflow_banner_destination }}<br />
+      <strong>Home location:</strong> {{ workflow_banner_destination }}<br />
     {% endif %}
     {% if workflow_banner_outcome %}
       <strong>Status:</strong> {{ workflow_banner_outcome }}
