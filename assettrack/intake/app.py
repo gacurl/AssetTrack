@@ -1906,6 +1906,7 @@ def intake():
         action = (request.form.get("action") or "").strip().lower()
         scan_text = (request.form.get("scan_text") or "").strip()
         return_to = (request.form.get("return_to") or "").strip()
+        queue_index_raw = (request.form.get("queue_index") or "").strip()
         submitted_equipment_type = request.form.get("equipment_type")
         current_equipment_type = (session.get("equipment_type") or "laptop").strip() or "laptop"
         if submitted_equipment_type is None:
@@ -1916,6 +1917,14 @@ def intake():
 
         if action == "clear":
             SCAN_QUEUE.clear()
+        elif action == "remove":
+            try:
+                queue_index = int(queue_index_raw)
+            except ValueError:
+                queue_index = -1
+
+            if 0 <= queue_index < len(SCAN_QUEUE):
+                SCAN_QUEUE.pop(queue_index)
 
         if scan_text:
             value = sanitize_scan(scan_text)

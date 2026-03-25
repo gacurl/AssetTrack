@@ -9,6 +9,17 @@
     input[type="text"], input[type="password"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
     .queue-ts { color: #5b6878; font-size: 0.9rem; margin-right: 0.4rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    .queue-row { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+    .queue-row form { margin: 0 0 0 auto; }
+    .queue-remove {
+      padding: 0.25rem 0.5rem;
+      border: 1px solid #d7deea;
+      border-radius: 999px;
+      background: #fff;
+      color: #243447;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
   </style>
 {% endblock %}
 
@@ -113,12 +124,18 @@
     <h2>Queue ({{ queue_len }})</h2>
     <ul id="queue-list" role="list">
       {% for s in queue %}
-        <li data-asset-tag="{{ s.asset_tag }}">
+        <li class="queue-row" data-asset-tag="{{ s.asset_tag }}">
           <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }}</time>
           <code>{{ s.asset_tag }}</code>
           {% if s.case_name and s.slot_position is not none %}
             <span class="muted">→ {{ s.case_name }} / Slot {{ s.slot_position }}</span>
           {% endif %}
+          <form method="post" action="{{ url_for('intake') }}">
+            <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
+            <input type="hidden" name="action" value="remove" />
+            <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+            <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+          </form>
         </li>
       {% endfor %}
     </ul>

@@ -124,3 +124,108 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert str(asset["location_type"]) == "IN_CUSTODY"
     assert int(asset["current_holder_id"]) == 1
     assert occupancy is None
+
+
+def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-remove-preview", password="op-pass", role="operator")
+
+    conn = db.get_connection()
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES
+            (102, 'CASE-1', 2, 'DDC4CY002646'),
+            (103, 'CASE-1', 3, 'DDC4CY002647');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            id, asset_tag, serial_number, equipment_type, manufacturer, model,
+            location_type, current_holder_id, home_slot_id
+        )
+        VALUES
+            (502, 'DDC4CY002646', 'SN-2', 'laptop', 'Dell', 'Latitude', 'STORAGE', NULL, 102),
+            (503, 'DDC4CY002647', 'SN-3', 'laptop', 'Dell', 'Latitude', 'STORAGE', NULL, 103);
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES
+            (102, 502, '2026-01-01T00:00:00Z'),
+            (103, 503, '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+
+    intake_app.SCAN_QUEUE.extend(
+        [
+            Scan.now("DDC4CY002645"),
+            Scan.now("DDC4CY002646"),
+            Scan.now("DDC4CY002647"),
+        ]
+    )
+
+    remove = client_with_temp_db.post(
+        "/",
+        data={"action": "remove", "queue_index": "1", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert remove.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DDC4CY002645", "DDC4CY002647"]
+    assert b"Queue (2)" in remove.data
+    assert b"Queued assets:</strong> 2" in remove.data
+
+    issue_preview = client_with_temp_db.get("/issue/preview")
+    assert issue_preview.status_code == 200
+    assert b"DDC4CY002645" in issue_preview.data
+    assert b"DDC4CY002647" in issue_preview.data
+    assert b"DDC4CY002646" not in issue_preview.data
+
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on"},
+        follow_redirects=True,
+    )
+
+    assert commit.status_code == 200
+    assert b"Issued 2 assets." in commit.data
+    assert len(intake_app.SCAN_QUEUE) == 0
+
+    conn = db.get_connection()
+    try:
+        issued_rows = conn.execute(
+            """
+            SELECT asset_tag, location_type, current_holder_id
+            FROM assets
+            WHERE asset_tag IN ('DDC4CY002645', 'DDC4CY002646', 'DDC4CY002647')
+            ORDER BY asset_tag;
+            """
+        ).fetchall()
+        remaining_occupancy = conn.execute(
+            """
+            SELECT slot_id, asset_id
+            FROM slot_occupancy
+            WHERE asset_id IN (501, 502, 503)
+            ORDER BY asset_id;
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_tag = {str(row["asset_tag"]): row for row in issued_rows}
+    assert str(by_tag["DDC4CY002645"]["location_type"]) == "IN_CUSTODY"
+    assert int(by_tag["DDC4CY002645"]["current_holder_id"]) == 1
+    assert str(by_tag["DDC4CY002647"]["location_type"]) == "IN_CUSTODY"
+    assert int(by_tag["DDC4CY002647"]["current_holder_id"]) == 1
+    assert str(by_tag["DDC4CY002646"]["location_type"]) == "STORAGE"
+    assert by_tag["DDC4CY002646"]["current_holder_id"] is None
+    assert [(int(row["slot_id"]), int(row["asset_id"])) for row in remaining_occupancy] == [(102, 502)]

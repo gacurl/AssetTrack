@@ -185,6 +185,26 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(asset_after["location_type"], "STORAGE")
         self.assertIsNone(asset_after["current_holder_id"])
 
+    def test_return_queue_can_remove_one_item_and_preview_only_remaining_items(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="REMOVE-ME", equipment_type="laptop"))
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="KEEP-ME", equipment_type="laptop"))
+
+        remove = self.client.post(
+            "/",
+            data={"action": "remove", "queue_index": "0", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(remove.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["KEEP-ME"])
+        self.assertIn(b"Queue (1)", remove.data)
+
+        preview = self.client.get("/return/preview")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"KEEP-ME", preview.data)
+        self.assertNotIn(b"REMOVE-ME", preview.data)
+
 
 if __name__ == "__main__":
     unittest.main()
