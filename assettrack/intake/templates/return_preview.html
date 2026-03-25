@@ -9,6 +9,7 @@
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+    ul { margin: 0.5rem 0 0 1.25rem; }
     .workflow-card h2 { margin: 0 0 0.55rem 0; }
     .workflow-summary { margin: 0; line-height: 1.55; }
     .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
@@ -46,6 +47,14 @@
 
   {% include "_timeout_status.html" %}
 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
   {% endif %}
@@ -77,11 +86,11 @@
     </p>
 
     {% if blocking_issues %}
-      <div role="list" style="margin: 0.5rem 0 0 1.25rem;">
+      <ul><template>
         {% for issue in blocking_issues %}
-          <div role="listitem">• {{ issue }}</div>
+          <li>{{ issue }}</li>
         {% endfor %}
-      </div>
+      </template></ul>
     {% endif %}
   </div>
 
@@ -100,6 +109,8 @@
         </thead>
         <tbody>
           {% for row in preview_rows %}
+            {% set before_holder_display = row.before_holder if row.before_holder != "null" else "Not assigned" %}
+            {% set destination_slot_display = row.destination_slot if row.destination_slot != "unknown" else "Not available" %}
             <tr>
               <td><code>{{ row.canonical_tag or row.scanned_tag }}</code></td>
 
@@ -107,10 +118,8 @@
                 <div class="state-block">
                   <strong>Current State</strong><br />
                   Location: {{ row.before_location_type }}<br />
-                  Issued to: {{ row.before_holder if row.before_holder != "null" else "Not assigned" }}
-                </div>
-                <div class="state-block">
-                  Home location: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
+                  Issued to: {{ before_holder_display }}<br />
+                  Home location: {{ destination_slot_display }}
                 </div>
               </td>
 
@@ -119,19 +128,18 @@
                   <strong>After Return</strong><br />
                   Location: {{ row.after_location_type }}<br />
                   Issued to: Not assigned<br />
-                  Home location: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
+                  Home location: {{ destination_slot_display }}
                 </div>
               </td>
 
               <td>
                 {% if row.asset_issues %}
                   <span class="pill bad">blocked</span>
-
-                  <div role="list" style="margin: 0.5rem 0 0 1rem;">
+                  <ul><template>
                     {% for issue in row.asset_issues %}
-                      <div role="listitem">• {{ issue }}</div>
+                      <li>{{ issue }}</li>
                     {% endfor %}
-                  </div>
+                  </template></ul>
                 {% else %}
                   <span class="pill good">ready</span>
                 {% endif %}
