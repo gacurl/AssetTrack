@@ -205,6 +205,33 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"KEEP-ME", preview.data)
         self.assertNotIn(b"REMOVE-ME", preview.data)
 
+    def test_return_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_duplicate(self) -> None:
+        first = self.client.post(
+            "/",
+            data={"scan_text": "rt-200", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT200"])
+        self.assertIn(b"RT200", first.data)
+        self.assertNotIn(b"rt-200", first.data)
+
+        second = self.client.post(
+            "/",
+            data={"scan_text": "RT200", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT200"])
+        self.assertIn(b"Asset RT200 is already queued.", second.data)
+
+        preview = self.client.get("/return/preview")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"RT200", preview.data)
+        self.assertNotIn(b"rt-200", preview.data)
+
 
 if __name__ == "__main__":
     unittest.main()

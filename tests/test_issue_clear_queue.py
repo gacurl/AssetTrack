@@ -107,3 +107,40 @@ def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_
     assert b"Issuing Assets" in response.data
     assert b"Queue (0)" in response.data
     assert b"Queued assets:</strong> 0" in response.data
+
+
+def test_issue_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_duplicate(
+    client_with_temp_db,
+) -> None:
+    operator_id = create_test_user(username="operator-uppercase-issue", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+
+    first = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ab-123", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert first.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["AB123"]
+    assert b"AB123" in first.data
+    assert b"ab-123" not in first.data
+
+    second = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "AB123", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert second.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["AB123"]
+    assert b"Asset AB123 is already queued." in second.data
+
+    preview = client_with_temp_db.get("/issue/preview")
+    assert preview.status_code == 200
+    assert b"AB123" in preview.data
+    assert b"ab-123" not in preview.data
