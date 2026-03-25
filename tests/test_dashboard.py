@@ -159,7 +159,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Available Space by Case", response.data)
         self.assertIn(b"Problems", response.data)
         self.assertIn(b"1 holders, 1 assets out", response.data)
-        self.assertIn(b"No open slots available.", response.data)
+        self.assertIn(b"Based on open slots. No open slots available.", response.data)
         self.assertIn(b"1 unslotted, 1 over 30 days, 0 conflicts", response.data)
         self.assertIn(b"0 open", response.data)
         self.assertIn(b"FULL", response.data)
@@ -172,7 +172,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"0 holders, 0 assets out", response.data)
         self.assertIn(b"No holders currently have assets out.", response.data)
-        self.assertIn(b"No case slot data is available.", response.data)
+        self.assertIn(b"Based on open slots. No case slot data is available.", response.data)
         self.assertIn(b"0 unslotted, 0 over 30 days, 0 conflicts", response.data)
         self.assertIn(b"No unslotted assets.", response.data)
         self.assertIn(b"No overdue in-custody assets.", response.data)
@@ -219,7 +219,7 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Best available case: CASE-B with 3 open", response.data)
+        self.assertIn(b"Based on open slots. Best available case: CASE-B with 3 open", response.data)
         self.assertIn(b"CASE-A", response.data)
         self.assertIn(b"0 open", response.data)
         self.assertIn(b"FULL - No space", response.data)
@@ -265,7 +265,7 @@ class DashboardTests(unittest.TestCase):
             10,
         )
         self.assertEqual(rendered.status_code, 200)
-        self.assertIn(b"Best available case: CASE-6 with 10 open", rendered.data)
+        self.assertIn(b"Based on open slots. Best available case: CASE-6 with 10 open", rendered.data)
         self.assertIn(b"CASE-6", rendered.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
