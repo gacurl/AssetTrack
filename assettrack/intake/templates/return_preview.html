@@ -9,7 +9,25 @@
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
     .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
     .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
-    .state-section + .state-section { margin-top: 0.75rem; }
+    .workflow-card h2 { margin: 0 0 0.55rem 0; }
+    .workflow-summary { margin: 0; line-height: 1.55; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .workflow-table td strong { color: #344054; }
+    .workflow-table code {
+      font-size: 0.94rem;
+      font-weight: 600;
+    }
+    .state-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.15rem 0;
+    }
+    .state-block + .state-block {
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+      border-top: 1px solid #e8edf6;
+    }
     .review-signal {
       border-left: 4px solid #2f6f3e;
       background: #f4fbf5;
@@ -22,7 +40,9 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('return_queue') }}">← Back to Return Queue</a></p>
+  <nav class="actions" aria-label="Return preview navigation">
+    <a class="chip" href="{{ url_for('return_queue') }}">Back to Return Queue</a>
+  </nav>
 
   {% include "_timeout_status.html" %}
 
@@ -30,7 +50,7 @@
     {% include "_workflow_context_banner.html" %}
   {% endif %}
 
-  <div class="card review-signal {% if blocking_issues %}blocked{% endif %}">
+  <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Review Before Returning{% else %}Ready to Return{% endif %}</h2>
     <p>
       {% if blocking_issues %}
@@ -41,9 +61,9 @@
     </p>
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Validation Summary</h2>
-    <p>
+    <p class="workflow-summary">
       <strong>Queued assets:</strong> {{ queued_count }}
       &nbsp;|&nbsp;
       <strong>Ready:</strong> {{ ready_count }}
@@ -65,11 +85,11 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Items to Be Returned</h2>
 
     {% if preview_rows %}
-      <table>
+      <table class="workflow-table">
         <thead>
           <tr>
             <th>Asset</th>
@@ -84,18 +104,18 @@
               <td><code>{{ row.canonical_tag or row.scanned_tag }}</code></td>
 
               <td>
-                <div class="state-section">
+                <div class="state-block">
                   <strong>Current State</strong><br />
                   Location: {{ row.before_location_type }}<br />
                   Issued to: {{ row.before_holder if row.before_holder != "null" else "Not assigned" }}
                 </div>
-                <div class="state-section">
+                <div class="state-block">
                   Home location: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
                 </div>
               </td>
 
               <td>
-                <div class="state-section">
+                <div class="state-block">
                   <strong>After Return</strong><br />
                   Location: {{ row.after_location_type }}<br />
                   Issued to: Not assigned<br />
@@ -125,7 +145,7 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card workflow-card">
     <h2>Confirm Return</h2>
 
     {% if not blocking_issues %}
