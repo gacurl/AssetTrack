@@ -73,10 +73,11 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Confirm Issue" in issue_preview.data
     assert b"Ready to Issue" in issue_preview.data
     assert b"Commit Issue is the next step." in issue_preview.data
-    assert b"Holder:</strong> Issue Holder" in issue_preview.data
+    assert b"Issued to:</strong>" in issue_preview.data
+    assert b"Issue Holder" in issue_preview.data
     assert b"Queued:</strong> 1 asset" in issue_preview.data
-    assert b"Holder:</strong> <code>Not assigned</code>" in issue_preview.data
-    assert b"Slot:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"Home location:</strong> <code>Not assigned</code>" in issue_preview.data
     assert b"null" not in issue_preview.data
 
     commit = client_with_temp_db.post(
@@ -88,7 +89,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert commit.status_code == 200
     assert b"Issued 1 assets." in commit.data
     assert b"Issuing Assets" in commit.data
-    assert b"Holder:</strong> Issue Holder" in commit.data
+    assert b"Issued to:</strong>" in commit.data
+    assert b"Issue Holder" in commit.data
     assert b"Status:</strong> Issued 1 asset successfully." in commit.data
     assert b"Queued:</strong> 0 assets" not in commit.data
     assert len(intake_app.SCAN_QUEUE) == 0
@@ -103,7 +105,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     )
     assert follow_up_scan.status_code == 200
     assert b"Issuing Assets" in follow_up_scan.data
-    assert b"Holder:</strong> Issue Holder" in follow_up_scan.data
+    assert b"Issued to:</strong>" in follow_up_scan.data
+    assert b"Issue Holder" in follow_up_scan.data
     assert b"Queued:</strong> 1 asset" in follow_up_scan.data
 
     conn = db.get_connection()

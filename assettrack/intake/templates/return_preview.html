@@ -87,11 +87,10 @@
                 <div class="state-section">
                   <strong>Current State</strong><br />
                   Location: {{ row.before_location_type }}<br />
-                  Holder: {{ row.before_holder if row.before_holder != "null" else "Not assigned" }}
+                  Issued to: {{ row.before_holder if row.before_holder != "null" else "Not assigned" }}
                 </div>
                 <div class="state-section">
-                  <strong>Home Location</strong><br />
-                  Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
+                  Home location: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
                 </div>
               </td>
 
@@ -99,8 +98,8 @@
                 <div class="state-section">
                   <strong>After Return</strong><br />
                   Location: {{ row.after_location_type }}<br />
-                  Holder: Not assigned<br />
-                  Slot: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
+                  Issued to: Not assigned<br />
+                  Home location: {{ row.destination_slot if row.destination_slot != "unknown" else "Not available" }}
                 </div>
               </td>
 

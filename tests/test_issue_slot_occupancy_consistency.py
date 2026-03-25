@@ -65,7 +65,7 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200
     assert b"Not currently slotted: DDC4CY002645" not in preview.data
-    assert b"Slot:</strong> <code>CASE-1 / 1</code>" in preview.data
+    assert b"Home location:</strong> <code>CASE-1 / 1</code>" in preview.data
 
     commit = client_with_temp_db.post("/issue/commit", data={"confirm_reviewed": "on"})
     assert commit.status_code == 302
