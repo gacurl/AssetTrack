@@ -64,6 +64,15 @@ def test_preview_load_refreshes_last_seen(client_with_temp_db, monkeypatch: pyte
 
 def test_scan_submission_refreshes_last_seen(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
     _login(client_with_temp_db, monkeypatch, last_seen=120)
+    conn = db.get_connection()
+    conn.execute(
+        """
+        INSERT INTO assets (asset_tag, location_type, current_holder_id, home_slot_id)
+        VALUES ('SCAN-TAG-1', 'STORAGE', NULL, NULL);
+        """
+    )
+    conn.commit()
+    conn.close()
     monkeypatch.setattr(intake_app, "now_seconds", lambda: 220)
 
     response = client_with_temp_db.post(
@@ -72,7 +81,7 @@ def test_scan_submission_refreshes_last_seen(client_with_temp_db, monkeypatch: p
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
     assert len(intake_app.SCAN_QUEUE) == 1
     with client_with_temp_db.session_transaction() as sess:
         assert sess["last_seen"] == 220
@@ -89,7 +98,7 @@ def test_queue_action_refreshes_last_seen(client_with_temp_db, monkeypatch: pyte
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
     assert len(intake_app.SCAN_QUEUE) == 0
     with client_with_temp_db.session_transaction() as sess:
         assert sess["last_seen"] == 230

@@ -251,6 +251,9 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertNotIn(b"REMOVE-ME", preview.data)
 
     def test_return_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_duplicate(self) -> None:
+        self._insert_slot(26, "CASE-RT", 2, None)
+        self._insert_asset("RT200", location_type="IN_CUSTODY", holder_id=9, home_slot_id=26)
+
         first = self.client.post(
             "/",
             data={"scan_text": "rt-200", "return_to": "/return"},
@@ -276,6 +279,27 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(preview.status_code, 200)
         self.assertIn(b"RT200", preview.data)
         self.assertNotIn(b"rt-200", preview.data)
+
+    def test_return_scan_redirects_back_to_queue_anchor(self) -> None:
+        self._insert_slot(25, "CASE-Z", 1, None)
+        self._insert_asset("RT-ANCHOR-1", location_type="IN_CUSTODY", holder_id=5, home_slot_id=25)
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "rt-anchor-1", "return_to": "/return"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers.get("Location") or "").endswith("/return#queue-section"))
+
+    def test_return_scan_validation_error_redirects_back_to_queue_anchor(self) -> None:
+        response = self.client.post(
+            "/",
+            data={"scan_text": "missing-tag", "return_to": "/return"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers.get("Location") or "").endswith("/return#queue-section"))
 
 
 if __name__ == "__main__":

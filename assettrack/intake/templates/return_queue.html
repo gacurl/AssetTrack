@@ -63,6 +63,7 @@
 {% endblock %}
 
 {% block content %}
+  {% set queue_return_to = (return_to or url_for('return_queue')) ~ '#queue-section' %}
   <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
 
   {% include "_timeout_status.html" %}
@@ -93,7 +94,7 @@
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
+      <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
       <input
         id="scan-input"
         type="text"
@@ -106,7 +107,7 @@
     </form>
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
+      <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
       <input type="hidden" name="action" value="clear" />
       <button type="submit" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
     </form>
@@ -139,7 +140,7 @@
     <p class="workflow-action"><a class="chip" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Open Return Assets Preview / Confirm" }}</a></p>
   </div>
 
-  <div class="card workflow-card">
+  <div class="card workflow-card" id="queue-section">
     <h2>Queue ({{ queue_len }})</h2>
     <ul id="queue-list" class="queue-list" role="list">
       {% for s in queue %}
@@ -147,7 +148,7 @@
           <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
           <code>{{ s.asset_tag }}</code>
           <form method="post" action="{{ url_for('intake') }}">
-            <input type="hidden" name="return_to" value="{{ return_to or url_for('return_queue') }}" />
+            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
             <input type="hidden" name="action" value="remove" />
             <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
             <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
