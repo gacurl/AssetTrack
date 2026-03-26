@@ -79,7 +79,7 @@
       {% if selected_holder %}
         <p>
           <strong>Selected holder:</strong>
-          {{ selected_holder["name"] }}
+          {{ holder_display_name(selected_holder) }}
           {% if selected_holder["identifier"] %}
             ({{ selected_holder["identifier"] }})
           {% endif %}

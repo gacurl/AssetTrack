@@ -4,7 +4,7 @@
   <p>
     {% if selected_holder %}
       <strong>Issued to:</strong>
-      {{ selected_holder["name"] }}{% if selected_holder["organization"] %} ({{ selected_holder["organization"] }}){% endif %}<br />
+      {{ holder_display_name(selected_holder) }}{% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %} ({{ selected_holder["organization"] }}){% endif %}<br />
     {% endif %}
     {% if workflow_banner_destination %}
       <strong>Home location:</strong> {{ workflow_banner_destination }}<br />

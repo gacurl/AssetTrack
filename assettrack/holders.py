@@ -91,9 +91,11 @@ def create_holder(
     contact_info: str | None = None,
 ) -> dict:
     normalized_name = (name or "").strip()
-    if not normalized_name:
-        raise ValueError("name is required")
     normalized_organization = (organization or "").strip() or None
+    if not normalized_name and not normalized_organization:
+        raise ValueError("name or organization is required")
+    normalized_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else holder_type
+    persisted_name = normalized_name or str(normalized_organization or "").strip()
 
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
@@ -103,7 +105,7 @@ def create_holder(
             INSERT INTO holders (holder_type, name, organization, identifier, contact_info, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?);
             """,
-            (holder_type, normalized_name, normalized_organization, identifier, contact_info, now_iso, now_iso),
+            (normalized_holder_type, persisted_name, normalized_organization, identifier, contact_info, now_iso, now_iso),
         )
         conn.commit()
         created_id = int(cursor.lastrowid)
@@ -131,9 +133,11 @@ def update_holder(
         raise ValueError("holder_id is required") from e
 
     normalized_name = (name or "").strip()
-    if not normalized_name:
-        raise ValueError("name is required")
     normalized_organization = (organization or "").strip() or None
+    if not normalized_name and not normalized_organization:
+        raise ValueError("name or organization is required")
+    persisted_name = normalized_name or str(normalized_organization or "").strip()
+    persisted_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else "PERSON"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     conn = get_connection()
@@ -141,10 +145,10 @@ def update_holder(
         cursor = conn.execute(
             """
             UPDATE holders
-            SET name = ?, organization = ?, updated_at = ?
+            SET holder_type = ?, name = ?, organization = ?, updated_at = ?
             WHERE id = ?;
             """,
-            (normalized_name, normalized_organization, now_iso, normalized_id),
+            (persisted_holder_type, persisted_name, normalized_organization, now_iso, normalized_id),
         )
         if cursor.rowcount != 1:
             raise ValueError("holder not found")

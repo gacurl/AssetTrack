@@ -36,12 +36,12 @@
       {% if return_to %}
         <input type="hidden" name="return_to" value="{{ return_to }}" />
       {% endif %}
-      <label for="q"><strong>Search by name or identifier</strong></label><br />
+      <label for="q"><strong>Search by person name, group, organization, or identifier</strong></label><br />
       <input
         type="text"
         id="q"
         name="q"
-        placeholder="e.g. Jane Doe or ID123"
+        placeholder="e.g. Jane Doe, Field Team, or ID123"
         value="{{ query or '' }}"
         autocomplete="off"
       />
@@ -53,8 +53,8 @@
     <h2>Selected Holder</h2>
     {% if selected_holder %}
       <p>
-        <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
-        <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+        <strong>Type:</strong> {{ holder_display_type(selected_holder) }}<br />
+        <strong>Person or group:</strong> {{ holder_display_name(selected_holder) }}<br />
         <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
@@ -85,12 +85,12 @@
         <tbody>
           {% for h in results %}
             <tr>
-              <td>{{ h["holder_type"] }}</td>
+              <td>{{ holder_display_type(h) }}</td>
               <td>
                 {% if return_to %}
-                  <a href="{{ url_for('holder_detail', holder_id=h['id'], return_to=return_to) }}">{{ h["name"] }}</a>
+                  <a href="{{ url_for('holder_detail', holder_id=h['id'], return_to=return_to) }}">{{ holder_display_name(h) }}</a>
                 {% else %}
-                  <a href="{{ url_for('holder_detail', holder_id=h['id']) }}">{{ h["name"] }}</a>
+                  <a href="{{ url_for('holder_detail', holder_id=h['id']) }}">{{ holder_display_name(h) }}</a>
                 {% endif %}
               </td>
               <td>{{ h["organization"] or "" }}</td>

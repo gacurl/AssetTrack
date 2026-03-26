@@ -75,8 +75,9 @@
     <h2>Selected Holder</h2>
     {% if selected_holder %}
       <p class="holder-summary">
-        <strong>Type:</strong> {{ selected_holder["holder_type"] }}<br />
-        <strong>Name:</strong> {{ selected_holder["name"] }}<br />
+        <strong>Type:</strong> {{ holder_display_type(selected_holder) }}<br />
+        <strong>Person or group:</strong> {{ holder_display_name(selected_holder) }}<br />
+        <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
         <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
       </p>
       <div class="actions" style="margin-top: 0.75rem;">

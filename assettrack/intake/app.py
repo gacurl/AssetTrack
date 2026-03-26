@@ -81,6 +81,8 @@ def inject_auth_user():
     return {
         "authenticated_user": user,
         "authenticated_role": None if user is None else user.get("role"),
+        "holder_display_name": _holder_display_name,
+        "holder_display_type": _holder_display_type,
     }
 
 
@@ -429,6 +431,27 @@ def _queue_redirect_target(return_to: str) -> str:
     if path in {"/issue", "/return"} and not fragment:
         return f"{path}#queue-section"
     return target
+
+
+def _holder_display_name(holder: Optional[dict]) -> str:
+    if not holder:
+        return ""
+
+    name = str(holder.get("name") or "").strip()
+    organization = str(holder.get("organization") or "").strip()
+    return name or organization
+
+
+def _holder_display_type(holder: Optional[dict]) -> str:
+    if not holder:
+        return ""
+
+    holder_type = str(holder.get("holder_type") or "").strip().upper()
+    if holder_type == "ORGANIZATION":
+        return "Group / organization"
+    if holder_type == "PERSON":
+        return "Person"
+    return holder_type.replace("_", " ").title()
 
 
 def _lookup_asset_for_verification(
@@ -1533,7 +1556,8 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
     holder_label = None
     if selected_holder:
         identifier = (selected_holder.get("identifier") or "").strip()
-        holder_label = selected_holder["name"] if not identifier else f"{selected_holder['name']} ({identifier})"
+        display_name = _holder_display_name(selected_holder)
+        holder_label = display_name if not identifier else f"{display_name} ({identifier})"
 
     assets: list[dict] = []
     unknown_tags: list[str] = []
@@ -2995,10 +3019,10 @@ def holders_create():
         return render_template(
             "holder_new.html",
             form=form,
-            error_message="Name is required.",
+            error_message="Enter a person or group name, or enter a group / organization.",
         )
 
-    flash(f"Created holder: {created['name']}", "success")
+    flash(f"Created holder: {_holder_display_name(created)}", "success")
     return redirect(url_for("holders_search"))
 
 
@@ -3053,11 +3077,15 @@ def holders_edit_submit(holder_id: int):
             "holder_edit.html",
             holder=holder,
             form=form,
-            error_message="Name is required." if str(e) == "name is required" else str(e),
+            error_message=(
+                "Enter a person or group name, or enter a group / organization."
+                if str(e) == "name or organization is required"
+                else str(e)
+            ),
         )
 
-    flash(f"Updated holder: {updated['name']}", "success")
-    return redirect(url_for("holders_search", q=updated["name"]))
+    flash(f"Updated holder: {_holder_display_name(updated)}", "success")
+    return redirect(url_for("holders_search", q=_holder_display_name(updated)))
 
 
 @app.post("/holders/select")
@@ -3085,7 +3113,7 @@ def holders_select():
 
     session["holder_id"] = holder["id"]
     touch_session()
-    flash(f"Selected holder: {holder['name']}", "success")
+    flash(f"Selected holder: {_holder_display_name(holder)}", "success")
     if return_to.startswith("/") and not return_to.startswith("//"):
         return redirect(return_to)
     return redirect(url_for("holders_search"))
