@@ -57,6 +57,11 @@ def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:
     _login(client_with_temp_db, "operator", "op-pass")
     response = client_with_temp_db.get("/admin/assets/new")
     assert response.status_code == 403
+    cleanup_response = client_with_temp_db.post(
+        "/admin/assets/edit",
+        data={"action": "cleanup", "lookup_asset_tag": "AT-JUNK-1", "asset_tag": "AT-JUNK-1"},
+    )
+    assert cleanup_response.status_code == 403
 
 
 def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
