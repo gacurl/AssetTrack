@@ -30,50 +30,56 @@
 
   <div class="card">
     <h2>New Asset</h2>
-    <p class="muted">Required fields must be provided before save.</p>
+    <p class="muted">Fill in the required fields below. Asset type defaults to Laptop.</p>
     <form method="post" action="{{ url_for('admin_new_asset') }}">
       <div class="grid">
         <div class="row">
-          <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
+          <label for="asset_tag"><strong>Asset tag</strong> (required)</label><br />
           <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
         </div>
         <div class="row">
-          <label for="serial_number"><strong>serial_number</strong> (required)</label><br />
+          <label for="serial_number"><strong>Serial number</strong> (required)</label><br />
           <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
         </div>
         <div class="row">
-          <label for="manufacturer"><strong>manufacturer</strong> (required)</label><br />
+          <label for="manufacturer"><strong>Manufacturer</strong> (required)</label><br />
           <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
         </div>
         <div class="row">
-          <label for="equipment_type"><strong>equipment_type</strong> (required)</label><br />
-          <input type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or 'laptop' }}" required />
+          <label for="equipment_type"><strong>Asset type</strong> (required)</label><br />
+          <select id="equipment_type" name="equipment_type" required>
+            {% for equipment_type in equipment_type_options %}
+              <option value="{{ equipment_type }}" {% if (form.equipment_type or 'laptop') == equipment_type %}selected{% endif %}>
+                {{ equipment_type|title }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
         <div class="row">
-          <label for="building"><strong>building</strong> (required)</label><br />
+          <label for="building"><strong>Building</strong> (required)</label><br />
           <input type="text" id="building" name="building" value="{{ form.building or '' }}" required />
         </div>
         <div class="row">
-          <label for="room"><strong>room</strong> (required)</label><br />
+          <label for="room"><strong>Room</strong> (required)</label><br />
           <input type="text" id="room" name="room" value="{{ form.room or '' }}" required />
         </div>
         <div class="row">
-          <label for="model"><strong>model</strong> (optional)</label><br />
+          <label for="model"><strong>Model</strong> (optional)</label><br />
           <input type="text" id="model" name="model" value="{{ form.model or '' }}" />
         </div>
         <div class="row">
-          <label for="model_code"><strong>model_code</strong> (optional)</label><br />
+          <label for="model_code"><strong>Model code</strong> (optional)</label><br />
           <input type="text" id="model_code" name="model_code" value="{{ form.model_code or '' }}" />
         </div>
         <div class="row">
-          <label for="notes"><strong>notes</strong> (optional)</label><br />
+          <label for="notes"><strong>Notes</strong> (optional)</label><br />
           <input type="text" id="notes" name="notes" value="{{ form.notes or '' }}" />
         </div>
       </div>
 
       <div class="grid">
         <div class="row">
-          <label for="case_name"><strong>case</strong> (optional)</label><br />
+          <label for="case_name"><strong>Case</strong> (optional)</label><br />
           <select id="case_name" name="case_name">
             <option value="">Unassigned</option>
             {% for case_name in case_options %}
@@ -82,7 +88,7 @@
           </select>
         </div>
         <div class="row">
-          <label for="slot_id"><strong>slot</strong> (optional)</label><br />
+          <label for="slot_id"><strong>Slot</strong> (optional)</label><br />
           <select id="slot_id" name="slot_id">
             <option value="">Unassigned</option>
             {% for slot in slot_options %}
@@ -95,7 +101,7 @@
               </option>
             {% endfor %}
           </select>
-          <p class="muted">Choose both case and slot to assign a home location, or leave both blank.</p>
+          <p class="muted">Choose both Case and Slot to assign a home location, or leave both blank.</p>
         </div>
       </div>
 

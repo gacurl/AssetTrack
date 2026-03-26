@@ -92,6 +92,9 @@ class AdminAddAssetUiTests(unittest.TestCase):
         response = self.client.get("/admin/assets/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Add Asset", response.data)
+        self.assertIn(b"Asset type", response.data)
+        self.assertIn(b'<option value="laptop"', response.data)
+        self.assertIn(b'<option value="tablet"', response.data)
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
 
@@ -216,7 +219,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             },
         )
         self.assertEqual(duplicate.status_code, 200)
-        self.assertIn(b"serial_number already exists", duplicate.data)
+        self.assertIn(b"Serial number already exists.", duplicate.data)
         missing = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-501",)).fetchone()
         self.assertIsNone(missing)
 
@@ -284,12 +287,39 @@ class AdminAddAssetUiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"serial_number already exists", response.data)
+        self.assertIn(b"Serial number already exists.", response.data)
 
         created = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-701",)).fetchone()
         self.assertIsNone(created)
         slot = self.conn.execute("SELECT current_asset_tag FROM slots WHERE id = 102;").fetchone()
         self.assertIsNone(slot["current_asset_tag"])
+
+    def test_post_invalid_submission_returns_plain_language_feedback(self) -> None:
+        self._insert_slot(140, "CASE-D", 2)
+
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "",
+                "serial_number": "",
+                "manufacturer": "",
+                "equipment_type": "printer",
+                "building": "",
+                "room": "",
+                "case_name": "CASE-D",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter an asset tag.", response.data)
+        self.assertIn(b"Enter a serial number.", response.data)
+        self.assertIn(b"Enter a manufacturer.", response.data)
+        self.assertIn(b"Choose a valid asset type.", response.data)
+        self.assertIn(b"Enter the building.", response.data)
+        self.assertIn(b"Enter the room.", response.data)
+        self.assertIn(b"Choose both a case and a slot, or leave both blank.", response.data)
+        self.assertNotIn(b"asset_tag is required", response.data)
+        self.assertNotIn(b"serial_number is required", response.data)
 
     def test_post_assign_now_with_occupied_slot_rejected_with_rollback(self) -> None:
         existing_id = self._insert_asset("AT-800", "SER-800")
