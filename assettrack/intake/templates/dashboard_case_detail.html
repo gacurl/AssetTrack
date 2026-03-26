@@ -8,14 +8,50 @@
   <style>
     .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .status-card { margin-bottom: 1rem; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 700;
+    }
+    .status-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      display: inline-block;
+      border: 1px solid rgba(18, 32, 47, 0.18);
+      flex: 0 0 auto;
+    }
+    .status-dot.full { background: #12b76a; }
+    .status-dot.low { background: #f79009; }
+    .status-dot.open { background: #b42318; }
   </style>
 {% endblock %}
 
 {% block content %}
+  {% set occupied_slots = case_detail.slots | selectattr("asset_tag") | list | length %}
+  {% set total_slots = case_detail.slots | length %}
+  {% set empty_slots = total_slots - occupied_slots %}
+  {% set status = case_status_summary(total_slots, occupied_slots) %}
   <nav class="actions" aria-label="Contextual navigation">
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('dashboard_cases') }}">Back to Cases</a>
   </nav>
+
+  <section class="card status-card">
+    <h2>Case Status</h2>
+    <p>
+      <span class="status-badge">
+        <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
+        <span>{{ status.text }}</span>
+      </span>
+      <br />
+      <strong>Total slots:</strong> {{ total_slots }}<br />
+      <strong>Occupied slots:</strong> {{ occupied_slots }}<br />
+      <strong>Empty slots:</strong> {{ empty_slots }}
+    </p>
+  </section>
 
   <section class="card">
     <h2>Slot Layout</h2>

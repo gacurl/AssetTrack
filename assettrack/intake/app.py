@@ -81,6 +81,7 @@ def inject_auth_user():
     return {
         "authenticated_user": user,
         "authenticated_role": None if user is None else user.get("role"),
+        "case_status_summary": _case_status_summary,
         "holder_display_name": _holder_display_name,
         "holder_display_type": _holder_display_type,
     }
@@ -420,6 +421,33 @@ def _asset_state_label(location_type: object) -> str:
     if not normalized:
         return "Unknown"
     return normalized.replace("_", " ").title()
+
+
+def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[str, object]:
+    total = int(total_slots or 0)
+    occupied = int(occupied_slots or 0)
+    available = max(0, total - occupied)
+
+    if available == 0:
+        return {
+            "label": "FULL",
+            "text": "FULL - No space",
+            "class_name": "full",
+            "available_slots": available,
+        }
+    if available <= 3:
+        return {
+            "label": "LOW",
+            "text": "LOW - Getting tight",
+            "class_name": "low",
+            "available_slots": available,
+        }
+    return {
+        "label": "OPEN",
+        "text": "OPEN - Use now",
+        "class_name": "open",
+        "available_slots": available,
+    }
 
 
 def _queue_redirect_target(return_to: str) -> str:
