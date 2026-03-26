@@ -15,10 +15,11 @@ import json
 import os
 import sqlite3
 import time
+from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
 
-from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
 import assettrack.db as db_module
 from assettrack.assets import get_asset_table_columns
@@ -491,6 +492,10 @@ def _asset_state_label(location_type: object) -> str:
     if not normalized:
         return "Unknown"
     return normalized.replace("_", " ").title()
+
+
+def _resolved_runtime_db_path() -> Path:
+    return db_module.DB_PATH.expanduser().resolve()
 
 
 def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[str, object]:
@@ -3304,7 +3309,7 @@ def admin_users():
 @require_login
 @require_role("admin")
 def admin_system():
-    resolved_db_path = db_module.DB_PATH.expanduser().resolve()
+    resolved_db_path = _resolved_runtime_db_path()
     holder_count: int | None = None
     asset_count: int | None = None
     schema_warning: str | None = None
@@ -3325,6 +3330,25 @@ def admin_system():
         holder_count=holder_count,
         asset_count=asset_count,
         schema_warning=schema_warning,
+    )
+
+
+@app.get("/admin/db/export")
+@require_login
+@require_role("admin")
+def admin_db_export():
+    resolved_db_path = _resolved_runtime_db_path()
+    if not resolved_db_path.exists() or not resolved_db_path.is_file():
+        return "Database file not found.", 404
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    download_name = f"assettrack-backup-{timestamp}.db"
+    return send_file(
+        resolved_db_path,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/octet-stream",
+        conditional=False,
     )
 
 

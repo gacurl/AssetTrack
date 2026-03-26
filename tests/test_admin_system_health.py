@@ -113,6 +113,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b'id="holder-count">1<' in response.data
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
+    assert b"Download Database Backup" in response.data
 
 
 def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
@@ -122,6 +123,36 @@ def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/admin/system")
 
     assert response.status_code == 403
+
+
+def test_admin_can_download_database_export(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-export", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get("/admin/db/export")
+
+    assert response.status_code == 200
+    disposition = response.headers.get("Content-Disposition") or ""
+    assert "attachment;" in disposition
+    assert "assettrack-backup-" in disposition
+    assert ".db" in disposition
+    assert len(response.data) > 0
+
+
+def test_database_export_returns_clear_error_when_file_missing(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    admin_id = create_test_user(username="admin-missing-export", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    missing_path = tmp_path / "missing-export.db"
+    monkeypatch.setattr(intake_app, "_resolved_runtime_db_path", lambda: missing_path)
+
+    response = client_with_temp_db.get("/admin/db/export")
+
+    assert response.status_code == 404
+    assert b"Database file not found." in response.data
 
 
 def test_system_health_renders_warning_when_assets_query_fails(
