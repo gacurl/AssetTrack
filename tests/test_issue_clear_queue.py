@@ -44,7 +44,7 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
     assert len(intake_app.SCAN_QUEUE) == 0
 
     issue_page = client_with_temp_db.get("/issue")
@@ -74,7 +74,7 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DUP-TAG", "KEEP-TAG"]
 
     issue_page = client_with_temp_db.get("/issue")
@@ -114,6 +114,16 @@ def test_issue_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_du
 ) -> None:
     operator_id = create_test_user(username="operator-uppercase-issue", password="op-pass", role="operator")
 
+    conn = db.get_connection()
+    conn.execute(
+        """
+        INSERT INTO assets (id, asset_tag, location_type)
+        VALUES (1, 'AB-123', 'STORAGE');
+        """
+    )
+    conn.commit()
+    conn.close()
+
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
@@ -142,5 +152,5 @@ def test_issue_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_du
 
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200
-    assert b"AB123" in preview.data
+    assert b"AB-123" in preview.data
     assert b"ab-123" not in preview.data
