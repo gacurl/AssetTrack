@@ -407,6 +407,80 @@ def _humanize_admin_asset_create_error(error_message: str) -> str:
     return error_map.get(error_message, error_message)
 
 
+def _asset_state_label(location_type: object) -> str:
+    normalized = _normalize_location_type(location_type)
+    if normalized == "STORAGE":
+        return "In storage"
+    if normalized == "IN_CUSTODY":
+        return "In custody"
+    if normalized in TERMINAL_LOCATION_TYPES:
+        return "Retired / disposed"
+    if not normalized:
+        return "Unknown"
+    return normalized.replace("_", " ").title()
+
+
+def _lookup_asset_for_verification(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    serial_number: str,
+) -> tuple[Optional[dict], Optional[str], str]:
+    asset_tag_clean = str(asset_tag or "").strip().upper()
+    serial_clean = str(serial_number or "").strip()
+
+    if not asset_tag_clean and not serial_clean:
+        return None, "Enter an asset tag or serial number.", "none"
+
+    lookup_mode = "asset_tag" if asset_tag_clean else "serial_number"
+
+    if lookup_mode == "asset_tag":
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM assets
+            WHERE UPPER(asset_tag) = UPPER(?)
+            LIMIT 1;
+            """,
+            (asset_tag_clean,),
+        ).fetchall()
+        if not rows:
+            return None, "Asset not found.", lookup_mode
+        asset = dict(rows[0])
+    else:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM assets
+            WHERE TRIM(COALESCE(serial_number, '')) <> ''
+              AND UPPER(serial_number) = UPPER(?)
+            LIMIT 2;
+            """,
+            (serial_clean,),
+        ).fetchall()
+        if not rows:
+            return None, "Asset not found.", lookup_mode
+        if len(rows) > 1:
+            return None, "More than one asset uses that serial number. Search by asset tag.", lookup_mode
+        asset = dict(rows[0])
+
+    home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+
+    return (
+        {
+            "id": int(asset["id"]),
+            "asset_tag": str(asset.get("asset_tag") or ""),
+            "serial_number": str(asset.get("serial_number") or ""),
+            "location_type": _normalize_location_type(asset.get("location_type")),
+            "state_label": _asset_state_label(asset.get("location_type")),
+            "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
+            "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
+        },
+        None,
+        lookup_mode,
+    )
+
+
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     errors: list[str] = []
     asset = _find_asset_for_scan_tag(conn, scan_tag)
@@ -2297,6 +2371,42 @@ def dashboard_case_detail(case_name: str):
     return render_template(
         "dashboard_case_detail.html",
         case_detail=detail,
+    )
+
+
+@app.get("/assets/search")
+@require_login
+def asset_search():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    form_state = {
+        "asset_tag": (request.args.get("asset_tag") or "").strip().upper(),
+        "serial_number": (request.args.get("serial_number") or "").strip(),
+    }
+    asset = None
+    error_message: Optional[str] = None
+    lookup_mode = "none"
+
+    if form_state["asset_tag"] or form_state["serial_number"]:
+        conn = get_connection()
+        try:
+            asset, error_message, lookup_mode = _lookup_asset_for_verification(
+                conn,
+                asset_tag=form_state["asset_tag"],
+                serial_number=form_state["serial_number"],
+            )
+        finally:
+            conn.close()
+
+    return render_template(
+        "asset_search.html",
+        form=form_state,
+        asset=asset,
+        error_message=error_message,
+        lookup_mode=lookup_mode,
     )
 
 
