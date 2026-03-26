@@ -42,6 +42,8 @@ class AdminEditAssetUiTests(unittest.TestCase):
         location_type: str,
         current_holder_id: int | None,
         home_slot_id: int | None,
+        case_number: str | None = None,
+        slot_number: str | None = None,
     ) -> int:
         cursor = self.conn.execute(
             """
@@ -67,12 +69,22 @@ class AdminEditAssetUiTests(unittest.TestCase):
                 case_number,
                 slot_number
             )
-            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '110', 'Latitude', '5400', 'seed', 'HQ/110', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, NULL, NULL);
+            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '110', 'Latitude', '5400', 'seed', 'HQ/110', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, ?, ?);
             """,
-            (asset_tag, serial_number, location_type, current_holder_id, home_slot_id),
+            (asset_tag, serial_number, location_type, current_holder_id, home_slot_id, case_number, slot_number),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
+
+    def _insert_event(self, asset_tag: str, event_type: str = "ASSET_UPDATED") -> None:
+        self.conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+            VALUES (?, ?, '2026-01-02T00:00:00Z', 'admin', NULL, NULL, NULL);
+            """,
+            (asset_tag, event_type),
+        )
+        self.conn.commit()
 
     def _occupy_slot(self, slot_id: int, asset_id: int, asset_tag: str) -> None:
         self.conn.execute(
@@ -247,6 +259,129 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertEqual(asset_row["home_slot_id"], 401)
         occ = self.conn.execute("SELECT slot_id FROM slot_occupancy WHERE asset_id = ?;", (asset_id,)).fetchone()
         self.assertEqual(occ["slot_id"], 401)
+
+    def test_cleanup_removes_safe_junk_asset_with_no_history(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-JUNK-1",
+            serial_number="SER-JUNK-1",
+            location_type="",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "cleanup",
+                "lookup_asset_tag": "AT-JUNK-1",
+                "asset_tag": "AT-JUNK-1",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Removed junk asset AT-JUNK-1.", response.data)
+
+        deleted = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
+        self.assertIsNone(deleted)
+
+    def test_cleanup_blocks_asset_with_event_history(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-JUNK-2",
+            serial_number="SER-JUNK-2",
+            location_type="",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+        self._insert_event("AT-JUNK-2")
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "cleanup",
+                "lookup_asset_tag": "AT-JUNK-2",
+                "asset_tag": "AT-JUNK-2",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset has event history and cannot be removed.", response.data)
+        still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
+        self.assertIsNotNone(still_present)
+
+    def test_cleanup_blocks_asset_with_home_slot_assignment(self) -> None:
+        self._insert_slot(501, "CASE-F", 1)
+        asset_id = self._insert_asset(
+            "AT-JUNK-3",
+            serial_number="SER-JUNK-3",
+            location_type="",
+            current_holder_id=None,
+            home_slot_id=501,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "cleanup",
+                "lookup_asset_tag": "AT-JUNK-3",
+                "asset_tag": "AT-JUNK-3",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset has a home slot assignment and cannot be removed.", response.data)
+        still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
+        self.assertIsNotNone(still_present)
+
+    def test_cleanup_blocks_asset_with_case_and_slot_fields(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-JUNK-4",
+            serial_number="SER-JUNK-4",
+            location_type="",
+            current_holder_id=None,
+            home_slot_id=None,
+            case_number="CASE-G",
+            slot_number="7",
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "cleanup",
+                "lookup_asset_tag": "AT-JUNK-4",
+                "asset_tag": "AT-JUNK-4",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset still has a case assignment and cannot be removed.", response.data)
+        self.assertIn(b"Asset still has a slot assignment field and cannot be removed.", response.data)
+        still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
+        self.assertIsNotNone(still_present)
+
+    def test_cleanup_blocks_asset_in_active_custody_state(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-JUNK-5",
+            serial_number="SER-JUNK-5",
+            location_type="IN_CUSTODY",
+            current_holder_id=77,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "cleanup",
+                "lookup_asset_tag": "AT-JUNK-5",
+                "asset_tag": "AT-JUNK-5",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset is assigned to a holder and cannot be removed.", response.data)
+        self.assertIn(b"Asset is in active inventory state IN_CUSTODY and cannot be removed.", response.data)
+        still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
+        self.assertIsNotNone(still_present)
 
 
 if __name__ == "__main__":

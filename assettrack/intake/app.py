@@ -467,6 +467,7 @@ def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], l
 
     current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset["asset_tag"]))
     home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+    cleanup_state = _build_admin_asset_cleanup_state(conn, asset, current_slot=current_slot)
 
     return (
         {
@@ -485,9 +486,50 @@ def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], l
             "home_slot_id": asset.get("home_slot_id"),
             "current_slot": current_slot,
             "home_slot": home_slot,
+            "cleanup": cleanup_state,
         },
         [],
     )
+
+
+def _build_admin_asset_cleanup_state(
+    conn: sqlite3.Connection,
+    asset: dict,
+    *,
+    current_slot: Optional[dict] = None,
+) -> dict:
+    reasons: list[str] = []
+    asset_tag = str(asset.get("asset_tag") or "").strip()
+    if not asset_tag:
+        return {"allowed": False, "reasons": ["asset_tag not found"]}
+
+    if conn.execute("SELECT 1 FROM asset_events WHERE asset_tag = ? LIMIT 1;", (asset_tag,)).fetchone():
+        reasons.append("Asset has event history and cannot be removed.")
+
+    if current_slot is None:
+        current_slot = _asset_current_slot(conn, int(asset["id"]), asset_tag)
+    if current_slot is not None:
+        reasons.append("Asset has a current slot placement and cannot be removed.")
+
+    if asset.get("home_slot_id") is not None:
+        reasons.append("Asset has a home slot assignment and cannot be removed.")
+
+    asset_columns = get_asset_table_columns(conn)
+    case_number = str(asset.get("case_number") or "").strip()
+    slot_number = str(asset.get("slot_number") or "").strip()
+    if "case_number" in asset_columns and case_number:
+        reasons.append("Asset still has a case assignment and cannot be removed.")
+    if "slot_number" in asset_columns and slot_number:
+        reasons.append("Asset still has a slot assignment field and cannot be removed.")
+
+    if asset.get("current_holder_id") is not None:
+        reasons.append("Asset is assigned to a holder and cannot be removed.")
+
+    location_type = _normalize_location_type(asset.get("location_type"))
+    if location_type in {"STORAGE", "IN_CUSTODY"}:
+        reasons.append(f"Asset is in active inventory state {location_type} and cannot be removed.")
+
+    return {"allowed": not reasons, "reasons": reasons}
 
 
 def _build_admin_slot_move_source_view(conn, slot_id: int) -> Optional[dict]:
@@ -1989,48 +2031,63 @@ def intake():
 
         if scan_text:
             value = sanitize_scan(scan_text)
-            if value:
-                if _queue_contains_asset_tag(value):
-                    flash(f"Asset {value} is already queued.", "error")
-                    touch_session()
-                    if return_to.startswith("/") and not return_to.startswith("//"):
-                        return redirect(return_to)
-                    return redirect(url_for("add_assets"))
+            if not value:
+                flash("Scan rejected. Enter a valid asset tag.", "error")
+                touch_session()
+                if return_to.startswith("/") and not return_to.startswith("//"):
+                    return redirect(return_to)
+                return redirect(url_for("add_assets"))
 
-                case_name = (request.form.get("case_name") or "").strip().upper()
-                slot_id_raw = (request.form.get("slot_id") or "").strip()
-                home_slot_id: Optional[int] = None
-                slot_position: Optional[int] = None
-                if case_name or slot_id_raw:
-                    conn = get_connection()
-                    try:
+            if _queue_contains_asset_tag(value):
+                flash(f"Asset {value} is already queued.", "error")
+                touch_session()
+                if return_to.startswith("/") and not return_to.startswith("//"):
+                    return redirect(return_to)
+                return redirect(url_for("add_assets"))
+
+            case_name = (request.form.get("case_name") or "").strip().upper()
+            slot_id_raw = (request.form.get("slot_id") or "").strip()
+            home_slot_id: Optional[int] = None
+            slot_position: Optional[int] = None
+            requires_inventory_validation = return_to in {"/issue", "/return"}
+            if requires_inventory_validation or case_name or slot_id_raw:
+                conn = get_connection()
+                try:
+                    if requires_inventory_validation and _find_asset_for_scan_tag(conn, value) is None:
+                        flash("Scan rejected. Asset tag not found in inventory.", "error")
+                        touch_session()
+                        if return_to.startswith("/") and not return_to.startswith("//"):
+                            return redirect(return_to)
+                        return redirect(url_for("add_assets"))
+
+                    if case_name or slot_id_raw:
                         selected_slot, slot_errors = _resolve_slot_selection(
                             conn,
                             case_name=case_name,
                             slot_id_raw=slot_id_raw,
                         )
-                    finally:
-                        conn.close()
-                    if slot_errors:
-                        flash("; ".join(slot_errors), "error")
-                        touch_session()
-                        if return_to.startswith("/") and not return_to.startswith("//"):
-                            return redirect(return_to)
-                        return redirect(url_for("add_assets"))
-                    if selected_slot is not None:
-                        home_slot_id = int(selected_slot["id"])
-                        case_name = str(selected_slot["case_name"])
-                        slot_position = int(selected_slot["slot_position"])
+                        if slot_errors:
+                            flash("; ".join(slot_errors), "error")
+                            touch_session()
+                            if return_to.startswith("/") and not return_to.startswith("//"):
+                                return redirect(return_to)
+                            return redirect(url_for("add_assets"))
+                        if selected_slot is not None:
+                            home_slot_id = int(selected_slot["id"])
+                            case_name = str(selected_slot["case_name"])
+                            slot_position = int(selected_slot["slot_position"])
+                finally:
+                    conn.close()
 
-                SCAN_QUEUE.append(
-                    Scan.now(
-                        value,
-                        equipment_type=selected_equipment_type,
-                        home_slot_id=home_slot_id,
-                        case_name=case_name,
-                        slot_position=slot_position,
-                    )
+            SCAN_QUEUE.append(
+                Scan.now(
+                    value,
+                    equipment_type=selected_equipment_type,
+                    home_slot_id=home_slot_id,
+                    case_name=case_name,
+                    slot_position=slot_position,
                 )
+            )
 
         touch_session()
 
@@ -3335,6 +3392,73 @@ def admin_edit_asset():
 
                 flash(f"Updated asset {form_state['asset_tag']}.", "success")
                 return redirect(url_for("admin_edit_asset", asset_tag=form_state["asset_tag"]))
+            elif action == "cleanup":
+                target_asset_tag = lookup_asset_tag or (request.form.get("asset_tag") or "").strip().upper()
+                asset_view, blocking_errors = _build_admin_edit_asset_view(conn, target_asset_tag)
+                if asset_view is None:
+                    error_message = "; ".join(blocking_errors or ["asset_tag not found"])
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+
+                selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
+                form_state.update(
+                    {
+                        "asset_tag": asset_view["asset_tag"],
+                        "serial_number": asset_view["serial_number"],
+                        "manufacturer": asset_view["manufacturer"],
+                        "equipment_type": asset_view["equipment_type"],
+                        "building": asset_view["building"],
+                        "room": asset_view["room"],
+                        "model": asset_view["model"],
+                        "model_code": asset_view["model_code"],
+                        "notes": asset_view["notes"],
+                        "case_name": "" if selected_home_slot is None else str(selected_home_slot["case_name"]),
+                        "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
+                    }
+                )
+
+                try:
+                    conn.execute("BEGIN;")
+                    asset_row = _find_asset_for_scan_tag(conn, asset_view["asset_tag"])
+                    if asset_row is None:
+                        raise ValueError("asset_tag not found")
+
+                    cleanup_state = _build_admin_asset_cleanup_state(conn, asset_row)
+                    if not cleanup_state["allowed"]:
+                        raise ValueError("; ".join(cleanup_state["reasons"]))
+
+                    deleted = conn.execute(
+                        "DELETE FROM assets WHERE id = ?;",
+                        (int(asset_row["id"]),),
+                    )
+                    if deleted.rowcount != 1:
+                        raise ValueError("Asset could not be removed.")
+
+                    conn.commit()
+                except ValueError as e:
+                    conn.rollback()
+                    error_message = str(e)
+                    asset_view, _ = _build_admin_edit_asset_view(conn, target_asset_tag)
+                    return render_template(
+                        "admin_edit_asset.html",
+                        form=form_state,
+                        asset=asset_view,
+                        error_message=error_message,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                flash(f"Removed junk asset {asset_view['asset_tag']}.", "success")
+                return redirect(url_for("admin_edit_asset"))
             else:
                 error_message = "Unknown action."
     finally:
