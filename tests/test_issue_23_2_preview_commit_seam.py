@@ -41,6 +41,18 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     conn.execute(
         """
+        INSERT INTO assets (
+            id, asset_tag, serial_number, equipment_type, manufacturer, model,
+            location_type, current_holder_id, home_slot_id
+        )
+        VALUES (
+            504, 'FOLLOW-UP-TAG', 'SN-4', 'laptop', 'Dell', 'Latitude',
+            'STORAGE', NULL, NULL
+        );
+        """
+    )
+    conn.execute(
+        """
         INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
         VALUES (101, 501, '2026-01-01T00:00:00Z');
         """

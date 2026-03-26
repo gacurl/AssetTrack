@@ -114,12 +114,12 @@ def sanitize_scan(raw: str) -> str:
 
 
 def _queue_contains_asset_tag(asset_tag: str) -> bool:
-    normalized = (asset_tag or "").strip().upper()
+    normalized = sanitize_scan(asset_tag or "")
     if not normalized:
         return False
 
     for queued in SCAN_QUEUE:
-        if str(queued.asset_tag or "").strip().upper() == normalized:
+        if sanitize_scan(queued.asset_tag or "") == normalized:
             return True
     return False
 
@@ -243,6 +243,76 @@ def _find_asset_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
 
     return dict(rows[0])
+
+
+def _find_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+    t = (scan_tag or "").strip()
+    if not t:
+        return None
+
+    slot_rows = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+           OR REPLACE(UPPER(case_name), '-', '') = UPPER(?)
+        ORDER BY slot_position ASC, id ASC;
+        """,
+        (t, t),
+    ).fetchall()
+    if not slot_rows:
+        return None
+
+    case_names = {str(row["case_name"] or "").strip().upper() for row in slot_rows if str(row["case_name"] or "").strip()}
+    if len(case_names) > 1:
+        raise ValueError(f"Ambiguous case match for scan '{t}'")
+
+    case_name = str(slot_rows[0]["case_name"] or "").strip().upper()
+    assets: list[dict] = []
+    seen_asset_tags: set[str] = set()
+
+    for slot_row in slot_rows:
+        slot_id = int(slot_row["id"])
+        slot_position = int(slot_row["slot_position"])
+        asset_tag = ""
+
+        occupancy_row = conn.execute(
+            """
+            SELECT a.asset_tag
+            FROM slot_occupancy so
+            JOIN assets a ON a.id = so.asset_id
+            WHERE so.slot_id = ?
+            ORDER BY so.id ASC
+            LIMIT 1;
+            """,
+            (slot_id,),
+        ).fetchone()
+        if occupancy_row is not None:
+            asset_tag = sanitize_scan(str(occupancy_row["asset_tag"] or ""))
+        else:
+            legacy_asset_tag = str(slot_row["current_asset_tag"] or "").strip()
+            if legacy_asset_tag:
+                asset_row = _find_asset_for_scan_tag(conn, legacy_asset_tag)
+                if asset_row is not None:
+                    asset_tag = sanitize_scan(str(asset_row["asset_tag"] or ""))
+
+        if not asset_tag or asset_tag in seen_asset_tags:
+            continue
+
+        seen_asset_tags.add(asset_tag)
+        assets.append(
+            {
+                "asset_tag": asset_tag,
+                "home_slot_id": slot_id,
+                "case_name": case_name,
+                "slot_position": slot_position,
+            }
+        )
+
+    return {
+        "case_name": case_name,
+        "assets": assets,
+    }
 
 
 def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
@@ -2176,13 +2246,6 @@ def intake():
                     return redirect(redirect_target)
                 return redirect(url_for("add_assets"))
 
-            if _queue_contains_asset_tag(value):
-                flash(f"Asset {value} is already queued.", "error")
-                touch_session()
-                if redirect_target.startswith("/") and not redirect_target.startswith("//"):
-                    return redirect(redirect_target)
-                return redirect(url_for("add_assets"))
-
             case_name = (request.form.get("case_name") or "").strip().upper()
             slot_id_raw = (request.form.get("slot_id") or "").strip()
             home_slot_id: Optional[int] = None
@@ -2191,6 +2254,68 @@ def intake():
             if requires_inventory_validation or case_name or slot_id_raw:
                 conn = get_connection()
                 try:
+                    case_match = None
+                    if return_to == "/issue":
+                        try:
+                            case_match = _find_case_assets_for_scan_tag(conn, value)
+                        except ValueError as e:
+                            flash(str(e), "error")
+                            touch_session()
+                            if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                                return redirect(redirect_target)
+                            return redirect(url_for("add_assets"))
+
+                        if case_match is not None:
+                            matched_case_name = str(case_match["case_name"] or value).strip().upper()
+                            case_assets = list(case_match["assets"])
+                            if not case_assets:
+                                flash(f"Case {matched_case_name} has no assets to add.", "error")
+                                touch_session()
+                                if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                                    return redirect(redirect_target)
+                                return redirect(url_for("add_assets"))
+
+                            added_count = 0
+                            skipped_count = 0
+                            for row in case_assets:
+                                asset_tag = str(row["asset_tag"] or "").strip().upper()
+                                if _queue_contains_asset_tag(asset_tag):
+                                    skipped_count += 1
+                                    continue
+                                SCAN_QUEUE.append(
+                                    Scan.now(
+                                        asset_tag,
+                                        equipment_type=selected_equipment_type,
+                                        home_slot_id=int(row["home_slot_id"]),
+                                        case_name=str(row["case_name"] or ""),
+                                        slot_position=int(row["slot_position"]),
+                                    )
+                                )
+                                added_count += 1
+
+                            if added_count > 0:
+                                message = f"Case {matched_case_name} added {added_count} asset"
+                                if added_count != 1:
+                                    message += "s"
+                                message += " to queue."
+                                if skipped_count > 0:
+                                    message += f" Skipped {skipped_count} already queued."
+                                flash(message, "success")
+                            else:
+                                flash(f"Case {matched_case_name} is already fully queued.", "error")
+
+                            touch_session()
+                            if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                                return redirect(redirect_target)
+                            return redirect(url_for("add_assets"))
+
+                    if _queue_contains_asset_tag(value):
+                        flash(f"Asset {value} is already queued.", "error")
+                        touch_session()
+                        if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                            return redirect(redirect_target)
+                        return redirect(url_for("add_assets"))
+
                     if requires_inventory_validation and _find_asset_for_scan_tag(conn, value) is None:
                         flash("Scan rejected. Asset tag not found in inventory.", "error")
                         touch_session()
@@ -2216,6 +2341,12 @@ def intake():
                             slot_position = int(selected_slot["slot_position"])
                 finally:
                     conn.close()
+            elif _queue_contains_asset_tag(value):
+                flash(f"Asset {value} is already queued.", "error")
+                touch_session()
+                if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                    return redirect(redirect_target)
+                return redirect(url_for("add_assets"))
 
             SCAN_QUEUE.append(
                 Scan.now(
