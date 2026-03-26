@@ -420,6 +420,17 @@ def _asset_state_label(location_type: object) -> str:
     return normalized.replace("_", " ").title()
 
 
+def _queue_redirect_target(return_to: str) -> str:
+    target = str(return_to or "").strip()
+    if not target.startswith("/") or target.startswith("//"):
+        return target
+
+    path, sep, fragment = target.partition("#")
+    if path in {"/issue", "/return"} and not fragment:
+        return f"{path}#queue-section"
+    return target
+
+
 def _lookup_asset_for_verification(
     conn: sqlite3.Connection,
     *,
@@ -2083,6 +2094,7 @@ def intake():
         action = (request.form.get("action") or "").strip().lower()
         scan_text = (request.form.get("scan_text") or "").strip()
         return_to = (request.form.get("return_to") or "").strip()
+        redirect_target = _queue_redirect_target(return_to)
         queue_index_raw = (request.form.get("queue_index") or "").strip()
         submitted_equipment_type = request.form.get("equipment_type")
         current_equipment_type = (session.get("equipment_type") or "laptop").strip() or "laptop"
@@ -2108,15 +2120,15 @@ def intake():
             if not value:
                 flash("Scan rejected. Enter a valid asset tag.", "error")
                 touch_session()
-                if return_to.startswith("/") and not return_to.startswith("//"):
-                    return redirect(return_to)
+                if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                    return redirect(redirect_target)
                 return redirect(url_for("add_assets"))
 
             if _queue_contains_asset_tag(value):
                 flash(f"Asset {value} is already queued.", "error")
                 touch_session()
-                if return_to.startswith("/") and not return_to.startswith("//"):
-                    return redirect(return_to)
+                if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                    return redirect(redirect_target)
                 return redirect(url_for("add_assets"))
 
             case_name = (request.form.get("case_name") or "").strip().upper()
@@ -2130,8 +2142,8 @@ def intake():
                     if requires_inventory_validation and _find_asset_for_scan_tag(conn, value) is None:
                         flash("Scan rejected. Asset tag not found in inventory.", "error")
                         touch_session()
-                        if return_to.startswith("/") and not return_to.startswith("//"):
-                            return redirect(return_to)
+                        if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                            return redirect(redirect_target)
                         return redirect(url_for("add_assets"))
 
                     if case_name or slot_id_raw:
@@ -2143,8 +2155,8 @@ def intake():
                         if slot_errors:
                             flash("; ".join(slot_errors), "error")
                             touch_session()
-                            if return_to.startswith("/") and not return_to.startswith("//"):
-                                return redirect(return_to)
+                            if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                                return redirect(redirect_target)
                             return redirect(url_for("add_assets"))
                         if selected_slot is not None:
                             home_slot_id = int(selected_slot["id"])
@@ -2165,8 +2177,8 @@ def intake():
 
         touch_session()
 
-        if return_to.startswith("/") and not return_to.startswith("//"):
-            return redirect(return_to)
+        if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+            return redirect(redirect_target)
         return redirect(url_for("add_assets"))
 
     username = (request.form.get("username") or "").strip()
