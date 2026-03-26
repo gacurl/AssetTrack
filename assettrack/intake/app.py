@@ -65,6 +65,7 @@ INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
+ASSET_EQUIPMENT_TYPE_OPTIONS = ("laptop", "tablet")
 
 
 @app.after_request
@@ -357,6 +358,53 @@ def _resolve_slot_selection(
         return None, errors
 
     return dict(slot_row), errors
+
+
+def _validate_admin_new_asset_form(
+    conn: sqlite3.Connection,
+    form_state: dict[str, str],
+) -> tuple[Optional[dict], list[str]]:
+    errors: list[str] = []
+
+    if not form_state["asset_tag"]:
+        errors.append("Enter an asset tag.")
+    if not form_state["serial_number"]:
+        errors.append("Enter a serial number.")
+    if not form_state["manufacturer"]:
+        errors.append("Enter a manufacturer.")
+    if not form_state["equipment_type"]:
+        errors.append("Choose an asset type.")
+    elif form_state["equipment_type"] not in ASSET_EQUIPMENT_TYPE_OPTIONS:
+        errors.append("Choose a valid asset type.")
+    if not form_state["building"]:
+        errors.append("Enter the building.")
+    if not form_state["room"]:
+        errors.append("Enter the room.")
+
+    selected_slot, slot_errors = _resolve_slot_selection(
+        conn,
+        case_name=form_state["case_name"],
+        slot_id_raw=form_state["slot_id"],
+    )
+    slot_error_map = {
+        "case and slot must both be selected.": "Choose both a case and a slot, or leave both blank.",
+        "slot selection is invalid.": "Choose a valid slot.",
+        "selected slot does not exist.": "Choose a slot that exists.",
+        "selected slot does not belong to the selected case.": "Choose a slot in the selected case.",
+    }
+    errors.extend(slot_error_map.get(error, error) for error in slot_errors)
+
+    return selected_slot, errors
+
+
+def _humanize_admin_asset_create_error(error_message: str) -> str:
+    error_map = {
+        "asset_tag already exists.": "Asset tag already exists.",
+        "serial_number already exists.": "Serial number already exists.",
+        "Slot not found for case_number + slot_number.": "The selected slot no longer exists.",
+        "Selected slot is already occupied.": "The selected slot is already occupied.",
+    }
+    return error_map.get(error_message, error_message)
 
 
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
@@ -3032,26 +3080,7 @@ def admin_new_asset():
                 "slot_id": (request.form.get("slot_id") or "").strip(),
             }
 
-            errors: list[str] = []
-            if not form_state["asset_tag"]:
-                errors.append("asset_tag is required.")
-            if not form_state["serial_number"]:
-                errors.append("serial_number is required.")
-            if not form_state["manufacturer"]:
-                errors.append("manufacturer is required.")
-            if not form_state["equipment_type"]:
-                errors.append("equipment_type is required.")
-            if not form_state["building"]:
-                errors.append("building is required.")
-            if not form_state["room"]:
-                errors.append("room is required.")
-
-            selected_slot, slot_errors = _resolve_slot_selection(
-                conn,
-                case_name=form_state["case_name"],
-                slot_id_raw=form_state["slot_id"],
-            )
-            errors.extend(slot_errors)
+            selected_slot, errors = _validate_admin_new_asset_form(conn, form_state)
 
             if errors:
                 error_message = "; ".join(errors)
@@ -3059,6 +3088,7 @@ def admin_new_asset():
                     "admin_new_asset.html",
                     form=form_state,
                     error_message=error_message,
+                    equipment_type_options=ASSET_EQUIPMENT_TYPE_OPTIONS,
                     slot_options=slot_options,
                     case_options=case_options,
                 )
@@ -3083,11 +3113,12 @@ def admin_new_asset():
                 conn.commit()
             except ValueError as e:
                 conn.rollback()
-                error_message = str(e)
+                error_message = _humanize_admin_asset_create_error(str(e))
                 return render_template(
                     "admin_new_asset.html",
                     form=form_state,
                     error_message=error_message,
+                    equipment_type_options=ASSET_EQUIPMENT_TYPE_OPTIONS,
                     slot_options=slot_options,
                     case_options=case_options,
                 )
@@ -3098,6 +3129,7 @@ def admin_new_asset():
                     "admin_new_asset.html",
                     form=form_state,
                     error_message=error_message,
+                    equipment_type_options=ASSET_EQUIPMENT_TYPE_OPTIONS,
                     slot_options=slot_options,
                     case_options=case_options,
                 )
@@ -3114,6 +3146,7 @@ def admin_new_asset():
         "admin_new_asset.html",
         form=form_state,
         error_message=error_message,
+        equipment_type_options=ASSET_EQUIPMENT_TYPE_OPTIONS,
         slot_options=slot_options,
         case_options=case_options,
     )
