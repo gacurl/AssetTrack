@@ -125,6 +125,26 @@
         <button type="submit">Save Asset</button>
       </form>
     </div>
+
+    <div class="card">
+      <h2>Cleanup Junk Asset</h2>
+      {% if asset.cleanup.allowed %}
+        <p>This asset has no event history, no slot assignment, and no active custody state. It can be removed.</p>
+      {% else %}
+        <p>This asset cannot be removed.</p>
+        <ul>
+          {% for reason in asset.cleanup.reasons %}
+            <li>{{ reason }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin_edit_asset') }}">
+        <input type="hidden" name="action" value="cleanup" />
+        <input type="hidden" name="lookup_asset_tag" value="{{ form.lookup_asset_tag or asset.asset_tag }}" />
+        <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+        <button type="submit" {% if not asset.cleanup.allowed %}disabled{% endif %}>Remove Junk Asset</button>
+      </form>
+    </div>
   {% endif %}
 {% endblock %}
 
