@@ -52,13 +52,31 @@ class HolderCreationViabilityTests(unittest.TestCase):
     def test_post_holders_new_rejects_blank_name(self) -> None:
         response = self.client.post(
             "/holders/new",
-            data={"name": "   "},
+            data={"name": "   ", "organization": "   "},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Name is required.", response.data)
+        self.assertIn(b"Enter a person or group name, or enter a group / organization.", response.data)
 
         count = self.conn.execute("SELECT COUNT(*) AS c FROM holders;").fetchone()["c"]
         self.assertEqual(count, 0)
+
+    def test_post_holders_new_allows_group_only_holder(self) -> None:
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "", "organization": "Maintenance Shop"},
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Created holder: Maintenance Shop", response.data)
+        self.assertIn(b"Maintenance Shop", response.data)
+
+        row = self.conn.execute(
+            "SELECT holder_type, name, organization FROM holders WHERE name = ?;",
+            ("Maintenance Shop",),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["holder_type"], "ORGANIZATION")
+        self.assertEqual(row["organization"], "Maintenance Shop")
 
     def test_create_search_and_select_holder_workflow(self) -> None:
         holder_name = "ZZ Test Holder 21-4"
@@ -151,7 +169,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Holder Directory", response.data)
         self.assertIn(b"Alpha Holder", response.data)
         self.assertIn(b"Bravo Holder", response.data)
-        self.assertIn(b"Search by name or identifier", response.data)
+        self.assertIn(b"Search by person name, group, organization, or identifier", response.data)
 
     def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
         self.client.post("/holders/new", data={"name": "Detail Holder", "organization": "Org Detail"})
@@ -193,6 +211,20 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Assigned Assets (0)", response.data)
         self.assertIn(b"No assigned assets.", response.data)
+
+    def test_holder_detail_displays_group_holder_cleanly(self) -> None:
+        self.client.post("/holders/new", data={"name": "", "organization": "Ops Section"})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Ops Section",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.get(f"/holders/{int(holder_row['id'])}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Type:</strong> Group / organization", response.data)
+        self.assertIn(b"Person or group:</strong> Ops Section", response.data)
 
 
 if __name__ == "__main__":

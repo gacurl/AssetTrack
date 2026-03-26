@@ -92,3 +92,29 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
     assert b"Issued to:</strong>" in response.data
     assert b"Issue Holder (Issue Org)" in response.data
     assert b"Queued:</strong> 0 assets" in response.data
+
+
+def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-group-holder", password="op-pass", role="operator")
+
+    conn = db.get_connection()
+    conn.execute(
+        """
+        INSERT INTO holders (id, holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+        VALUES (2, 'ORGANIZATION', 'Maintenance Team', 'Maintenance Team', NULL, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 2
+
+    response = client_with_temp_db.get("/issue")
+
+    assert response.status_code == 200
+    assert b"Issuing Assets" in response.data
+    assert b"Issued to:</strong>" in response.data
+    assert b"Maintenance Team" in response.data
+    assert b"Maintenance Team (Maintenance Team)" not in response.data

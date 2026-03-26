@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block title %}Holder Detail{% endblock %}
-{% block page_heading %}Holder: {{ holder.name }}{% endblock %}
+{% block page_heading %}Holder: {{ holder_display_name(holder) }}{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -27,7 +27,8 @@
 
   <section class="card">
     <p>
-      <strong>Holder:</strong> {{ holder.name }}<br />
+      <strong>Type:</strong> {{ holder_display_type(holder) }}<br />
+      <strong>Person or group:</strong> {{ holder_display_name(holder) }}<br />
       <strong>Organization:</strong> {{ holder.organization or "" }}<br />
       <strong>Identifier:</strong> {{ holder.identifier or "" }}<br />
       <strong>Contact information:</strong> {{ holder.contact_info or "" }}

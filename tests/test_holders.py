@@ -99,3 +99,9 @@ class HoldersTests(unittest.TestCase):
         fetched = get_holder(int(created["id"]))
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched["organization"], "Bravo Org")
+
+    def test_create_holder_allows_org_only_holder(self) -> None:
+        created = create_holder("", organization="Field Team")
+        self.assertEqual(created["holder_type"], "ORGANIZATION")
+        self.assertEqual(created["name"], "Field Team")
+        self.assertEqual(created["organization"], "Field Team")
