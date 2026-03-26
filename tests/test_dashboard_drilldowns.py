@@ -149,11 +149,15 @@ def test_dashboard_holder_detail_200_none_when_no_assets(app_client) -> None:
 def test_dashboard_cases_route_200_and_missing_case_404(app_client) -> None:
     conn, client = app_client
     _insert_slot(conn, 10, "CASE-A", 1)
+    _insert_slot(conn, 11, "CASE-A", 2)
     conn.commit()
 
     cases_response = client.get("/dashboard/cases")
     assert cases_response.status_code == 200
     assert b"Case Summary" in cases_response.data
+    assert b"Status" in cases_response.data
+    assert b"LOW - Getting tight" in cases_response.data
+    assert b"status-dot low" in cases_response.data
 
     missing_response = client.get("/dashboard/cases/CASE-MISSING")
     assert missing_response.status_code == 404
@@ -175,6 +179,12 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
 
     response = client.get("/dashboard/cases/CASE-A")
     assert response.status_code == 200
+    assert b"Case Status" in response.data
+    assert b"LOW - Getting tight" in response.data
+    assert b"status-dot low" in response.data
+    assert b"Total slots:</strong> 2" in response.data
+    assert b"Occupied slots:</strong> 1" in response.data
+    assert b"Empty slots:</strong> 1" in response.data
     assert b"Slot Position" in response.data
     assert b">1<" in response.data
     assert b">2<" in response.data

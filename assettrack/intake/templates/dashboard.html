@@ -68,9 +68,9 @@
       border: 1px solid rgba(18, 32, 47, 0.18);
       flex: 0 0 auto;
     }
-    .status-dot.full { background: #b42318; }
+    .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
-    .status-dot.open { background: #12b76a; }
+    .status-dot.open { background: #b42318; }
 
     .section-title { margin-top: 1.25rem; }
     .accent {
@@ -222,27 +222,14 @@
         </thead>
         <tbody>
           {% for row in dashboard.snapshots.case_utilization %}
-            {% set available_slots = row.total_slots - row.occupied_slots %}
-            {% if available_slots == 0 %}
-              {% set status_label = "FULL" %}
-              {% set status_text = "FULL - No space" %}
-              {% set status_class = "full" %}
-            {% elif available_slots <= 3 %}
-              {% set status_label = "LOW" %}
-              {% set status_text = "LOW - Getting tight" %}
-              {% set status_class = "low" %}
-            {% else %}
-              {% set status_label = "OPEN" %}
-              {% set status_text = "OPEN - Use now" %}
-              {% set status_class = "open" %}
-            {% endif %}
+            {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
             <tr>
               <td>{{ row.case_name }}</td>
-              <td>{{ available_slots }} open</td>
+              <td>{{ status.available_slots }} open</td>
               <td class="status-cell">
                 <span class="status-badge">
-                  <span class="status-dot {{ status_class }}" aria-hidden="true"></span>
-                  <span>{{ status_text }}</span>
+                  <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
+                  <span>{{ status.text }}</span>
                 </span>
               </td>
             </tr>

@@ -7,6 +7,24 @@
 {% block extra_head %}
   <style>
     .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .status-cell { white-space: nowrap; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 700;
+    }
+    .status-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      display: inline-block;
+      border: 1px solid rgba(18, 32, 47, 0.18);
+      flex: 0 0 auto;
+    }
+    .status-dot.full { background: #12b76a; }
+    .status-dot.low { background: #f79009; }
+    .status-dot.open { background: #b42318; }
   </style>
 {% endblock %}
 
@@ -21,6 +39,7 @@
       <thead>
         <tr>
           <th>Case Name</th>
+          <th>Status</th>
           <th>Total Slots</th>
           <th>Occupied Slots</th>
           <th>Empty Slots</th>
@@ -29,8 +48,15 @@
       </thead>
       <tbody>
         {% for row in cases %}
+          {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
           <tr>
             <td><a href="{{ url_for('dashboard_case_detail', case_name=row.case_name) }}">{{ row.case_name }}</a></td>
+            <td class="status-cell">
+              <span class="status-badge">
+                <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
+                <span>{{ status.text }}</span>
+              </span>
+            </td>
             <td>{{ row.total_slots }}</td>
             <td>{{ row.occupied_slots }}</td>
             <td>{{ row.empty_slots }}</td>
@@ -38,7 +64,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="5">None</td>
+            <td colspan="6">None</td>
           </tr>
         {% endfor %}
       </tbody>
