@@ -86,6 +86,11 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     assert edit_response.status_code == 200
 
 
+def test_asset_search_requires_login(client_with_temp_db) -> None:
+    response = client_with_temp_db.get("/assets/search")
+    assert response.status_code == 403
+
+
 def test_bootstrap_only_when_empty(client_with_temp_db) -> None:
     bootstrap_get = client_with_temp_db.get("/bootstrap/admin")
     assert bootstrap_get.status_code == 200
