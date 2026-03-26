@@ -77,6 +77,9 @@ def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:
     )
     assert cleanup_response.status_code == 403
 
+    export_response = client_with_temp_db.get("/admin/db/export")
+    assert export_response.status_code == 403
+
 def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     create_user("admin", "admin-pass", "admin", True)
     _login(client_with_temp_db, "admin", "admin-pass")
