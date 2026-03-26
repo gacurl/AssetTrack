@@ -536,6 +536,14 @@ def _queue_redirect_target(return_to: str) -> str:
     return target
 
 
+def _return_to_path(return_to: str) -> str:
+    target = str(return_to or "").strip()
+    if not target.startswith("/") or target.startswith("//"):
+        return target
+    path, _, _ = target.partition("#")
+    return path
+
+
 def _holder_display_name(holder: Optional[dict]) -> str:
     if not holder:
         return ""
@@ -2221,6 +2229,7 @@ def intake():
         action = (request.form.get("action") or "").strip().lower()
         scan_text = (request.form.get("scan_text") or "").strip()
         return_to = (request.form.get("return_to") or "").strip()
+        return_to_path = _return_to_path(return_to)
         redirect_target = _queue_redirect_target(return_to)
         queue_index_raw = (request.form.get("queue_index") or "").strip()
         submitted_equipment_type = request.form.get("equipment_type")
@@ -2255,12 +2264,12 @@ def intake():
             slot_id_raw = (request.form.get("slot_id") or "").strip()
             home_slot_id: Optional[int] = None
             slot_position: Optional[int] = None
-            requires_inventory_validation = return_to in {"/issue", "/return"}
+            requires_inventory_validation = return_to_path in {"/issue", "/return"}
             if requires_inventory_validation or case_name or slot_id_raw:
                 conn = get_connection()
                 try:
                     case_match = None
-                    if return_to == "/issue":
+                    if return_to_path == "/issue":
                         try:
                             case_match = _find_case_assets_for_scan_tag(conn, value)
                         except ValueError as e:

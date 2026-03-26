@@ -70,9 +70,9 @@ def test_issue_case_scan_expands_expected_assets(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db, "operator-case-expand")
 
     conn = db.get_connection()
-    _insert_slot(conn, 10, "CASE-12", 1)
-    _insert_slot(conn, 11, "CASE-12", 2)
-    _insert_slot(conn, 12, "CASE-12", 3)
+    _insert_slot(conn, 10, "CASE-2", 1)
+    _insert_slot(conn, 11, "CASE-2", 2)
+    _insert_slot(conn, 12, "CASE-2", 3)
     _insert_asset(conn, 100, "CI-100", home_slot_id=10)
     _insert_asset(conn, 101, "CI-101", home_slot_id=11)
     _occupy_slot(conn, 10, 100)
@@ -82,14 +82,15 @@ def test_issue_case_scan_expands_expected_assets(client_with_temp_db) -> None:
 
     response = client_with_temp_db.post(
         "/",
-        data={"scan_text": "case-12", "return_to": "/issue"},
+        data={"scan_text": "case-2", "return_to": "/issue#queue-section"},
         follow_redirects=True,
     )
 
     assert response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["CI100", "CI101"]
-    assert b"Case CASE-12 added 2 assets to queue." in response.data
+    assert b"Case CASE-2 added 2 assets to queue." in response.data
     assert b"Queue (2)" in response.data
+    assert b"CASE2" not in response.data
 
 
 def test_issue_case_scan_skips_already_queued_assets(client_with_temp_db) -> None:
@@ -109,7 +110,7 @@ def test_issue_case_scan_skips_already_queued_assets(client_with_temp_db) -> Non
 
     response = client_with_temp_db.post(
         "/",
-        data={"scan_text": "CASE20", "return_to": "/issue"},
+        data={"scan_text": "CASE20", "return_to": "/issue#queue-section"},
         follow_redirects=True,
     )
 
@@ -129,7 +130,7 @@ def test_issue_case_scan_reports_empty_case(client_with_temp_db) -> None:
 
     response = client_with_temp_db.post(
         "/",
-        data={"scan_text": "CASE-30", "return_to": "/issue"},
+        data={"scan_text": "CASE-30", "return_to": "/issue#queue-section"},
         follow_redirects=True,
     )
 
@@ -148,7 +149,7 @@ def test_issue_single_asset_scan_still_behaves_normally(client_with_temp_db) -> 
 
     response = client_with_temp_db.post(
         "/",
-        data={"scan_text": "single-300", "return_to": "/issue"},
+        data={"scan_text": "single-300", "return_to": "/issue#queue-section"},
         follow_redirects=True,
     )
 
@@ -172,7 +173,7 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
 
     scan_response = client_with_temp_db.post(
         "/",
-        data={"scan_text": "CASE-40", "return_to": "/issue"},
+        data={"scan_text": "CASE-40", "return_to": "/issue#queue-section"},
         follow_redirects=True,
     )
     assert scan_response.status_code == 200
@@ -214,3 +215,42 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
         ("CI-400", "IN_CUSTODY", 1),
         ("CI-401", "IN_CUSTODY", 1),
     ]
+
+
+def test_issue_case_scan_without_dash_also_expands_matching_case(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db, "operator-case-no-dash")
+
+    conn = db.get_connection()
+    _insert_slot(conn, 50, "CASE-2", 1)
+    _insert_slot(conn, 51, "CASE-2", 2)
+    _insert_asset(conn, 500, "CI-500", home_slot_id=50)
+    _insert_asset(conn, 501, "CI-501", home_slot_id=51)
+    _occupy_slot(conn, 50, 500)
+    _occupy_slot(conn, 51, 501)
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "CASE2", "return_to": "/issue#queue-section"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["CI500", "CI501"]
+    assert b"Case CASE-2 added 2 assets to queue." in response.data
+
+
+def test_invalid_case_scan_does_not_enqueue_pseudo_asset(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db, "operator-invalid-case")
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "CASE-404", "return_to": "/issue#queue-section"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert len(intake_app.SCAN_QUEUE) == 0
+    assert b"CASE404" not in response.data
+    assert b"Scan rejected. Asset tag not found in inventory." in response.data
