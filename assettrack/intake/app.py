@@ -2682,6 +2682,7 @@ def preview_discard():
     # Enforce auth and inactivity timeout for discard requests.
     authed = enforce_inactivity_timeout()
     return_to = (request.form.get("return_to") or "").strip()
+    return_to_path = _return_to_path(return_to)
     if auth_enabled() and not authed:
         if wants_json():
             return {"ok": False, "discarded": 0, "error": "Locked"}, 401
@@ -2690,7 +2691,8 @@ def preview_discard():
 
     discarded = len(SCAN_QUEUE)
     SCAN_QUEUE.clear()
-    session.pop("holder_id", None)
+    if return_to_path != "/issue":
+        session.pop("holder_id", None)
 
     # Reset UI defaults back to laptop (same invariant as intake()).
     session["equipment_type"] = "laptop"
