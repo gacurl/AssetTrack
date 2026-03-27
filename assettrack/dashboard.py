@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE
-from assettrack.event_types import issue_event_type_values
+from assettrack.event_types import issue_event_type_values, normalize_event_type
 from assettrack.drilldowns import list_case_summaries
 
 from datetime import datetime, timezone
@@ -36,6 +36,93 @@ def _parse_utc_timestamp(value: object) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _holder_label(name: object, organization: object) -> str:
+    holder_name = str(name or "").strip()
+    holder_org = str(organization or "").strip()
+    if holder_name and holder_org and holder_org != holder_name:
+        return f"{holder_name} ({holder_org})"
+    if holder_name:
+        return holder_name
+    if holder_org:
+        return holder_org
+    return ""
+
+
+def _event_type_label(raw_event_type: object) -> str:
+    normalized = normalize_event_type(raw_event_type)
+    label_map = {
+        "ISSUE": "Issued",
+        "RETURN": "Returned",
+        "ASSET_CREATED": "Asset created",
+        "ASSET_UPDATED": "Asset updated",
+        "SLOT_ASSIGN": "Slot assigned",
+        "ASSET_RETIRED": "Asset retired",
+        "ASSET_RETIRED_IN_FIELD": "Retired in field",
+    }
+    if normalized in label_map:
+        return label_map[normalized]
+    if not normalized:
+        return "Unknown"
+    return normalized.replace("_", " ").title()
+
+
+def get_recent_activity(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
+    active_events_where = ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)
+    rows = conn.execute(
+        f"""
+        SELECT
+            e.id,
+            e.asset_tag,
+            e.event_type,
+            e.event_date,
+            e.holder_id,
+            h.name AS holder_name,
+            h.organization AS holder_organization
+        FROM asset_events e
+        LEFT JOIN holders h
+          ON h.id = e.holder_id
+        WHERE {active_events_where}
+        ORDER BY e.id DESC
+        LIMIT ?;
+        """,
+        (limit,),
+    ).fetchall()
+
+    activity: list[dict] = []
+    for row in rows:
+        parsed = _parse_utc_timestamp(row["event_date"])
+        if parsed is None:
+            timestamp_display = str(row["event_date"] or "")
+        else:
+            timestamp_display = parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+        activity.append(
+            {
+                "id": int(row["id"]),
+                "event_type": normalize_event_type(row["event_type"]),
+                "event_label": _event_type_label(row["event_type"]),
+                "asset_tag": str(row["asset_tag"] or ""),
+                "holder_label": _holder_label(row["holder_name"], row["holder_organization"]),
+                "event_date": str(row["event_date"] or ""),
+                "event_timestamp_display": timestamp_display,
+                "_sort_ts": parsed,
+            }
+        )
+
+    activity.sort(
+        key=lambda row: (
+            row["_sort_ts"] is not None,
+            row["_sort_ts"] or datetime.min.replace(tzinfo=timezone.utc),
+            row["id"],
+        ),
+        reverse=True,
+    )
+
+    for row in activity:
+        row.pop("_sort_ts", None)
+    return activity
 
 
 def _inventory_summary(conn: sqlite3.Connection) -> dict:
@@ -328,6 +415,7 @@ def build_dashboard_data(
         "snapshots": {
             "top_custody_holders": _top_custody_holders(conn, limit=5),
             "case_utilization": list_case_summaries(conn),
+            "recent_activity": get_recent_activity(conn, limit=10),
             "exceptions": {
                 "unslotted_assets": _unslotted_assets(conn, limit=10),
                 "in_custody_over_threshold": [

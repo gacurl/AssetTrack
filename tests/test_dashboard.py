@@ -117,6 +117,35 @@ class DashboardTests(unittest.TestCase):
             (asset_tag, event_type, event_date),
         )
 
+    def _insert_event(
+        self,
+        asset_tag: str,
+        event_type: str,
+        event_date: str,
+        *,
+        holder_id: int | None = None,
+        supersedes_event_id: int | None = None,
+        correction_reason: str | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO asset_events (
+                asset_tag,
+                event_type,
+                event_date,
+                actor,
+                notes,
+                payload,
+                holder_id,
+                supersedes_event_id,
+                correction_reason
+            )
+            VALUES (?, ?, ?, 'tester', NULL, NULL, ?, ?, ?);
+            """,
+            (asset_tag, event_type, event_date, holder_id, supersedes_event_id, correction_reason),
+        )
+        return int(cursor.lastrowid)
+
     def _replace_slot_occupancy_without_unique_constraints(self) -> None:
         self.conn.execute("DROP TABLE slot_occupancy;")
         self.conn.execute(
@@ -157,6 +186,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Exceptions Summary", response.data)
         self.assertIn(b"Outstanding Holders Summary", response.data)
         self.assertIn(b"Available Space by Case", response.data)
+        self.assertIn(b"Recent Activity", response.data)
         self.assertIn(b"Problems", response.data)
         self.assertIn(b"1 holders, 1 assets out", response.data)
         self.assertIn(b"Based on open slots. No open slots available.", response.data)
@@ -165,6 +195,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"FULL", response.data)
         self.assertNotIn(b"0 / 1", response.data)
         self.assertIn(b"AT-UNSLOT", response.data)
+        self.assertIn(b"Issued", response.data)
+        self.assertIn(b"AT-CUST", response.data)
 
     def test_dashboard_empty_states_are_operator_facing(self) -> None:
         response = self.client.get("/dashboard")
@@ -173,6 +205,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"0 holders, 0 assets out", response.data)
         self.assertIn(b"No holders currently have assets out.", response.data)
         self.assertIn(b"Based on open slots. No case slot data is available.", response.data)
+        self.assertIn(b"No recent activity.", response.data)
         self.assertIn(b"0 unslotted, 0 over 30 days, 0 conflicts", response.data)
         self.assertIn(b"No unslotted assets.", response.data)
         self.assertIn(b"No overdue in-custody assets.", response.data)
@@ -364,3 +397,44 @@ class DashboardTests(unittest.TestCase):
         resp = self.client.get("/", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         self.assertTrue((resp.headers.get("Location") or "").endswith("/dashboard"))
+
+    def test_recent_activity_renders_newest_events_first_with_holder_and_return_fallback(self) -> None:
+        self._insert_holder(1, "Alpha Holder")
+        self._insert_event("AT-1", "ISSUE", "2026-01-01T10:00:00Z", holder_id=1)
+        self._insert_event("AT-2", "RETURN", "2026-01-01T11:00:00Z")
+        self._insert_event("AT-3", "ASSET_CREATED", "2026-01-01T12:00:00Z")
+        self.conn.commit()
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Recent Activity", response.data)
+        self.assertIn(b"Asset created", response.data)
+        self.assertIn(b"Returned", response.data)
+        self.assertIn(b"Issued", response.data)
+        self.assertIn(b"Alpha Holder", response.data)
+        self.assertIn(b"\xe2\x80\x94", response.data)
+        self.assertIn(b"2026-01-01 12:00 UTC", response.data)
+
+        created_index = response.data.index(b"Asset created")
+        returned_index = response.data.index(b"Returned")
+        issued_index = response.data.index(b"Issued")
+        self.assertLess(created_index, returned_index)
+        self.assertLess(returned_index, issued_index)
+
+    def test_recent_activity_excludes_superseded_events(self) -> None:
+        original_id = self._insert_event("AT-1", "ISSUE", "2026-01-01T10:00:00Z")
+        self._insert_event(
+            "AT-1",
+            "RETURN",
+            "2026-01-01T11:00:00Z",
+            supersedes_event_id=original_id,
+            correction_reason="Correction",
+        )
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+
+        self.assertEqual(len(data["snapshots"]["recent_activity"]), 1)
+        self.assertEqual(data["snapshots"]["recent_activity"][0]["event_type"], "RETURN")
+        self.assertEqual(data["snapshots"]["recent_activity"][0]["asset_tag"], "AT-1")
