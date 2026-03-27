@@ -58,6 +58,10 @@
           {{ asset.state_label }}
         </div>
         <div class="row">
+          <strong>Current holder</strong><br />
+          {{ asset.holder_label or "Not assigned" }}
+        </div>
+        <div class="row">
           <strong>Home case</strong><br />
           {{ asset.home_case_name or "Not assigned" }}
         </div>
