@@ -204,6 +204,28 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Case:</strong> Unassigned", response.data)
         self.assertIn(b"Slot:</strong> Unassigned", response.data)
 
+    def test_preview_shows_parsed_rows_before_confirmation_and_hides_validation_json(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(
+            Scan(
+                asset_tag="AT-PREVIEW-1",
+                scanned_at=datetime(2026, 1, 1, 14, 5, 22, tzinfo=timezone.utc),
+                equipment_type="tablet",
+            )
+        )
+
+        response = self.client.get("/preview")
+
+        self.assertEqual(response.status_code, 200)
+        parsed_rows_heading = response.data.index(b"<h2>Parsed rows</h2>")
+        confirmation_text = response.data.index(b"I reviewed this batch and want to add it to the database.")
+        self.assertLess(parsed_rows_heading, confirmation_text)
+        self.assertIn(b'action="/preview/commit"', response.data)
+        self.assertIn(b'name="confirm_reviewed"', response.data)
+        self.assertIn(b">Add to database<", response.data)
+        self.assertNotIn(b"<h2>Validation result</h2>", response.data)
+        self.assertNotIn(b"/preview/validate", response.data)
+
     def test_blank_equipment_type_uses_default_and_missing_field_preserves_selection(self) -> None:
         intake_app.SCAN_QUEUE.clear()
 
