@@ -51,12 +51,6 @@
       <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
     </form>
 
-    <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
-          onsubmit="return confirm('Discard this batch? This clears the queue.');">
-      <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
-      <button type="submit" data-timeout-lock-target>Discard batch</button>
-    </form>
-
     <p style="margin-top: 10px;">
       Tip: for raw JSON, open <code>/preview?json=1</code> or <code>/preview/validate</code>.
     </p>

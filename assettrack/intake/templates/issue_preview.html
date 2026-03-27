@@ -186,11 +186,6 @@
       </label>
       <button id="issue_btn" type="submit" disabled data-timeout-lock-target>Commit Issue</button>
     </form>
-    <form method="post" action="{{ url_for('preview_discard') }}" style="margin-top: 10px;"
-          onsubmit="return confirm('Discard this batch? This clears the queue.');">
-      <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
-      <button type="submit" data-timeout-lock-target>Discard batch</button>
-    </form>
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="action" value="clear" />
       <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
