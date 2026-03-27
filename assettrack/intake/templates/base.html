@@ -127,9 +127,9 @@
           {% if authenticated_role == 'admin' %}
             <a class="chip {% if request.path.startswith('/admin/users') %}active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
             <a class="chip {% if request.path.startswith('/admin/system') %}active{% endif %}" href="{{ url_for('admin_system') }}">System Health</a>
+            <a class="chip {% if request.path.startswith('/add-assets') %}active{% endif %}" href="{{ url_for('add_assets') }}">Add Assets</a>
           {% endif %}
           <a class="chip {% if request.path.startswith('/account/change-password') %}active{% endif %}" href="{{ url_for('account_change_password') }}">Account</a>
-          <a class="chip {% if request.path.startswith('/add-assets') %}active{% endif %}" href="{{ url_for('add_assets') }}">Add Assets</a>
           {% if authenticated_role == 'admin' %}
             <span class="chip mode-badge" aria-label="Admin mode">ADMIN</span>
           {% endif %}
