@@ -75,7 +75,8 @@ def test_add_assets_and_preview_render_timeout_lock_targets(client_with_temp_db)
     assert b'let timeoutLocked = false;' in preview.data
     assert b'window.location = "/logout";' in preview.data
     assert b'data-timeout-lock-target>Add to database<' in preview.data
-    assert b'data-timeout-lock-target>Discard batch<' in preview.data
+    assert b"Discard batch" not in preview.data
+    assert b'action="/preview/discard"' not in preview.data
 
 
 def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db) -> None:
@@ -96,7 +97,8 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     assert issue_preview.status_code == 200
     assert b'id="timeout-lock-panel"' in issue_preview.data
     assert b'data-timeout-lock-target>Commit Issue<' in issue_preview.data
-    assert b'data-timeout-lock-target>Discard batch<' in issue_preview.data
+    assert b"Discard batch" not in issue_preview.data
+    assert b'action="/preview/discard"' not in issue_preview.data
 
     return_queue = client_with_temp_db.get("/return")
     assert return_queue.status_code == 200
@@ -107,3 +109,5 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     assert return_preview.status_code == 200
     assert b'id="timeout-lock-panel"' in return_preview.data
     assert b'data-timeout-lock-target>Commit Return<' in return_preview.data
+    assert b"Discard batch" not in return_preview.data
+    assert b'action="/preview/discard"' not in return_preview.data
