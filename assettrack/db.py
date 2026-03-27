@@ -2,9 +2,10 @@
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
-REQUIRED_TABLES = {"assets", "holders"}
+REQUIRED_TABLES = {"assets", "holders", "organizations", "buildings", "organization_buildings"}
 EVENT_TABLE_ALIASES = ("events", "asset_events")
 
 
@@ -317,6 +318,39 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS organizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS buildings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS organization_buildings (
+            organization_id INTEGER NOT NULL REFERENCES organizations(id),
+            building_id INTEGER NOT NULL REFERENCES buildings(id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (organization_id, building_id)
+        );
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS slots (
             id INTEGER PRIMARY KEY,
             case_name TEXT NOT NULL,
@@ -368,6 +402,7 @@ def _create_schema(conn: sqlite3.Connection):
             holder_type TEXT NOT NULL,
             name TEXT NOT NULL,
             organization TEXT NULL,
+            organization_id INTEGER NULL REFERENCES organizations(id),
             identifier TEXT NULL,
             contact_info TEXT NULL,
             created_at TEXT NOT NULL,
@@ -417,6 +452,13 @@ def _create_schema(conn: sqlite3.Connection):
             """
             ALTER TABLE holders
             ADD COLUMN organization TEXT NULL;
+            """
+        )
+    if _table_exists(conn, "holders") and not _column_exists(conn, "holders", "organization_id"):
+        cursor.execute(
+            """
+            ALTER TABLE holders
+            ADD COLUMN organization_id INTEGER NULL REFERENCES organizations(id);
             """
         )
 
@@ -498,6 +540,43 @@ def _create_schema(conn: sqlite3.Connection):
                 ADD COLUMN building_room TEXT NULL;
                 """
             )
+
+    if _table_exists(conn, "holders") and _table_exists(conn, "organizations"):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO organizations (name, created_at, updated_at)
+            SELECT DISTINCT TRIM(organization), ?, ?
+            FROM holders
+            WHERE TRIM(COALESCE(organization, '')) <> '';
+            """,
+            (now_iso, now_iso),
+        )
+        cursor.execute(
+            """
+            UPDATE holders
+            SET organization_id = (
+                SELECT o.id
+                FROM organizations o
+                WHERE UPPER(o.name) = UPPER(holders.organization)
+                LIMIT 1
+            )
+            WHERE organization_id IS NULL
+              AND TRIM(COALESCE(organization, '')) <> '';
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE holders
+            SET organization = (
+                SELECT o.name
+                FROM organizations o
+                WHERE o.id = holders.organization_id
+                LIMIT 1
+            )
+            WHERE organization_id IS NOT NULL;
+            """
+        )
 
     if _table_exists(conn, "assets"):
         cursor.execute(

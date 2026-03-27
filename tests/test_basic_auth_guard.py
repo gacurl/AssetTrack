@@ -80,6 +80,9 @@ def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:
     export_response = client_with_temp_db.get("/admin/db/export")
     assert export_response.status_code == 403
 
+    reference_data_response = client_with_temp_db.get("/admin/reference-data")
+    assert reference_data_response.status_code == 403
+
 def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     create_user("admin", "admin-pass", "admin", True)
     _login(client_with_temp_db, "admin", "admin-pass")
@@ -87,6 +90,8 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     assert response.status_code == 200
     edit_response = client_with_temp_db.get("/admin/assets/edit")
     assert edit_response.status_code == 200
+    reference_data_response = client_with_temp_db.get("/admin/reference-data")
+    assert reference_data_response.status_code == 200
 
 
 def test_asset_search_requires_login(client_with_temp_db) -> None:

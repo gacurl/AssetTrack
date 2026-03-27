@@ -100,6 +100,22 @@ class HoldersTests(unittest.TestCase):
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched["organization"], "Bravo Org")
 
+    def test_create_holder_with_organization_id_sets_denormalized_text(self) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = self.conn.execute(
+            """
+            INSERT INTO organizations (name, created_at, updated_at)
+            VALUES (?, ?, ?);
+            """,
+            ("Support Org", now, now),
+        )
+        self.conn.commit()
+
+        created = create_holder("Mapped Holder", organization_id=int(cursor.lastrowid))
+
+        self.assertEqual(created["organization"], "Support Org")
+        self.assertEqual(int(created["organization_id"]), int(cursor.lastrowid))
+
     def test_create_holder_allows_org_only_holder(self) -> None:
         created = create_holder("", organization="Field Team")
         self.assertEqual(created["holder_type"], "ORGANIZATION")
