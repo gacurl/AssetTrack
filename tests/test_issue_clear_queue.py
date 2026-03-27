@@ -31,6 +31,16 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-clear", password="op-pass", role="operator")
 
+    conn = db.get_connection()
+    conn.execute(
+        """
+        INSERT INTO assets (id, asset_tag, location_type)
+        VALUES (1, 'RESCAN-AFTER-CLEAR', 'STORAGE');
+        """
+    )
+    conn.commit()
+    conn.close()
+
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
@@ -47,9 +57,26 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
     assert len(intake_app.SCAN_QUEUE) == 0
 
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess.get("holder_id") == 1
+
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
+    assert b"Issued to:</strong>" in issue_page.data
+    assert b"Issue Holder" in issue_page.data
     assert b"Queued assets:</strong> 0" in issue_page.data
+
+    rescan = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "RESCAN-AFTER-CLEAR", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert rescan.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["RESCANAFTERCLEAR"]
+    assert b"Issued to:</strong>" in rescan.data
+    assert b"Issue Holder" in rescan.data
+    assert b"Queue (1)" in rescan.data
 
 
 def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicates(client_with_temp_db) -> None:
