@@ -23,6 +23,16 @@ class AssetSearchUiTests(unittest.TestCase):
         self.conn.close()
         self.temp_dir.cleanup()
 
+    def _insert_holder(self, holder_id: int, name: str, organization: str | None = None) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO holders (id, holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+            VALUES (?, 'PERSON', ?, ?, NULL, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """,
+            (holder_id, name, organization),
+        )
+        self.conn.commit()
+
     def _insert_slot(self, slot_id: int, case_name: str, slot_position: int) -> None:
         self.conn.execute(
             """
@@ -40,6 +50,7 @@ class AssetSearchUiTests(unittest.TestCase):
         serial_number: str,
         location_type: str,
         home_slot_id: int | None,
+        current_holder_id: int | None = None,
     ) -> None:
         self.conn.execute(
             """
@@ -60,9 +71,9 @@ class AssetSearchUiTests(unittest.TestCase):
                 current_holder_id,
                 home_slot_id
             )
-            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '100', 'HQ/100', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, NULL, ?);
+            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '100', 'HQ/100', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?);
             """,
-            (asset_tag, serial_number, location_type, home_slot_id),
+            (asset_tag, serial_number, location_type, current_holder_id, home_slot_id),
         )
         self.conn.commit()
 
@@ -73,8 +84,9 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Search by asset tag or serial number", response.data)
 
     def test_search_finds_asset_by_asset_tag(self) -> None:
+        self._insert_holder(1, "Alex Holder", "Field Ops")
         self._insert_slot(10, "CASE-A", 4)
-        self._insert_asset("AT-100", serial_number="SER-100", location_type="STORAGE", home_slot_id=10)
+        self._insert_asset("AT-100", serial_number="SER-100", location_type="STORAGE", home_slot_id=10, current_holder_id=1)
 
         response = self.client.get("/assets/search?asset_tag=AT-100")
         self.assertEqual(response.status_code, 200)
@@ -83,6 +95,7 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"AT-100", response.data)
         self.assertIn(b"SER-100", response.data)
         self.assertIn(b"In storage", response.data)
+        self.assertIn(b"Alex Holder (Field Ops)", response.data)
         self.assertIn(b"CASE-A", response.data)
         self.assertIn(b"Slot 4", response.data)
 
@@ -96,6 +109,8 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"AT-200", response.data)
         self.assertIn(b"SER-200", response.data)
         self.assertIn(b"In custody", response.data)
+        self.assertIn(b"Current holder", response.data)
+        self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
 
     def test_search_shows_plain_not_found_feedback(self) -> None:

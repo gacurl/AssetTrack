@@ -582,8 +582,15 @@ def _lookup_asset_for_verification(
     if lookup_mode == "asset_tag":
         rows = conn.execute(
             """
-            SELECT *
-            FROM assets
+            SELECT
+                a.*,
+                h.id AS holder_record_id,
+                h.holder_type AS holder_record_type,
+                h.name AS holder_record_name,
+                h.organization AS holder_record_organization
+            FROM assets a
+            LEFT JOIN holders h
+              ON h.id = a.current_holder_id
             WHERE UPPER(asset_tag) = UPPER(?)
             LIMIT 1;
             """,
@@ -595,8 +602,15 @@ def _lookup_asset_for_verification(
     else:
         rows = conn.execute(
             """
-            SELECT *
-            FROM assets
+            SELECT
+                a.*,
+                h.id AS holder_record_id,
+                h.holder_type AS holder_record_type,
+                h.name AS holder_record_name,
+                h.organization AS holder_record_organization
+            FROM assets a
+            LEFT JOIN holders h
+              ON h.id = a.current_holder_id
             WHERE TRIM(COALESCE(serial_number, '')) <> ''
               AND UPPER(serial_number) = UPPER(?)
             LIMIT 2;
@@ -610,6 +624,22 @@ def _lookup_asset_for_verification(
         asset = dict(rows[0])
 
     home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+    holder_row = None
+    if asset.get("holder_record_id") is not None:
+        holder_row = {
+            "id": int(asset["holder_record_id"]),
+            "holder_type": str(asset.get("holder_record_type") or ""),
+            "name": str(asset.get("holder_record_name") or ""),
+            "organization": str(asset.get("holder_record_organization") or ""),
+        }
+    holder_label = ""
+    if holder_row is not None:
+        holder_name = str(holder_row.get("name") or "").strip()
+        holder_org = str(holder_row.get("organization") or "").strip()
+        if holder_name and holder_org and holder_org != holder_name:
+            holder_label = f"{holder_name} ({holder_org})"
+        else:
+            holder_label = _holder_display_name(holder_row)
 
     return (
         {
@@ -618,6 +648,7 @@ def _lookup_asset_for_verification(
             "serial_number": str(asset.get("serial_number") or ""),
             "location_type": _normalize_location_type(asset.get("location_type")),
             "state_label": _asset_state_label(asset.get("location_type")),
+            "holder_label": holder_label,
             "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
             "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
         },
