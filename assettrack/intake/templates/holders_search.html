@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('preview') }}">← Back to preview</a> | <a href="{{ url_for('issue_preview') }}">Issue Assets Preview</a></p>
+  <p><a href="{{ url_for('preview') }}">← Back to preview</a> | <a href="{{ url_for('issue') }}">Issue Assets</a></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}

@@ -64,6 +64,45 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     assert b"Open Issue Assets Preview / Confirm" in issue_page.data
 
 
+def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_holder(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-holders-issue-nav", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+
+    holders_page = client_with_temp_db.get("/holders")
+    assert holders_page.status_code == 200
+    assert b'href="/issue"' in holders_page.data
+    assert b'href="/issue/preview"' not in holders_page.data
+
+    select_response = client_with_temp_db.post(
+        "/holders/select",
+        data={"holder_id": "1"},
+    )
+    assert select_response.status_code == 302
+    assert (select_response.headers.get("Location") or "").endswith("/holders")
+
+    issue_page = client_with_temp_db.get("/issue")
+    assert issue_page.status_code == 200
+    assert b"Issuing Assets" in issue_page.data
+    assert b"Issue Holder (Issue Org)" in issue_page.data
+    assert b"Enable issue mode before using Issue Assets." not in issue_page.data
+
+
+def test_issue_preview_without_issue_mode_redirects_to_issue_entry(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-issue-preview-redirect", password="op-pass", role="operator")
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = operator_id
+        sess["holder_id"] = 1
+        sess["issue_mode"] = False
+
+    response = client_with_temp_db.get("/issue/preview")
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/issue")
+
+
 def test_issue_with_selected_holder_still_loads_normally(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-selected", password="op-pass", role="operator")
 
