@@ -2292,6 +2292,18 @@ def intake():
             if 0 <= queue_index < len(SCAN_QUEUE):
                 SCAN_QUEUE.pop(queue_index)
 
+        should_validate_empty_scan = (
+            action == ""
+            and not scan_text
+            and return_to_path in {"", "/add-assets"}
+        )
+        if should_validate_empty_scan:
+            flash("Enter or scan an asset tag before adding it to the queue.", "error")
+            touch_session()
+            if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                return redirect(redirect_target)
+            return redirect(url_for("add_assets"))
+
         if scan_text:
             value = sanitize_scan(scan_text)
             if not value:
@@ -2466,6 +2478,17 @@ def add_assets():
         slot_options=slot_options,
         case_options=case_options,
     )
+
+
+@app.post("/add-assets/review")
+@require_login
+@require_role("admin")
+def add_assets_review():
+    if len(SCAN_QUEUE) == 0:
+        flash("Queue is empty. Add at least one asset to the queue before reviewing the batch.", "error")
+        return redirect(url_for("add_assets"))
+
+    return redirect(url_for("preview"))
 
 
 @app.route("/bootstrap/admin", methods=["GET", "POST"])
