@@ -195,7 +195,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"FULL", response.data)
         self.assertNotIn(b"0 / 1", response.data)
         self.assertIn(b"AT-UNSLOT", response.data)
-        self.assertIn(b"Issued", response.data)
+        self.assertIn(b"Issued to", response.data)
         self.assertIn(b"AT-CUST", response.data)
         self.assertIn(b'href="/holders/1"', response.data)
 
@@ -436,16 +436,17 @@ class DashboardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Recent Activity", response.data)
-        self.assertIn(b"Asset created", response.data)
-        self.assertIn(b"Returned", response.data)
-        self.assertIn(b"Issued", response.data)
+        self.assertIn(b"Added", response.data)
+        self.assertIn(b"Returned to storage", response.data)
+        self.assertIn(b"Issued to", response.data)
         self.assertIn(b"Alpha Holder", response.data)
         self.assertIn(b"\xe2\x80\x94", response.data)
         self.assertIn(b"2026-01-01 12:00 UTC", response.data)
+        self.assertIn(b"When (UTC)", response.data)
 
-        created_index = response.data.index(b"Asset created")
-        returned_index = response.data.index(b"Returned")
-        issued_index = response.data.index(b"Issued")
+        created_index = response.data.index(b"Added")
+        returned_index = response.data.index(b"Returned to storage")
+        issued_index = response.data.index(b"Issued to")
         self.assertLess(created_index, returned_index)
         self.assertLess(returned_index, issued_index)
 
