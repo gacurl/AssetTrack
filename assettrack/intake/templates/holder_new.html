@@ -30,12 +30,17 @@
     <p class="muted">A holder can be a person or a group such as a shop, office, or team.</p>
     <form method="post" action="{{ url_for('holders_create') }}">
       <div class="row">
-        <label for="name"><strong>Person or group name</strong> (optional if group / organization is entered)</label><br />
+        <label for="name"><strong>Person or group name</strong> (optional if a group / organization is selected)</label><br />
         <input type="text" id="name" name="name" value="{{ form.name or '' }}" autofocus />
       </div>
       <div class="row">
-        <label for="organization"><strong>Group / organization</strong> (optional)</label><br />
-        <input type="text" id="organization" name="organization" value="{{ form.organization or '' }}" />
+        <label for="organization_id"><strong>Group / organization</strong> (optional)</label><br />
+        <select id="organization_id" name="organization_id">
+          <option value="">No organization</option>
+          {% for organization in organization_options %}
+            <option value="{{ organization.id }}" {% if form.organization_id == (organization.id|string) %}selected{% endif %}>{{ organization.name }}</option>
+          {% endfor %}
+        </select>
       </div>
       <button type="submit">Create Holder</button>
     </form>

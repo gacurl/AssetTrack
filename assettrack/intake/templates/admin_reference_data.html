@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Reference Data{% endblock %}
+{% block page_heading %}Admin: Organizations and Buildings{% endblock %}
+
+{% block extra_head %}
+  <style>
+    input[type="text"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 1rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a href="{{ url_for('admin_system') }}">&larr; Back to system health</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="grid">
+    <div class="card">
+      <h2>Organizations</h2>
+      <form method="post" action="{{ url_for('admin_reference_data') }}">
+        <input type="hidden" name="action" value="create_organization" />
+        <div class="row">
+          <label for="organization_name"><strong>Organization name</strong></label><br />
+          <input type="text" id="organization_name" name="organization_name" autocomplete="off" />
+        </div>
+        <button type="submit">Create organization</button>
+      </form>
+
+      <table style="margin-top: 1rem;">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for organization in organizations %}
+            <tr>
+              <td><code>{{ organization.id }}</code></td>
+              <td>{{ organization.name }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="2">No organizations yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Buildings</h2>
+      <form method="post" action="{{ url_for('admin_reference_data') }}">
+        <input type="hidden" name="action" value="create_building" />
+        <div class="row">
+          <label for="building_name"><strong>Building name</strong></label><br />
+          <input type="text" id="building_name" name="building_name" autocomplete="off" />
+        </div>
+        <button type="submit">Create building</button>
+      </form>
+
+      <table style="margin-top: 1rem;">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for building in buildings %}
+            <tr>
+              <td><code>{{ building.id }}</code></td>
+              <td>{{ building.name }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="2">No buildings yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Organization to Building Mapping</h2>
+    <form method="post" action="{{ url_for('admin_reference_data') }}">
+      <input type="hidden" name="action" value="map_organization_building" />
+      <div class="grid">
+        <div class="row">
+          <label for="organization_id"><strong>Organization</strong></label><br />
+          <select id="organization_id" name="organization_id">
+            <option value="">Select organization</option>
+            {% for organization in organizations %}
+              <option value="{{ organization.id }}">{{ organization.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row">
+          <label for="building_id"><strong>Building</strong></label><br />
+          <select id="building_id" name="building_id">
+            <option value="">Select building</option>
+            {% for building in buildings %}
+              <option value="{{ building.id }}">{{ building.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button type="submit">Create mapping</button>
+    </form>
+
+    <table style="margin-top: 1rem;">
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th>Building</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mapping in mappings %}
+          <tr>
+            <td>{{ mapping.organization_name }}</td>
+            <td>{{ mapping.building_name }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="2">No mappings yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

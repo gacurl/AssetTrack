@@ -24,7 +24,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 import assettrack.db as db_module
 from assettrack.assets import get_asset_table_columns
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
-from assettrack.db import assert_schema_present, get_connection, initialize_if_missing_or_empty
+from assettrack.db import assert_schema_present, get_connection, initialize_schema
 from assettrack.drilldowns import (
     get_case_slot_detail,
     get_holder_custody_detail,
@@ -37,6 +37,14 @@ from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.auth import current_user, require_login, require_role
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
+from assettrack.reference_data import (
+    create_building,
+    create_organization,
+    create_organization_building_mapping,
+    list_buildings,
+    list_organization_building_mappings,
+    list_organizations,
+)
 from assettrack.audit import record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
@@ -56,7 +64,7 @@ from assettrack.users import (
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 
-initialize_if_missing_or_empty(db_module.DB_PATH)
+initialize_schema(db_module.DB_PATH)
 assert_schema_present(db_module.DB_PATH)
 
 # In-memory only: wiped on restart
@@ -3235,7 +3243,8 @@ def holders_new():
 
     return render_template(
         "holder_new.html",
-        form={"name": "", "organization": ""},
+        form={"name": "", "organization_id": ""},
+        organization_options=list_organizations(),
         error_message=None,
     )
 
@@ -3249,16 +3258,26 @@ def holders_create():
         return redirect(url_for("intake"))
 
     name = (request.form.get("name") or "").strip()
-    organization = (request.form.get("organization") or "").strip()
-    form = {"name": name, "organization": organization}
+    organization_id_raw = (request.form.get("organization_id") or "").strip()
+    organization_text = (request.form.get("organization") or "").strip()
+    form = {"name": name, "organization_id": organization_id_raw}
 
     try:
-        created = create_holder(name, organization=organization)
-    except ValueError:
+        created = create_holder(
+            name,
+            organization=organization_text or None,
+            organization_id=None if not organization_id_raw else int(organization_id_raw),
+        )
+    except ValueError as e:
         return render_template(
             "holder_new.html",
             form=form,
-            error_message="Enter a person or group name, or enter a group / organization.",
+            organization_options=list_organizations(),
+            error_message=(
+                "Enter a person or group name, or enter a group / organization."
+                if str(e) == "name or organization is required"
+                else str(e)
+            ),
         )
 
     flash(f"Created holder: {_holder_display_name(created)}", "success")
@@ -3282,8 +3301,9 @@ def holders_edit(holder_id: int):
         holder=holder,
         form={
             "name": str(holder.get("name") or ""),
-            "organization": str(holder.get("organization") or ""),
+            "organization_id": "" if holder.get("organization_id") is None else str(holder.get("organization_id")),
         },
+        organization_options=list_organizations(),
         error_message=None,
     )
 
@@ -3298,8 +3318,9 @@ def holders_edit_submit(holder_id: int):
 
     form = {
         "name": (request.form.get("name") or "").strip(),
-        "organization": (request.form.get("organization") or "").strip(),
+        "organization_id": (request.form.get("organization_id") or "").strip(),
     }
+    organization_text = (request.form.get("organization") or "").strip()
 
     holder = get_holder(holder_id)
     if holder is None:
@@ -3309,13 +3330,15 @@ def holders_edit_submit(holder_id: int):
         updated = update_holder(
             holder_id,
             name=form["name"],
-            organization=form["organization"],
+            organization=organization_text or None,
+            organization_id=None if not form["organization_id"] else int(form["organization_id"]),
         )
     except ValueError as e:
         return render_template(
             "holder_edit.html",
             holder=holder,
             form=form,
+            organization_options=list_organizations(),
             error_message=(
                 "Enter a person or group name, or enter a group / organization."
                 if str(e) == "name or organization is required"
@@ -3405,6 +3428,41 @@ def admin_system():
         holder_count=holder_count,
         asset_count=asset_count,
         schema_warning=schema_warning,
+    )
+
+
+@app.route("/admin/reference-data", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_reference_data():
+    error_message: str | None = None
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+        try:
+            if action == "create_organization":
+                create_organization((request.form.get("organization_name") or "").strip())
+                flash("Created organization.", "success")
+            elif action == "create_building":
+                create_building((request.form.get("building_name") or "").strip())
+                flash("Created building.", "success")
+            elif action == "map_organization_building":
+                create_organization_building_mapping(
+                    int((request.form.get("organization_id") or "").strip()),
+                    int((request.form.get("building_id") or "").strip()),
+                )
+                flash("Created organization to building mapping.", "success")
+            else:
+                error_message = "Unknown action."
+        except ValueError as e:
+            error_message = str(e)
+
+    return render_template(
+        "admin_reference_data.html",
+        organizations=list_organizations(),
+        buildings=list_buildings(),
+        mappings=list_organization_building_mappings(),
+        error_message=error_message,
     )
 
 
