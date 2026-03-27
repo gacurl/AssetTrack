@@ -162,7 +162,7 @@
         {% if dashboard.snapshots.top_custody_holders %}
           {{ dashboard.snapshots.top_custody_holders|length }} holders, {{ dashboard.snapshots.top_custody_holders|sum(attribute='asset_count') }} assets out
         {% else %}
-          0 holders, 0 assets out
+          No assets currently issued
         {% endif %}
       </span>
     </summary>
@@ -190,7 +190,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="2">No holders currently have assets out.</td>
+                <td colspan="2">No assets currently issued.</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -215,10 +215,10 @@
           {% if ns.best_available > 0 %}
             Based on open slots. Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
           {% else %}
-            Based on open slots. No open slots available.
+            No cases have available space.
           {% endif %}
         {% else %}
-          Based on open slots. No case slot data is available.
+          No case data available.
         {% endif %}
       </span>
     </summary>
@@ -248,7 +248,7 @@
             </tr>
           {% else %}
             <tr>
-              <td colspan="3">No case slot data is available.</td>
+              <td colspan="3">No case data available.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -264,7 +264,7 @@
         {% if dashboard.snapshots.recent_activity %}
           {{ dashboard.snapshots.recent_activity|length }} latest event{% if dashboard.snapshots.recent_activity|length != 1 %}s{% endif %}
         {% else %}
-          No recent activity
+          No recent activity.
         {% endif %}
       </span>
     </summary>
@@ -303,7 +303,11 @@
     <summary>
       <span>Problems</span>
       <span class="summary-hint">
-        {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
+        {% if dashboard.summary.exceptions.unslotted_assets == 0 and dashboard.summary.exceptions.in_custody_over_threshold == 0 and dashboard.summary.exceptions.slot_conflicts == 0 %}
+          No exceptions detected.
+        {% else %}
+          {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
+        {% endif %}
       </span>
     </summary>
     <div class="collapsible-body">
