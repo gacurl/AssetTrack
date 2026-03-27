@@ -8,6 +8,7 @@
     .search-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
     .result-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    .results-table code { white-space: nowrap; }
   </style>
 {% endblock %}
 
@@ -34,46 +35,49 @@
     </form>
   </div>
 
-  {% if asset %}
+  {% if assets %}
     <div class="card">
-      <h2>Asset Found</h2>
+      <h2>{% if assets|length == 1 %}Asset Found{% else %}Assets Found{% endif %}</h2>
       <p class="muted">
         {% if lookup_mode == "asset_tag" %}
           Matched by asset tag.
         {% elif lookup_mode == "serial_number" %}
           Matched by serial number.
         {% endif %}
+        {% if assets|length != 1 %}
+          {{ assets|length }} matches shown.
+        {% endif %}
       </p>
-      <div class="result-grid">
-        <div class="row">
-          <strong>Asset tag</strong><br />
-          {{ asset.asset_tag or "" }}
-        </div>
-        <div class="row">
-          <strong>Serial number</strong><br />
-          {{ asset.serial_number or "Not recorded" }}
-        </div>
-        <div class="row">
-          <strong>Current state</strong><br />
-          {{ asset.state_label }}
-        </div>
-        <div class="row">
-          <strong>Current holder</strong><br />
-          {{ asset.holder_label or "Not assigned" }}
-        </div>
-        <div class="row">
-          <strong>Home case</strong><br />
-          {{ asset.home_case_name or "Not assigned" }}
-        </div>
-        <div class="row">
-          <strong>Home slot</strong><br />
-          {% if asset.home_slot_position is not none %}
-            Slot {{ asset.home_slot_position }}
-          {% else %}
-            Not assigned
-          {% endif %}
-        </div>
-      </div>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Serial number</th>
+            <th>Current state</th>
+            <th>Current holder</th>
+            <th>Home case</th>
+            <th>Home slot</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for asset in assets %}
+            <tr>
+              <td><code>{{ asset.asset_tag or "" }}</code></td>
+              <td>{{ asset.serial_number or "Not recorded" }}</td>
+              <td>{{ asset.state_label }}</td>
+              <td>{{ asset.holder_label or "Not assigned" }}</td>
+              <td>{{ asset.home_case_name or "Not assigned" }}</td>
+              <td>
+                {% if asset.home_slot_position is not none %}
+                  Slot {{ asset.home_slot_position }}
+                {% else %}
+                  Not assigned
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   {% endif %}
 {% endblock %}

@@ -113,6 +113,36 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
 
+    def test_partial_asset_tag_search_returns_matching_assets(self) -> None:
+        self._insert_holder(1, "Alex Holder", "Field Ops")
+        self._insert_asset("AT-100", serial_number="SER-100", location_type="IN_CUSTODY", home_slot_id=None, current_holder_id=1)
+        self._insert_asset("AT-101", serial_number="SER-101", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("BX-200", serial_number="SER-200", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-10")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Assets Found", response.data)
+        self.assertIn(b"2 matches shown.", response.data)
+        self.assertIn(b"AT-100", response.data)
+        self.assertIn(b"AT-101", response.data)
+        self.assertNotIn(b"BX-200", response.data)
+        self.assertIn(b"Alex Holder (Field Ops)", response.data)
+
+    def test_partial_serial_search_returns_matching_assets(self) -> None:
+        self._insert_asset("AT-200", serial_number="SER-200", location_type="IN_CUSTODY", home_slot_id=None)
+        self._insert_asset("AT-201", serial_number="SER-201", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("AT-999", serial_number="XYZ-999", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?serial_number=SER-20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Assets Found", response.data)
+        self.assertIn(b"2 matches shown.", response.data)
+        self.assertIn(b"AT-200", response.data)
+        self.assertIn(b"AT-201", response.data)
+        self.assertNotIn(b"AT-999", response.data)
+
     def test_search_shows_plain_not_found_feedback(self) -> None:
         response = self.client.get("/assets/search?asset_tag=AT-MISSING")
         self.assertEqual(response.status_code, 200)

@@ -570,14 +570,16 @@ def _lookup_asset_for_verification(
     *,
     asset_tag: str,
     serial_number: str,
-) -> tuple[Optional[dict], Optional[str], str]:
+) -> tuple[list[dict], Optional[str], str]:
     asset_tag_clean = str(asset_tag or "").strip().upper()
     serial_clean = str(serial_number or "").strip()
 
     if not asset_tag_clean and not serial_clean:
-        return None, "Enter an asset tag or serial number.", "none"
+        return [], "Enter an asset tag or serial number.", "none"
 
     lookup_mode = "asset_tag" if asset_tag_clean else "serial_number"
+    query_value = asset_tag_clean if lookup_mode == "asset_tag" else serial_clean
+    like_pattern = f"%{query_value}%"
 
     if lookup_mode == "asset_tag":
         rows = conn.execute(
@@ -591,14 +593,17 @@ def _lookup_asset_for_verification(
             FROM assets a
             LEFT JOIN holders h
               ON h.id = a.current_holder_id
-            WHERE UPPER(asset_tag) = UPPER(?)
-            LIMIT 1;
+            WHERE UPPER(a.asset_tag) LIKE UPPER(?)
+            ORDER BY
+                CASE WHEN UPPER(a.asset_tag) = UPPER(?) THEN 0 ELSE 1 END,
+                UPPER(a.asset_tag) ASC,
+                a.id ASC
+            LIMIT 25;
             """,
-            (asset_tag_clean,),
+            (like_pattern, asset_tag_clean),
         ).fetchall()
         if not rows:
-            return None, "Asset not found.", lookup_mode
-        asset = dict(rows[0])
+            return [], "Asset not found.", lookup_mode
     else:
         rows = conn.execute(
             """
@@ -612,49 +617,54 @@ def _lookup_asset_for_verification(
             LEFT JOIN holders h
               ON h.id = a.current_holder_id
             WHERE TRIM(COALESCE(serial_number, '')) <> ''
-              AND UPPER(serial_number) = UPPER(?)
-            LIMIT 2;
+              AND UPPER(a.serial_number) LIKE UPPER(?)
+            ORDER BY
+                CASE WHEN UPPER(a.serial_number) = UPPER(?) THEN 0 ELSE 1 END,
+                UPPER(a.serial_number) ASC,
+                UPPER(a.asset_tag) ASC,
+                a.id ASC
+            LIMIT 25;
             """,
-            (serial_clean,),
+            (like_pattern, serial_clean),
         ).fetchall()
         if not rows:
-            return None, "Asset not found.", lookup_mode
-        if len(rows) > 1:
-            return None, "More than one asset uses that serial number. Search by asset tag.", lookup_mode
-        asset = dict(rows[0])
+            return [], "Asset not found.", lookup_mode
 
-    home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
-    holder_row = None
-    if asset.get("holder_record_id") is not None:
-        holder_row = {
-            "id": int(asset["holder_record_id"]),
-            "holder_type": str(asset.get("holder_record_type") or ""),
-            "name": str(asset.get("holder_record_name") or ""),
-            "organization": str(asset.get("holder_record_organization") or ""),
-        }
-    holder_label = ""
-    if holder_row is not None:
-        holder_name = str(holder_row.get("name") or "").strip()
-        holder_org = str(holder_row.get("organization") or "").strip()
-        if holder_name and holder_org and holder_org != holder_name:
-            holder_label = f"{holder_name} ({holder_org})"
-        else:
-            holder_label = _holder_display_name(holder_row)
+    results: list[dict] = []
+    for raw_row in rows:
+        asset = dict(raw_row)
+        home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+        holder_row = None
+        if asset.get("holder_record_id") is not None:
+            holder_row = {
+                "id": int(asset["holder_record_id"]),
+                "holder_type": str(asset.get("holder_record_type") or ""),
+                "name": str(asset.get("holder_record_name") or ""),
+                "organization": str(asset.get("holder_record_organization") or ""),
+            }
+        holder_label = ""
+        if holder_row is not None:
+            holder_name = str(holder_row.get("name") or "").strip()
+            holder_org = str(holder_row.get("organization") or "").strip()
+            if holder_name and holder_org and holder_org != holder_name:
+                holder_label = f"{holder_name} ({holder_org})"
+            else:
+                holder_label = _holder_display_name(holder_row)
 
-    return (
-        {
-            "id": int(asset["id"]),
-            "asset_tag": str(asset.get("asset_tag") or ""),
-            "serial_number": str(asset.get("serial_number") or ""),
-            "location_type": _normalize_location_type(asset.get("location_type")),
-            "state_label": _asset_state_label(asset.get("location_type")),
-            "holder_label": holder_label,
-            "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
-            "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
-        },
-        None,
-        lookup_mode,
-    )
+        results.append(
+            {
+                "id": int(asset["id"]),
+                "asset_tag": str(asset.get("asset_tag") or ""),
+                "serial_number": str(asset.get("serial_number") or ""),
+                "location_type": _normalize_location_type(asset.get("location_type")),
+                "state_label": _asset_state_label(asset.get("location_type")),
+                "holder_label": holder_label,
+                "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
+                "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
+            }
+        )
+
+    return (results, None, lookup_mode)
 
 
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
@@ -2626,14 +2636,14 @@ def asset_search():
         "asset_tag": (request.args.get("asset_tag") or "").strip().upper(),
         "serial_number": (request.args.get("serial_number") or "").strip(),
     }
-    asset = None
+    assets: list[dict] = []
     error_message: Optional[str] = None
     lookup_mode = "none"
 
     if form_state["asset_tag"] or form_state["serial_number"]:
         conn = get_connection()
         try:
-            asset, error_message, lookup_mode = _lookup_asset_for_verification(
+            assets, error_message, lookup_mode = _lookup_asset_for_verification(
                 conn,
                 asset_tag=form_state["asset_tag"],
                 serial_number=form_state["serial_number"],
@@ -2644,7 +2654,7 @@ def asset_search():
     return render_template(
         "asset_search.html",
         form=form_state,
-        asset=asset,
+        assets=assets,
         error_message=error_message,
         lookup_mode=lookup_mode,
     )
