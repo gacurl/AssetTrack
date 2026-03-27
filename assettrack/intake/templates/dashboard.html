@@ -246,6 +246,48 @@
 
   <details class="collapsible">
     <summary>
+      <span>Recent Activity</span>
+      <span class="summary-hint">
+        {% if dashboard.snapshots.recent_activity %}
+          {{ dashboard.snapshots.recent_activity|length }} latest event{% if dashboard.snapshots.recent_activity|length != 1 %}s{% endif %}
+        {% else %}
+          No recent activity
+        {% endif %}
+      </span>
+    </summary>
+    <div class="collapsible-body">
+      <div class="accent"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>What happened</th>
+              <th>Asset</th>
+              <th>Holder</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in dashboard.snapshots.recent_activity %}
+              <tr>
+                <td>{{ row.event_label }}</td>
+                <td><code>{{ row.asset_tag }}</code></td>
+                <td>{{ row.holder_label or "—" }}</td>
+                <td>{{ row.event_timestamp_display }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="4">No recent activity.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details class="collapsible">
+    <summary>
       <span>Problems</span>
       <span class="summary-hint">
         {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
