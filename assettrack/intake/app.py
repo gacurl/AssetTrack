@@ -552,6 +552,22 @@ def _return_to_path(return_to: str) -> str:
     return path
 
 
+def _safe_local_return_to(return_to: str) -> str | None:
+    target = str(return_to or "").strip()
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+    return None
+
+
+def _holder_form_error_message(exc: ValueError) -> str:
+    message = str(exc)
+    if message == "organization is required":
+        return "Choose an organization for this holder."
+    if message == "name is required":
+        return "Enter a person or group name when using Ad Hoc."
+    return message
+
+
 def _holder_display_name(holder: Optional[dict]) -> str:
     if not holder:
         return ""
@@ -3237,11 +3253,16 @@ def holders_new():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
+    form = session.pop("holder_new_form", None)
+    if not isinstance(form, dict):
+        form = {"name": "", "organization_id": ""}
+
     return render_template(
         "holder_new.html",
-        form={"name": "", "organization_id": ""},
+        form=form,
+        return_to=return_to,
         organization_options=list_organizations(),
-        error_message=None,
     )
 
 
@@ -3253,6 +3274,7 @@ def holders_create():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.form.get("return_to") or "")
     name = (request.form.get("name") or "").strip()
     organization_id_raw = (request.form.get("organization_id") or "").strip()
     form = {"name": name, "organization_id": organization_id_raw}
@@ -3263,20 +3285,15 @@ def holders_create():
             organization_id=None if not organization_id_raw else int(organization_id_raw),
         )
     except ValueError as e:
-        return render_template(
-            "holder_new.html",
-            form=form,
-            organization_options=list_organizations(),
-            error_message=(
-                "Choose an organization for this holder."
-                if str(e) == "organization is required"
-                else "Enter a person or group name for Ad Hoc holders."
-                if str(e) == "name is required"
-                else str(e)
-            ),
-        )
+        session["holder_new_form"] = form
+        flash(_holder_form_error_message(e), "error")
+        if return_to is not None:
+            return redirect(url_for("holders_new", return_to=return_to))
+        return redirect(url_for("holders_new"))
 
     flash(f"Created holder: {_holder_display_name(created)}", "success")
+    if return_to is not None:
+        return redirect(return_to)
     return redirect(url_for("holders_search"))
 
 
@@ -3288,19 +3305,24 @@ def holders_edit(holder_id: int):
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     holder = get_holder(holder_id)
     if holder is None:
         abort(404)
 
+    form = session.pop(f"holder_edit_form:{holder_id}", None)
+    if not isinstance(form, dict):
+        form = {
+            "name": str(holder.get("name") or ""),
+            "organization_id": "" if holder.get("organization_id") is None else str(holder.get("organization_id")),
+        }
+
     return render_template(
         "holder_edit.html",
         holder=holder,
-        form={
-            "name": str(holder.get("name") or ""),
-            "organization_id": "" if holder.get("organization_id") is None else str(holder.get("organization_id")),
-        },
+        form=form,
+        return_to=return_to,
         organization_options=list_organizations(),
-        error_message=None,
     )
 
 
@@ -3312,6 +3334,7 @@ def holders_edit_submit(holder_id: int):
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.form.get("return_to") or "")
     form = {
         "name": (request.form.get("name") or "").strip(),
         "organization_id": (request.form.get("organization_id") or "").strip(),
@@ -3328,22 +3351,16 @@ def holders_edit_submit(holder_id: int):
             organization_id=None if not form["organization_id"] else int(form["organization_id"]),
         )
     except ValueError as e:
-        return render_template(
-            "holder_edit.html",
-            holder=holder,
-            form=form,
-            organization_options=list_organizations(),
-            error_message=(
-                "Choose an organization for this holder."
-                if str(e) == "organization is required"
-                else "Enter a person or group name for Ad Hoc holders."
-                if str(e) == "name is required"
-                else str(e)
-            ),
-        )
+        session[f"holder_edit_form:{holder_id}"] = form
+        flash(_holder_form_error_message(e), "error")
+        if return_to is not None:
+            return redirect(url_for("holders_edit", holder_id=holder_id, return_to=return_to))
+        return redirect(url_for("holders_edit", holder_id=holder_id))
 
     flash(f"Updated holder: {_holder_display_name(updated)}", "success")
-    return redirect(url_for("holders_search", q=_holder_display_name(updated)))
+    if return_to is not None:
+        return redirect(return_to)
+    return redirect(url_for("holders_search"))
 
 
 @app.post("/holders/select")

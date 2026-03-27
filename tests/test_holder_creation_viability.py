@@ -43,6 +43,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.get("/holders/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Create Holder", response.data)
+        self.assertIn(b"novalidate", response.data)
+        self.assertNotIn(b'name="organization_id" required', response.data)
 
     def test_get_holders_list_route_exists(self) -> None:
         response = self.client.get("/holders/list")
@@ -71,9 +73,15 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.post(
             "/holders/new",
             data={"name": "Named Holder", "organization_id": ""},
+            follow_redirects=False,
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Choose an organization for this holder.", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders/new"))
+
+        follow_up = self.client.get("/holders/new")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Choose an organization for this holder.", follow_up.data)
+        self.assertIn(b'value="Named Holder"', follow_up.data)
 
         count = self.conn.execute("SELECT COUNT(*) AS c FROM holders;").fetchone()["c"]
         self.assertEqual(count, 0)
@@ -103,10 +111,15 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.post(
             "/holders/new",
             data={"name": "", "organization_id": str(organization_id)},
+            follow_redirects=False,
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Enter a person or group name for Ad Hoc holders.", response.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders/new"))
+
+        follow_up = self.client.get("/holders/new")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Enter a person or group name when using Ad Hoc.", follow_up.data)
 
     def test_create_search_and_select_holder_workflow(self) -> None:
         holder_name = "ZZ Test Holder 21-4"
@@ -156,6 +169,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         edit_get = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
         self.assertEqual(edit_get.status_code, 200)
         self.assertIn(b"Edit Holder", edit_get.data)
+        self.assertIn(b"novalidate", edit_get.data)
+        self.assertNotIn(b'name="organization_id" required', edit_get.data)
 
         edit_post = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
@@ -184,10 +199,61 @@ class HolderCreationViabilityTests(unittest.TestCase):
         edit_post = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
             data={"name": "Editable Holder", "organization_id": ""},
+            follow_redirects=False,
         )
 
-        self.assertEqual(edit_post.status_code, 200)
-        self.assertIn(b"Choose an organization for this holder.", edit_post.data)
+        self.assertEqual(edit_post.status_code, 302)
+        self.assertTrue((edit_post.headers["Location"]).endswith(f"/holders/edit/{int(holder_row['id'])}"))
+
+        follow_up = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Choose an organization for this holder.", follow_up.data)
+        self.assertIn(b'value="Editable Holder"', follow_up.data)
+
+    def test_create_holder_respects_return_to_after_success(self) -> None:
+        organization_id = self._create_org("Issue Org")
+
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "Workflow Holder", "organization_id": str(organization_id), "return_to": "/issue"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/issue"))
+
+    def test_create_holder_preserves_return_to_on_validation_redirect(self) -> None:
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "Workflow Holder", "organization_id": "", "return_to": "/issue"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders/new?return_to=/issue"))
+
+        follow_up = self.client.get("/holders/new?return_to=/issue")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b'name="return_to" value="/issue"', follow_up.data)
+        self.assertIn(b"Choose an organization for this holder.", follow_up.data)
+
+    def test_edit_holder_respects_return_to_after_success(self) -> None:
+        organization_id = self._create_org("Issue Org")
+        self.client.post("/holders/new", data={"name": "Workflow Holder", "organization_id": str(organization_id)})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Workflow Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.post(
+            f"/holders/edit/{int(holder_row['id'])}",
+            data={"name": "Workflow Holder", "organization_id": str(organization_id), "return_to": "/issue"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/issue"))
 
     def test_holders_list_shows_holders_and_asset_count(self) -> None:
         holder_name = "Holder List Person"

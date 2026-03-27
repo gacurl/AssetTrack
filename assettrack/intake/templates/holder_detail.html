@@ -15,7 +15,11 @@
 {% block content %}
   <nav class="actions" aria-label="Holder navigation">
     <a class="chip" href="{{ url_for('holders_search', return_to=return_to) }}">Back to Holders</a>
-    <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id) }}">Edit Holder</a>
+    {% if return_to %}
+      <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id, return_to=return_to) }}">Edit Holder</a>
+    {% else %}
+      <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id) }}">Edit Holder</a>
+    {% endif %}
     <form method="post" action="{{ url_for('holders_select') }}">
       <input type="hidden" name="holder_id" value="{{ holder.id }}" />
       {% if return_to %}
