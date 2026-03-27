@@ -94,6 +94,20 @@ def test_asset_search_requires_login(client_with_temp_db) -> None:
     assert response.status_code == 403
 
 
+def test_preview_not_shown_in_main_navigation_but_direct_route_still_loads(client_with_temp_db) -> None:
+    create_user("operator", "op-pass", "operator", True)
+    _login(client_with_temp_db, "operator", "op-pass")
+
+    dashboard_response = client_with_temp_db.get("/dashboard")
+    assert dashboard_response.status_code == 200
+    assert b">Preview</a>" not in dashboard_response.data
+    assert b">Issue</a>" in dashboard_response.data
+    assert b">Return</a>" in dashboard_response.data
+
+    preview_response = client_with_temp_db.get("/preview")
+    assert preview_response.status_code == 200
+
+
 def test_bootstrap_only_when_empty(client_with_temp_db) -> None:
     bootstrap_get = client_with_temp_db.get("/bootstrap/admin")
     assert bootstrap_get.status_code == 200
