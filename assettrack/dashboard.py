@@ -53,12 +53,12 @@ def _holder_label(name: object, organization: object) -> str:
 def _event_type_label(raw_event_type: object) -> str:
     normalized = normalize_event_type(raw_event_type)
     label_map = {
-        "ISSUE": "Issued",
-        "RETURN": "Returned",
-        "ASSET_CREATED": "Asset created",
-        "ASSET_UPDATED": "Asset updated",
-        "SLOT_ASSIGN": "Slot assigned",
-        "ASSET_RETIRED": "Asset retired",
+        "ISSUE": "Issued to",
+        "RETURN": "Returned to storage",
+        "ASSET_CREATED": "Added",
+        "ASSET_UPDATED": "Updated",
+        "SLOT_ASSIGN": "Assigned to slot",
+        "ASSET_RETIRED": "Retired",
         "ASSET_RETIRED_IN_FIELD": "Retired in field",
     }
     if normalized in label_map:
