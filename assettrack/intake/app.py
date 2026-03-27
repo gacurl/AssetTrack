@@ -3259,13 +3259,11 @@ def holders_create():
 
     name = (request.form.get("name") or "").strip()
     organization_id_raw = (request.form.get("organization_id") or "").strip()
-    organization_text = (request.form.get("organization") or "").strip()
     form = {"name": name, "organization_id": organization_id_raw}
 
     try:
         created = create_holder(
             name,
-            organization=organization_text or None,
             organization_id=None if not organization_id_raw else int(organization_id_raw),
         )
     except ValueError as e:
@@ -3274,8 +3272,10 @@ def holders_create():
             form=form,
             organization_options=list_organizations(),
             error_message=(
-                "Enter a person or group name, or enter a group / organization."
-                if str(e) == "name or organization is required"
+                "Choose an organization for this holder."
+                if str(e) == "organization is required"
+                else "Enter a person or group name for Ad Hoc holders."
+                if str(e) == "name is required"
                 else str(e)
             ),
         )
@@ -3320,7 +3320,6 @@ def holders_edit_submit(holder_id: int):
         "name": (request.form.get("name") or "").strip(),
         "organization_id": (request.form.get("organization_id") or "").strip(),
     }
-    organization_text = (request.form.get("organization") or "").strip()
 
     holder = get_holder(holder_id)
     if holder is None:
@@ -3330,7 +3329,6 @@ def holders_edit_submit(holder_id: int):
         updated = update_holder(
             holder_id,
             name=form["name"],
-            organization=organization_text or None,
             organization_id=None if not form["organization_id"] else int(form["organization_id"]),
         )
     except ValueError as e:
@@ -3340,8 +3338,10 @@ def holders_edit_submit(holder_id: int):
             form=form,
             organization_options=list_organizations(),
             error_message=(
-                "Enter a person or group name, or enter a group / organization."
-                if str(e) == "name or organization is required"
+                "Choose an organization for this holder."
+                if str(e) == "organization is required"
+                else "Enter a person or group name for Ad Hoc holders."
+                if str(e) == "name is required"
                 else str(e)
             ),
         )

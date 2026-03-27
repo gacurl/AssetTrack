@@ -30,13 +30,13 @@
     <p class="muted">A holder can be a person or a group such as a shop, office, or team.</p>
     <form method="post" action="{{ url_for('holders_edit_submit', holder_id=holder.id) }}">
       <div class="row">
-        <label for="name"><strong>Person or group name</strong> (optional if a group / organization is selected)</label><br />
+        <label for="name"><strong>Person or group name</strong> (required when using Ad Hoc)</label><br />
         <input type="text" id="name" name="name" value="{{ form.name or '' }}" autofocus />
       </div>
       <div class="row">
-        <label for="organization_id"><strong>Group / organization</strong> (optional)</label><br />
-        <select id="organization_id" name="organization_id">
-          <option value="">No organization</option>
+        <label for="organization_id"><strong>Group / organization</strong></label><br />
+        <select id="organization_id" name="organization_id" required>
+          <option value="">Select organization</option>
           {% for organization in organization_options %}
             <option value="{{ organization.id }}" {% if form.organization_id == (organization.id|string) %}selected{% endif %}>{{ organization.name }}</option>
           {% endfor %}

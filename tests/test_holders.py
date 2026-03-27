@@ -24,6 +24,8 @@ class HoldersTests(unittest.TestCase):
         self,
         holder_type: str,
         name: str,
+        organization: str | None = None,
+        organization_id: int | None = None,
         identifier: str | None = None,
         contact_info: str | None = None,
     ) -> int:
@@ -31,18 +33,38 @@ class HoldersTests(unittest.TestCase):
         cursor = self.conn.execute(
             """
             INSERT INTO holders (
-                holder_type, name, identifier, contact_info, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?);
+                holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """,
-            (holder_type, name, identifier, contact_info, now, now),
+            (holder_type, name, organization, organization_id, identifier, contact_info, now, now),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
 
+    def _insert_organization(self, name: str) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO organizations (name, created_at, updated_at)
+            VALUES (?, ?, ?);
+            """,
+            (name, now, now),
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = ?;",
+            (name,),
+        ).fetchone()
+        assert row is not None
+        return int(row["id"])
+
     def test_holders_insert_and_get(self) -> None:
+        organization_id = self._insert_organization("Ad Hoc")
         holder_id = self._insert_holder(
             holder_type="Person",
             name="Jane Doe",
+            organization="Ad Hoc",
+            organization_id=organization_id,
             identifier="ID-123",
             contact_info="jane@example.org",
         )
@@ -50,13 +72,13 @@ class HoldersTests(unittest.TestCase):
         self.assertIsNotNone(holder)
         self.assertEqual(holder["name"], "Jane Doe")
         self.assertEqual(holder["identifier"], "ID-123")
-        self.assertIsNone(holder["organization"])
+        self.assertEqual(holder["organization"], "Ad Hoc")
 
     def test_search_holders_by_name_and_identifier(self) -> None:
-        self._insert_holder("Person", "Alpha User", "A-001", None)
-        self._insert_holder("Organization", "Bravo Org", "BR-77", "contact@bravo.org")
-        self.conn.execute("UPDATE holders SET organization = 'Bravo Group' WHERE name = 'Bravo Org';")
-        self.conn.commit()
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        bravo_org_id = self._insert_organization("Bravo Group")
+        self._insert_holder("Person", "Alpha User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        self._insert_holder("Organization", "Bravo Org", "Bravo Group", bravo_org_id, "BR-77", "contact@bravo.org")
 
         by_name = search_holders("Alpha")
         self.assertEqual(len(by_name), 1)
@@ -71,8 +93,9 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual(by_organization[0]["name"], "Bravo Org")
 
     def test_list_holders_includes_asset_count(self) -> None:
-        alpha_id = self._insert_holder("Person", "Alpha User", "A-001", None)
-        self._insert_holder("Organization", "Bravo Org", "BR-77", "contact@bravo.org")
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        alpha_id = self._insert_holder("Person", "Alpha User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        self._insert_holder("Organization", "Bravo Org", "Ad Hoc", ad_hoc_id, "BR-77", "contact@bravo.org")
 
         self.conn.execute(
             "INSERT INTO assets (asset_tag, current_holder_id) VALUES (?, ?);",
@@ -90,10 +113,12 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual(int(rows[1]["asset_count"]), 0)
 
     def test_create_and_update_holder_organization(self) -> None:
-        created = create_holder("Org Holder", organization="Alpha Org")
+        alpha_org_id = self._insert_organization("Alpha Org")
+        bravo_org_id = self._insert_organization("Bravo Org")
+        created = create_holder("Org Holder", organization_id=alpha_org_id)
         self.assertEqual(created["organization"], "Alpha Org")
 
-        updated = update_holder(int(created["id"]), name="Org Holder", organization="Bravo Org")
+        updated = update_holder(int(created["id"]), name="Org Holder", organization_id=bravo_org_id)
         self.assertEqual(updated["organization"], "Bravo Org")
 
         fetched = get_holder(int(created["id"]))
@@ -101,23 +126,26 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual(fetched["organization"], "Bravo Org")
 
     def test_create_holder_with_organization_id_sets_denormalized_text(self) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        cursor = self.conn.execute(
-            """
-            INSERT INTO organizations (name, created_at, updated_at)
-            VALUES (?, ?, ?);
-            """,
-            ("Support Org", now, now),
-        )
-        self.conn.commit()
+        organization_id = self._insert_organization("Support Org")
 
-        created = create_holder("Mapped Holder", organization_id=int(cursor.lastrowid))
+        created = create_holder("Mapped Holder", organization_id=organization_id)
 
         self.assertEqual(created["organization"], "Support Org")
-        self.assertEqual(int(created["organization_id"]), int(cursor.lastrowid))
+        self.assertEqual(int(created["organization_id"]), organization_id)
 
     def test_create_holder_allows_org_only_holder(self) -> None:
-        created = create_holder("", organization="Field Team")
+        organization_id = self._insert_organization("Field Team")
+        created = create_holder("", organization_id=organization_id)
         self.assertEqual(created["holder_type"], "ORGANIZATION")
         self.assertEqual(created["name"], "Field Team")
         self.assertEqual(created["organization"], "Field Team")
+
+    def test_create_holder_requires_organization_id(self) -> None:
+        with self.assertRaisesRegex(ValueError, "organization is required"):
+            create_holder("Missing Org", organization_id=None)  # type: ignore[arg-type]
+
+    def test_create_holder_requires_name_for_ad_hoc(self) -> None:
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+
+        with self.assertRaisesRegex(ValueError, "name is required"):
+            create_holder("", organization_id=ad_hoc_id)

@@ -23,6 +23,22 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.conn.close()
         self.temp_dir.cleanup()
 
+    def _create_org(self, name: str) -> int:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO organizations (name, created_at, updated_at)
+            VALUES (?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """,
+            (name,),
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = ?;",
+            (name,),
+        ).fetchone()
+        assert row is not None
+        return int(row["id"])
+
     def test_get_holders_new_route_exists(self) -> None:
         response = self.client.get("/holders/new")
         self.assertEqual(response.status_code, 200)
@@ -35,16 +51,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_post_holders_new_persists_holder(self) -> None:
         holder_name = "Viability Gate Holder"
-        org = self.conn.execute(
-            """
-            INSERT INTO organizations (name, created_at, updated_at)
-            VALUES ('Alpha Org', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
-            """
-        )
-        self.conn.commit()
+        org_id = self._create_org("Alpha Org")
         response = self.client.post(
             "/holders/new",
-            data={"name": holder_name, "organization_id": str(org.lastrowid)},
+            data={"name": holder_name, "organization_id": str(org_id)},
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/holders"))
@@ -55,23 +65,24 @@ class HolderCreationViabilityTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row["organization"], "Alpha Org")
-        self.assertEqual(int(row["organization_id"]), int(org.lastrowid))
+        self.assertEqual(int(row["organization_id"]), org_id)
 
-    def test_post_holders_new_rejects_blank_name(self) -> None:
+    def test_post_holders_new_rejects_missing_organization(self) -> None:
         response = self.client.post(
             "/holders/new",
-            data={"name": "   ", "organization": "   "},
+            data={"name": "Named Holder", "organization_id": ""},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Enter a person or group name, or enter a group / organization.", response.data)
+        self.assertIn(b"Choose an organization for this holder.", response.data)
 
         count = self.conn.execute("SELECT COUNT(*) AS c FROM holders;").fetchone()["c"]
         self.assertEqual(count, 0)
 
     def test_post_holders_new_allows_group_only_holder(self) -> None:
+        organization_id = self._create_org("Maintenance Shop")
         response = self.client.post(
             "/holders/new",
-            data={"name": "", "organization": "Maintenance Shop"},
+            data={"name": "", "organization_id": str(organization_id)},
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
@@ -86,12 +97,24 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertEqual(row["holder_type"], "ORGANIZATION")
         self.assertEqual(row["organization"], "Maintenance Shop")
 
+    def test_post_holders_new_rejects_blank_name_for_ad_hoc(self) -> None:
+        organization_id = self._create_org("Ad Hoc")
+
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "", "organization_id": str(organization_id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter a person or group name for Ad Hoc holders.", response.data)
+
     def test_create_search_and_select_holder_workflow(self) -> None:
         holder_name = "ZZ Test Holder 21-4"
+        organization_id = self._create_org("Bravo Org")
 
         create_response = self.client.post(
             "/holders/new",
-            data={"name": holder_name, "organization": "Bravo Org"},
+            data={"name": holder_name, "organization_id": str(organization_id)},
         )
         self.assertEqual(create_response.status_code, 302)
         self.assertTrue(create_response.headers["Location"].endswith("/holders"))
@@ -120,21 +143,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Bravo Org", select_response.data)
 
     def test_edit_holder_updates_organization(self) -> None:
-        org_one = self.conn.execute(
-            """
-            INSERT INTO organizations (name, created_at, updated_at)
-            VALUES ('Org One', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
-            """
-        )
-        org_two = self.conn.execute(
-            """
-            INSERT INTO organizations (name, created_at, updated_at)
-            VALUES ('Org Two', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
-            """
-        )
-        self.conn.commit()
+        org_one_id = self._create_org("Org One")
+        org_two_id = self._create_org("Org Two")
 
-        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_one.lastrowid)})
+        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_one_id)})
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Editable Holder",),
@@ -147,7 +159,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         edit_post = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
-            data={"name": "Editable Holder", "organization_id": str(org_two.lastrowid)},
+            data={"name": "Editable Holder", "organization_id": str(org_two_id)},
             follow_redirects=True,
         )
         self.assertEqual(edit_post.status_code, 200)
@@ -158,11 +170,29 @@ class HolderCreationViabilityTests(unittest.TestCase):
             (int(holder_row["id"]),),
         ).fetchone()
         self.assertEqual(updated["organization"], "Org Two")
-        self.assertEqual(int(updated["organization_id"]), int(org_two.lastrowid))
+        self.assertEqual(int(updated["organization_id"]), org_two_id)
+
+    def test_edit_holder_rejects_missing_organization(self) -> None:
+        org_id = self._create_org("Org One")
+        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_id)})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Editable Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        edit_post = self.client.post(
+            f"/holders/edit/{int(holder_row['id'])}",
+            data={"name": "Editable Holder", "organization_id": ""},
+        )
+
+        self.assertEqual(edit_post.status_code, 200)
+        self.assertIn(b"Choose an organization for this holder.", edit_post.data)
 
     def test_holders_list_shows_holders_and_asset_count(self) -> None:
         holder_name = "Holder List Person"
-        self.client.post("/holders/new", data={"name": holder_name})
+        organization_id = self._create_org("Ad Hoc")
+        self.client.post("/holders/new", data={"name": holder_name, "organization_id": str(organization_id)})
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             (holder_name,),
@@ -183,8 +213,9 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(f'href="/holders/{holder_id}"'.encode("utf-8"), response.data)
 
     def test_holders_directory_loads_by_default_without_search(self) -> None:
-        self.client.post("/holders/new", data={"name": "Alpha Holder"})
-        self.client.post("/holders/new", data={"name": "Bravo Holder"})
+        organization_id = self._create_org("Ad Hoc")
+        self.client.post("/holders/new", data={"name": "Alpha Holder", "organization_id": str(organization_id)})
+        self.client.post("/holders/new", data={"name": "Bravo Holder", "organization_id": str(organization_id)})
 
         response = self.client.get("/holders")
 
@@ -195,7 +226,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Search by person name, group, organization, or identifier", response.data)
 
     def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
-        self.client.post("/holders/new", data={"name": "Detail Holder", "organization": "Org Detail"})
+        organization_id = self._create_org("Org Detail")
+        self.client.post("/holders/new", data={"name": "Detail Holder", "organization_id": str(organization_id)})
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Detail Holder",),
@@ -222,7 +254,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(f'href="/holders/edit/{holder_id}"'.encode("utf-8"), response.data)
 
     def test_holder_detail_shows_zero_assets_state(self) -> None:
-        self.client.post("/holders/new", data={"name": "Empty Holder", "organization": "None"})
+        organization_id = self._create_org("Ad Hoc")
+        self.client.post("/holders/new", data={"name": "Empty Holder", "organization_id": str(organization_id)})
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Empty Holder",),
@@ -236,7 +269,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"No assigned assets.", response.data)
 
     def test_holder_detail_displays_group_holder_cleanly(self) -> None:
-        self.client.post("/holders/new", data={"name": "", "organization": "Ops Section"})
+        organization_id = self._create_org("Ops Section")
+        self.client.post("/holders/new", data={"name": "", "organization_id": str(organization_id)})
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Ops Section",),

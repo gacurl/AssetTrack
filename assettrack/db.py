@@ -7,6 +7,7 @@ from pathlib import Path
 
 REQUIRED_TABLES = {"assets", "holders", "organizations", "buildings", "organization_buildings"}
 EVENT_TABLE_ALIASES = ("events", "asset_events")
+DEFAULT_AD_HOC_ORGANIZATION = "Ad Hoc"
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -546,6 +547,13 @@ def _create_schema(conn: sqlite3.Connection):
         cursor.execute(
             """
             INSERT OR IGNORE INTO organizations (name, created_at, updated_at)
+            VALUES (?, ?, ?);
+            """,
+            (DEFAULT_AD_HOC_ORGANIZATION, now_iso, now_iso),
+        )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO organizations (name, created_at, updated_at)
             SELECT DISTINCT TRIM(organization), ?, ?
             FROM holders
             WHERE TRIM(COALESCE(organization, '')) <> '';
@@ -564,6 +572,19 @@ def _create_schema(conn: sqlite3.Connection):
             WHERE organization_id IS NULL
               AND TRIM(COALESCE(organization, '')) <> '';
             """
+        )
+        cursor.execute(
+            """
+            UPDATE holders
+            SET organization_id = (
+                SELECT o.id
+                FROM organizations o
+                WHERE UPPER(o.name) = UPPER(?)
+                LIMIT 1
+            )
+            WHERE organization_id IS NULL;
+            """,
+            (DEFAULT_AD_HOC_ORGANIZATION,),
         )
         cursor.execute(
             """
