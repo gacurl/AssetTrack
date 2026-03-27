@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from assettrack.db import get_connection
+from assettrack.db import DEFAULT_AD_HOC_ORGANIZATION, get_connection
 from assettrack.reference_data import get_organization
 
 
@@ -87,24 +87,24 @@ def create_holder(
     name: str,
     *,
     holder_type: str = "PERSON",
-    organization: str | None = None,
-    organization_id: int | None = None,
+    organization_id: int,
     identifier: str | None = None,
     contact_info: str | None = None,
 ) -> dict:
     normalized_name = (name or "").strip()
-    normalized_organization = (organization or "").strip() or None
-    normalized_organization_id: int | None = None
-    if organization_id not in {None, ""}:
-        organization_row = get_organization(int(organization_id))
-        if organization_row is None:
-            raise ValueError("organization not found")
-        normalized_organization_id = int(organization_row["id"])
-        normalized_organization = str(organization_row["name"] or "").strip() or None
-    if not normalized_name and not normalized_organization:
-        raise ValueError("name or organization is required")
+    if organization_id in {None, ""}:
+        raise ValueError("organization is required")
+    organization_row = get_organization(int(organization_id))
+    if organization_row is None:
+        raise ValueError("organization not found")
+    normalized_organization_id = int(organization_row["id"])
+    normalized_organization = str(organization_row["name"] or "").strip() or None
+    if not normalized_organization:
+        raise ValueError("organization not found")
+    if not normalized_name and normalized_organization == DEFAULT_AD_HOC_ORGANIZATION:
+        raise ValueError("name is required")
     normalized_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else holder_type
-    persisted_name = normalized_name or str(normalized_organization or "").strip()
+    persisted_name = normalized_name or normalized_organization
 
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
@@ -143,8 +143,7 @@ def update_holder(
     holder_id: int,
     *,
     name: str,
-    organization: str | None = None,
-    organization_id: int | None = None,
+    organization_id: int,
 ) -> dict:
     try:
         normalized_id = int(holder_id)
@@ -152,17 +151,18 @@ def update_holder(
         raise ValueError("holder_id is required") from e
 
     normalized_name = (name or "").strip()
-    normalized_organization = (organization or "").strip() or None
-    normalized_organization_id: int | None = None
-    if organization_id not in {None, ""}:
-        organization_row = get_organization(int(organization_id))
-        if organization_row is None:
-            raise ValueError("organization not found")
-        normalized_organization_id = int(organization_row["id"])
-        normalized_organization = str(organization_row["name"] or "").strip() or None
-    if not normalized_name and not normalized_organization:
-        raise ValueError("name or organization is required")
-    persisted_name = normalized_name or str(normalized_organization or "").strip()
+    if organization_id in {None, ""}:
+        raise ValueError("organization is required")
+    organization_row = get_organization(int(organization_id))
+    if organization_row is None:
+        raise ValueError("organization not found")
+    normalized_organization_id = int(organization_row["id"])
+    normalized_organization = str(organization_row["name"] or "").strip() or None
+    if not normalized_organization:
+        raise ValueError("organization not found")
+    if not normalized_name and normalized_organization == DEFAULT_AD_HOC_ORGANIZATION:
+        raise ValueError("name is required")
+    persisted_name = normalized_name or normalized_organization
     persisted_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else "PERSON"
     now_iso = datetime.now(timezone.utc).isoformat()
 
