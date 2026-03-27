@@ -2953,12 +2953,8 @@ def issue():
 def issue_preview():
     issue_mode = bool(session.get("issue_mode"))
     if not issue_mode:
-        flash("Enable issue mode before using Issue Assets.", "error")
-        return render_template(
-            "issue_preview.html",
-            blocking_issues=[],
-            assets=[],
-        )
+        flash("Use the Issue workflow before opening Issue Assets Preview.", "error")
+        return redirect(url_for("issue"))
 
     selected_holder = _selected_holder_from_session()
     asset_tags = _queue_asset_tags()
