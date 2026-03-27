@@ -197,6 +197,7 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
         """
         SELECT
             a.current_holder_id AS holder_id,
+            h.id AS holder_detail_id,
             COALESCE(NULLIF(TRIM(h.name), ''), 'ID ' || a.current_holder_id) AS holder_name,
             COUNT(*) AS asset_count
         FROM assets a
@@ -204,7 +205,7 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
           ON h.id = a.current_holder_id
         WHERE a.location_type = 'IN_CUSTODY'
           AND a.current_holder_id IS NOT NULL
-        GROUP BY a.current_holder_id, COALESCE(NULLIF(TRIM(h.name), ''), 'ID ' || a.current_holder_id)
+        GROUP BY a.current_holder_id, h.id, COALESCE(NULLIF(TRIM(h.name), ''), 'ID ' || a.current_holder_id)
         ORDER BY asset_count DESC, holder_name ASC, a.current_holder_id ASC
         LIMIT ?;
         """,
@@ -214,6 +215,7 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
     return [
         {
             "holder_id": int(row["holder_id"]),
+            "holder_detail_id": None if row["holder_detail_id"] is None else int(row["holder_detail_id"]),
             "holder_name": str(row["holder_name"]),
             "asset_count": int(row["asset_count"] or 0),
         }

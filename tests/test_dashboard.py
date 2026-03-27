@@ -197,6 +197,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"AT-UNSLOT", response.data)
         self.assertIn(b"Issued", response.data)
         self.assertIn(b"AT-CUST", response.data)
+        self.assertIn(b'href="/holders/1"', response.data)
 
     def test_dashboard_empty_states_are_operator_facing(self) -> None:
         response = self.client.get("/dashboard")
@@ -397,6 +398,32 @@ class DashboardTests(unittest.TestCase):
         resp = self.client.get("/", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         self.assertTrue((resp.headers.get("Location") or "").endswith("/dashboard"))
+
+    def test_dashboard_holder_name_links_to_existing_holder_detail_page(self) -> None:
+        self._insert_holder(1, "Alex Holder")
+        self._insert_asset("AT-CUST-1", location_type="IN_CUSTODY", current_holder_id=1)
+        self.conn.commit()
+
+        dashboard_response = self.client.get("/dashboard")
+
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertIn(b'href="/holders/1"', dashboard_response.data)
+        self.assertIn(b"Alex Holder", dashboard_response.data)
+
+        holder_detail = self.client.get("/holders/1")
+        self.assertEqual(holder_detail.status_code, 200)
+        self.assertIn(b"Alex Holder", holder_detail.data)
+        self.assertIn(b"AT-CUST-1", holder_detail.data)
+
+    def test_dashboard_holder_name_falls_back_to_plain_text_when_holder_detail_missing(self) -> None:
+        self._insert_asset("AT-CUST-PLAIN", location_type="IN_CUSTODY", current_holder_id=77)
+        self.conn.commit()
+
+        dashboard_response = self.client.get("/dashboard")
+
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertIn(b"ID 77", dashboard_response.data)
+        self.assertNotIn(b'href="/holders/77"', dashboard_response.data)
 
     def test_recent_activity_renders_newest_events_first_with_holder_and_return_fallback(self) -> None:
         self._insert_holder(1, "Alpha Holder")
