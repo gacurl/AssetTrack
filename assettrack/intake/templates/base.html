@@ -6,13 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}AssetTrack{% endblock %}</title>
     <style>
+      :root {
+        --color-bg: #EBE4D1;
+        --color-surface: #B4B4B3;
+        --color-primary: #26577C;
+        --color-accent: #E55604;
+        --color-text: #12202f;
+        --color-surface-soft: rgba(180, 180, 179, 0.24);
+        --color-primary-soft: rgba(38, 87, 124, 0.12);
+        --color-accent-soft: rgba(229, 86, 4, 0.14);
+      }
       body {
         font-family: system-ui, -apple-system, Arial, sans-serif;
         margin: 0;
-        color: #12202f;
-        background: #f7f9fc;
+        color: var(--color-text);
+        background: var(--color-bg);
       }
-      a { color: #134e8a; text-decoration: none; }
+      a { color: var(--color-primary); text-decoration: none; }
       a:hover { text-decoration: underline; }
       .page {
         max-width: 1100px;
@@ -33,21 +43,23 @@
         gap: 0.35rem;
         padding: 0.4rem 0.6rem;
         border-radius: 999px;
-        background: #eef3fb;
-        border: 1px solid #d7deea;
+        background: var(--color-primary-soft);
+        border: 1px solid var(--color-surface);
+        color: var(--color-primary);
         font-weight: 600;
         font-size: 0.95rem;
         white-space: nowrap;
       }
       .chip.active {
-        background-color: #1f2937;
-        color: white;
+        background-color: var(--color-primary);
+        border-color: var(--color-primary);
+        color: #fff;
         font-weight: 600;
       }
       .chip.mode-badge {
-        background: #f8f1e3;
-        border-color: #dfcfac;
-        color: #5a4b2c;
+        background: var(--color-accent-soft);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
         letter-spacing: 0.04em;
         font-size: 0.8rem;
         text-transform: uppercase;
@@ -55,35 +67,35 @@
       .card {
         margin-top: 1rem;
         padding: 1rem;
-        border: 1px solid #d7deea;
+        border: 1px solid var(--color-surface);
         border-radius: 10px;
-        background: #fff;
+        background: rgba(255, 255, 255, 0.52);
       }
       .flash {
         padding: 0.75rem 1rem;
         border-radius: 10px;
         margin: 0.75rem 0;
       }
-      .flash.error { background: #ffe8e8; border: 1px solid #f2b8b8; }
-      .flash.success { background: #eaffea; border: 1px solid #bfe8bf; }
+      .flash.error { background: var(--color-accent-soft); border: 1px solid var(--color-accent); }
+      .flash.success { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
       table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; border-bottom: 1px solid #e8edf6; padding: 0.5rem; vertical-align: top; }
-      th { background: #eef3fb; }
-      code { background: #f6f6f6; padding: 0.15rem 0.3rem; border-radius: 4px; }
-      button { padding: 0.6rem 1rem; font-size: 1rem; }
+      th, td { text-align: left; border-bottom: 1px solid var(--color-surface); padding: 0.5rem; vertical-align: top; }
+      th { background: var(--color-primary-soft); }
+      code { background: var(--color-surface-soft); padding: 0.15rem 0.3rem; border-radius: 4px; }
+      button { padding: 0.6rem 1rem; font-size: 1rem; background: var(--color-primary); color: #fff; border: 1px solid var(--color-primary); border-radius: 8px; }
       .row { margin: 0.75rem 0; }
-      .muted { color: #555; }
+      .muted { color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text)); }
       .timeout-panel {
         margin: 0 0 1rem 0;
         padding: 0.75rem 1rem;
-        border: 1px solid #d7deea;
+        border: 1px solid var(--color-surface);
         border-radius: 10px;
-        background: #eef3fb;
+        background: var(--color-primary-soft);
       }
       .timeout-panel.locked {
-        background: #fff1f1;
-        border-color: #e0b4b4;
-        color: #7a1f1f;
+        background: var(--color-accent-soft);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
       }
       @keyframes timeoutWarningPulse {
         0%, 100% { opacity: 1; }
@@ -93,7 +105,7 @@
         font-weight: inherit;
       }
       .timeout-countdown.timeout-warning {
-        color: #a54a16;
+        color: var(--color-accent);
         animation: timeoutWarningPulse 1s ease-in-out infinite;
       }
       .locked-control {
@@ -101,7 +113,7 @@
         cursor: not-allowed;
       }
       a.locked-control {
-        color: #6b7280;
+        color: color-mix(in srgb, var(--color-surface) 68%, var(--color-text));
         pointer-events: none;
         text-decoration: none;
       }
