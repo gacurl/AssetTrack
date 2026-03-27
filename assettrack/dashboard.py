@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE
 from assettrack.event_types import issue_event_type_values, normalize_event_type
-from assettrack.drilldowns import list_case_summaries
 
 from datetime import datetime, timezone
 import sqlite3
+
+MAX_DASHBOARD_TOP_HOLDERS = 5
+MAX_DASHBOARD_CASE_SUMMARIES = 10
+MAX_DASHBOARD_RECENT_ACTIVITY = 10
+MAX_DASHBOARD_EXCEPTION_PREVIEW = 10
 
 
 def get_custody_days_threshold(raw_value: object, default: int = 30) -> int:
@@ -223,6 +227,34 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
     ]
 
 
+def _dashboard_case_utilization(conn: sqlite3.Connection, limit: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            s.case_name,
+            COUNT(*) AS total_slots,
+            COUNT(DISTINCT so.slot_id) AS occupied_slots
+        FROM slots s
+        LEFT JOIN slot_occupancy so
+          ON so.slot_id = s.id
+        GROUP BY s.case_name
+        ORDER BY (COUNT(*) - COUNT(DISTINCT so.slot_id)) DESC, s.case_name ASC
+        LIMIT ?;
+        """,
+        (limit,),
+    ).fetchall()
+
+    return [
+        {
+            "case_name": str(row["case_name"]),
+            "total_slots": int(row["total_slots"] or 0),
+            "occupied_slots": int(row["occupied_slots"] or 0),
+            "empty_slots": max(0, int(row["total_slots"] or 0) - int(row["occupied_slots"] or 0)),
+        }
+        for row in rows
+    ]
+
+
 def _custody_summary(conn: sqlite3.Connection) -> dict:
     unique_holders_row = conn.execute(
         """
@@ -415,15 +447,15 @@ def build_dashboard_data(
             "exceptions": exceptions_summary,
         },
         "snapshots": {
-            "top_custody_holders": _top_custody_holders(conn, limit=5),
-            "case_utilization": list_case_summaries(conn),
-            "recent_activity": get_recent_activity(conn, limit=10),
+            "top_custody_holders": _top_custody_holders(conn, limit=MAX_DASHBOARD_TOP_HOLDERS),
+            "case_utilization": _dashboard_case_utilization(conn, limit=MAX_DASHBOARD_CASE_SUMMARIES),
+            "recent_activity": get_recent_activity(conn, limit=MAX_DASHBOARD_RECENT_ACTIVITY),
             "exceptions": {
-                "unslotted_assets": _unslotted_assets(conn, limit=10),
+                "unslotted_assets": _unslotted_assets(conn, limit=MAX_DASHBOARD_EXCEPTION_PREVIEW),
                 "in_custody_over_threshold": [
                     row for row in in_custody_days_out if row["days_out"] > custody_days_threshold
-                ][:10],
-                "slot_conflicts": _slot_conflicts_preview(conn, limit=10),
+                ][:MAX_DASHBOARD_EXCEPTION_PREVIEW],
+                "slot_conflicts": _slot_conflicts_preview(conn, limit=MAX_DASHBOARD_EXCEPTION_PREVIEW),
             },
         },
     }

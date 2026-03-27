@@ -7,8 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import assettrack.db as db
-from assettrack.dashboard import build_dashboard_data
-from assettrack.drilldowns import list_case_summaries
+from assettrack.dashboard import (
+    MAX_DASHBOARD_CASE_SUMMARIES,
+    MAX_DASHBOARD_RECENT_ACTIVITY,
+    build_dashboard_data,
+)
 from assettrack.event_types import issue_event_type_values
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
@@ -269,16 +272,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'status-dot full', response.data)
         self.assertIn(b'status-dot low', response.data)
 
-    def test_available_space_uses_full_case_coverage_not_limited_top_five(self) -> None:
+    def test_dashboard_case_snapshot_is_bounded_and_keeps_best_available_case(self) -> None:
         slot_id = 1
-        for case_name, occupied_slots in [
-            ("CASE-1", 5),
-            ("CASE-2", 4),
-            ("CASE-3", 3),
-            ("CASE-4", 2),
-            ("CASE-5", 1),
-            ("CASE-6", 0),
-        ]:
+        cases: list[tuple[str, int]] = []
+        for index in range(1, 16):
+            occupied_slots = 0 if index == 6 else 1 + (index % 5)
+            cases.append((f"CASE-{index}", occupied_slots))
+
+        for case_name, occupied_slots in cases:
             for _ in range(10):
                 self._insert_slot(slot_id, case_name, slot_id)
                 if occupied_slots > 0:
@@ -297,7 +298,7 @@ class DashboardTests(unittest.TestCase):
         data = build_dashboard_data(self.conn, custody_days_threshold=30)
         rendered = self.client.get("/dashboard")
 
-        self.assertEqual([row["case_name"] for row in data["snapshots"]["case_utilization"]], [row["case_name"] for row in list_case_summaries(self.conn)])
+        self.assertLessEqual(len(data["snapshots"]["case_utilization"]), MAX_DASHBOARD_CASE_SUMMARIES)
         self.assertIn("CASE-6", [row["case_name"] for row in data["snapshots"]["case_utilization"]])
         self.assertEqual(
             next(row for row in data["snapshots"]["case_utilization"] if row["case_name"] == "CASE-6")["empty_slots"],
@@ -466,3 +467,16 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(len(data["snapshots"]["recent_activity"]), 1)
         self.assertEqual(data["snapshots"]["recent_activity"][0]["event_type"], "RETURN")
         self.assertEqual(data["snapshots"]["recent_activity"][0]["asset_tag"], "AT-1")
+
+    def test_recent_activity_snapshot_is_bounded(self) -> None:
+        for index in range(MAX_DASHBOARD_RECENT_ACTIVITY + 5):
+            self._insert_event(
+                f"AT-{index}",
+                "RETURN",
+                f"2026-01-{(index % 28) + 1:02d}T12:00:00Z",
+            )
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+
+        self.assertEqual(len(data["snapshots"]["recent_activity"]), MAX_DASHBOARD_RECENT_ACTIVITY)
