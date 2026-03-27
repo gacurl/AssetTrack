@@ -7,10 +7,31 @@
 {% block extra_head %}
   <style>
     input[type="text"], input[type="password"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-    .queue-ts { color: #5b6878; font-size: 0.9rem; margin-right: 0.4rem; }
+    .queue-ts { color: #5b6878; font-size: 0.9rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    .queue-row { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
-    .queue-row form { margin: 0 0 0 auto; }
+    .queue-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 0.8rem; }
+    .queue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; }
+    .queue-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: 0.9rem 1rem;
+      border: 1px solid #d7deea;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .queue-row-main { display: grid; gap: 0.45rem; min-width: 0; }
+    .queue-row-head { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
+    .queue-tag { font-size: 1rem; }
+    .queue-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(150px, 1fr));
+      gap: 0.5rem 1rem;
+      color: #243447;
+    }
+    .queue-meta span { white-space: nowrap; }
+    .queue-row form { flex: 0 0 auto; margin: 0; align-self: center; }
     .queue-remove {
       padding: 0.25rem 0.5rem;
       border: 1px solid #d7deea;
@@ -19,6 +40,19 @@
       color: #243447;
       font-size: 0.85rem;
       cursor: pointer;
+    }
+    .queue-empty {
+      margin: 0;
+      padding: 0.85rem 1rem;
+      border: 1px dashed #c7d3e6;
+      border-radius: 12px;
+      color: #5b6878;
+      background: #f8fbff;
+    }
+    @media (max-width: 720px) {
+      .queue-row { flex-direction: column; }
+      .queue-row form { align-self: flex-start; }
+      .queue-meta { grid-template-columns: 1fr; }
     }
   </style>
 {% endblock %}
@@ -105,13 +139,13 @@
             autocomplete="off"
             data-timeout-lock-target
           />
-          <button id="submit-scan" type="submit" data-timeout-lock-target>Submit</button>
+          <button id="submit-scan" type="submit" data-timeout-lock-target>Add to queue</button>
           <button id="clear-queue" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
         </div>
       </form>
     {% endif %}
-    <form method="post" action="{{ url_for('preview_commit') }}" style="margin-top: 10px;">
-      <button id="add-to-db" type="submit" data-timeout-lock-target>Add to database</button>
+    <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
+      <button id="review-batch" type="submit" data-timeout-lock-target>Review batch</button>
     </form>
   </div>
 
@@ -121,24 +155,34 @@
   </div>
 
   <div class="card">
-    <h2>Queue ({{ queue_len }})</h2>
-    <ul id="queue-list" role="list">
-      {% for s in queue %}
-        <li class="queue-row" data-asset-tag="{{ s.asset_tag }}">
-          <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }}</time>
-          <code>{{ s.asset_tag }}</code>
-          {% if s.case_name and s.slot_position is not none %}
-            <span class="muted">→ {{ s.case_name }} / Slot {{ s.slot_position }}</span>
-          {% endif %}
-          <form method="post" action="{{ url_for('intake') }}">
-            <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
-            <input type="hidden" name="action" value="remove" />
-            <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
-            <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
-          </form>
-        </li>
-      {% endfor %}
-    </ul>
+    <h2 id="queue-section">Queue ({{ queue_len }})</h2>
+    {% if queue %}
+      <ul id="queue-list" class="queue-list" role="list">
+        {% for s in queue %}
+          <li class="queue-row" data-asset-tag="{{ s.asset_tag }}">
+            <div class="queue-row-main">
+              <div class="queue-row-head">
+                <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }}</time>
+                <code class="queue-tag">{{ s.asset_tag }}</code>
+              </div>
+              <div class="queue-meta">
+                <span><strong>Equipment type:</strong> {{ s.equipment_type or "Not set" }}</span>
+                <span><strong>Case:</strong> {{ s.case_name or "Unassigned" }}</span>
+                <span><strong>Slot:</strong> {% if s.slot_position is not none %}Slot {{ s.slot_position }}{% else %}Unassigned{% endif %}</span>
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('intake') }}">
+              <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
+              <input type="hidden" name="action" value="remove" />
+              <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+              <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="queue-empty">No assets are queued yet. Scan or enter an asset tag, then add it to the queue for review.</p>
+    {% endif %}
   </div>
 {% endblock %}
 

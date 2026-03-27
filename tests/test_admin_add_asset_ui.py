@@ -122,6 +122,34 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
         self.assertIn(b"CASE-LIVE", response.data)
+        self.assertIn(b"Add to queue", response.data)
+        self.assertIn(b"Review batch", response.data)
+        self.assertNotIn(b"Add to database", response.data)
+
+    def test_add_assets_empty_scan_submission_shows_validation_message(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "", "equipment_type": "tablet", "return_to": "/add-assets"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter or scan an asset tag before adding it to the queue.", response.data)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 0)
+
+    def test_add_assets_review_blocks_empty_queue_with_clear_message(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+
+        response = self.client.post(
+            "/add-assets/review",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Queue is empty. Add at least one asset to the queue before reviewing the batch.", response.data)
+        self.assertIn(b"No assets are queued yet.", response.data)
 
     def test_scans_keep_equipment_type_captured_at_scan_time(self) -> None:
         intake_app.SCAN_QUEUE.clear()
@@ -145,6 +173,36 @@ class AdminAddAssetUiTests(unittest.TestCase):
         rows = preview.json["rows"]
         self.assertEqual(rows[0]["equipment_type"], "tablet")
         self.assertEqual(rows[1]["equipment_type"], "laptop")
+
+    def test_add_assets_queue_rows_show_operator_verification_details(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(
+            Scan(
+                asset_tag="AT-VERIFY-1",
+                scanned_at=datetime(2026, 1, 1, 14, 3, 22, tzinfo=timezone.utc),
+                equipment_type="tablet",
+                case_name="CASE-V",
+                slot_position=3,
+            )
+        )
+        intake_app.SCAN_QUEUE.append(
+            Scan(
+                asset_tag="AT-VERIFY-2",
+                scanned_at=datetime(2026, 1, 1, 14, 4, 22, tzinfo=timezone.utc),
+                equipment_type="laptop",
+            )
+        )
+
+        response = self.client.get("/add-assets")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"AT-VERIFY-1", response.data)
+        self.assertIn(b"Equipment type:</strong> tablet", response.data)
+        self.assertIn(b"Case:</strong> CASE-V", response.data)
+        self.assertIn(b"Slot:</strong> Slot 3", response.data)
+        self.assertIn(b"AT-VERIFY-2", response.data)
+        self.assertIn(b"Case:</strong> Unassigned", response.data)
+        self.assertIn(b"Slot:</strong> Unassigned", response.data)
 
     def test_blank_equipment_type_uses_default_and_missing_field_preserves_selection(self) -> None:
         intake_app.SCAN_QUEUE.clear()
