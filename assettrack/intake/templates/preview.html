@@ -41,51 +41,6 @@
         <span class="pill bad">not valid</span>
       {% endif %}
     </p>
-
-    <form method="post" action="{{ url_for('issue_commit') if issue_mode else url_for('preview_commit') }}" style="margin-top: 10px;">
-      <label style="display:block; margin-bottom: 10px;">
-        <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
-        I reviewed this batch and want to add it to the database.
-      </label>
-
-      <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
-    </form>
-
-    <p style="margin-top: 10px;">
-      Tip: for raw JSON, open <code>/preview?json=1</code> or <code>/preview/validate</code>.
-    </p>
-  </div>
-
-  <div class="card">
-    <h2>Mode</h2>
-
-    <form method="post" action="{{ url_for('preview_mode') }}" style="margin-top: 10px;">
-      <label>
-        <input type="checkbox" name="issue_mode" value="on" {% if issue_mode %}checked{% endif %} />
-        Enable Issue mode (issue assets to a selected holder)
-      </label>
-      <br /><br />
-      <button type="submit">Save mode</button>
-    </form>
-
-    {% if issue_mode %}
-      <p style="margin-top: 12px;"><strong>Issue mode:</strong> ON</p>
-      {% if selected_holder %}
-        <p>
-          <strong>Selected holder:</strong>
-          {{ holder_display_name(selected_holder) }}
-          {% if selected_holder["identifier"] %}
-            ({{ selected_holder["identifier"] }})
-          {% endif %}
-        </p>
-      {% else %}
-        <p><strong>No holder selected.</strong></p>
-      {% endif %}
-      <p><a href="{{ url_for('holders_search') }}">Search/select holder</a></p>
-      <p><a href="{{ url_for('issue_preview') }}">Open Issue Assets Preview / Confirm</a></p>
-    {% else %}
-      <p style="margin-top: 12px;"><strong>Issue mode:</strong> OFF</p>
-    {% endif %}
   </div>
 
   <div class="card">
@@ -129,8 +84,46 @@
   </div>
 
   <div class="card">
-    <h2>Validation result</h2>
-    <pre>{{ validation | tojson(indent=2) }}</pre>
+    <form method="post" action="{{ url_for('issue_commit') if issue_mode else url_for('preview_commit') }}" style="margin-top: 10px;">
+      <label style="display:block; margin-bottom: 10px;">
+        <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
+        I reviewed this batch and want to add it to the database.
+      </label>
+
+      <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Mode</h2>
+
+    <form method="post" action="{{ url_for('preview_mode') }}" style="margin-top: 10px;">
+      <label>
+        <input type="checkbox" name="issue_mode" value="on" {% if issue_mode %}checked{% endif %} />
+        Enable Issue mode (issue assets to a selected holder)
+      </label>
+      <br /><br />
+      <button type="submit">Save mode</button>
+    </form>
+
+    {% if issue_mode %}
+      <p style="margin-top: 12px;"><strong>Issue mode:</strong> ON</p>
+      {% if selected_holder %}
+        <p>
+          <strong>Selected holder:</strong>
+          {{ holder_display_name(selected_holder) }}
+          {% if selected_holder["identifier"] %}
+            ({{ selected_holder["identifier"] }})
+          {% endif %}
+        </p>
+      {% else %}
+        <p><strong>No holder selected.</strong></p>
+      {% endif %}
+      <p><a href="{{ url_for('holders_search') }}">Search/select holder</a></p>
+      <p><a href="{{ url_for('issue_preview') }}">Open Issue Assets Preview / Confirm</a></p>
+    {% else %}
+      <p style="margin-top: 12px;"><strong>Issue mode:</strong> OFF</p>
+    {% endif %}
   </div>
 {% endblock %}
 
