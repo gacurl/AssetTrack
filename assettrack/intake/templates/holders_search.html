@@ -27,7 +27,11 @@
 
   <div class="card">
     <div class="actions" aria-label="Holder actions">
-      <a class="chip" href="{{ url_for('holders_new') }}">Add Holder</a>
+      {% if return_to %}
+        <a class="chip" href="{{ url_for('holders_new', return_to=return_to) }}">Add Holder</a>
+      {% else %}
+        <a class="chip" href="{{ url_for('holders_new') }}">Add Holder</a>
+      {% endif %}
       {% if query %}
         <a class="chip" href="{{ url_for('holders_search', return_to=return_to) }}">Clear Search</a>
       {% endif %}
@@ -97,7 +101,13 @@
               <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["contact_info"] or "" }}</td>
               <td>{{ h.get("asset_count", "") }}</td>
-              <td><a href="{{ url_for('holders_edit', holder_id=h['id']) }}">Edit</a></td>
+              <td>
+                {% if return_to %}
+                  <a href="{{ url_for('holders_edit', holder_id=h['id'], return_to=return_to) }}">Edit</a>
+                {% else %}
+                  <a href="{{ url_for('holders_edit', holder_id=h['id']) }}">Edit</a>
+                {% endif %}
+              </td>
               <td>
                 <form method="post" action="{{ url_for('holders_select') }}">
                   <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
