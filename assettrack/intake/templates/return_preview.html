@@ -7,13 +7,13 @@
 {% block extra_head %}
   <style>
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
-    .pill.good { background: #eaffea; border: 1px solid #bfe8bf; }
-    .pill.bad { background: #ffe8e8; border: 1px solid #f2b8b8; }
+    .pill.good { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
+    .pill.bad { background: var(--color-accent-soft); border: 1px solid var(--color-accent); }
     ul { margin: 0.5rem 0 0 1.25rem; }
     .workflow-card h2 { margin: 0 0 0.55rem 0; }
     .workflow-summary { margin: 0; line-height: 1.55; }
     .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .workflow-table td strong { color: #344054; }
+    .workflow-table td strong { color: var(--color-primary); }
     .workflow-table code {
       font-size: 0.94rem;
       font-weight: 600;
@@ -27,15 +27,15 @@
     .state-block + .state-block {
       margin-top: 0.55rem;
       padding-top: 0.55rem;
-      border-top: 1px solid #e8edf6;
+      border-top: 1px solid var(--color-surface);
     }
     .review-signal {
-      border-left: 4px solid #2f6f3e;
-      background: #f4fbf5;
+      border-left: 4px solid var(--color-primary);
+      background: var(--color-primary-soft);
     }
     .review-signal.blocked {
-      border-left-color: #9f3a38;
-      background: #fff5f5;
+      border-left-color: var(--color-accent);
+      background: var(--color-accent-soft);
     }
   </style>
 {% endblock %}

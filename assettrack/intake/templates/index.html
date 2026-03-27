@@ -7,7 +7,7 @@
 {% block extra_head %}
   <style>
     input[type="text"], input[type="password"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
-    .queue-ts { color: #5b6878; font-size: 0.9rem; }
+    .queue-ts { color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text)); font-size: 0.9rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     .queue-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 0.8rem; }
     .queue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; }
@@ -17,9 +17,9 @@
       align-items: flex-start;
       gap: 1rem;
       padding: 0.9rem 1rem;
-      border: 1px solid #d7deea;
+      border: 1px solid var(--color-surface);
       border-radius: 12px;
-      background: #fff;
+      background: rgba(255, 255, 255, 0.52);
     }
     .queue-row-main { display: grid; gap: 0.45rem; min-width: 0; }
     .queue-row-head { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
@@ -28,26 +28,26 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(150px, 1fr));
       gap: 0.5rem 1rem;
-      color: #243447;
+      color: var(--color-text);
     }
     .queue-meta span { white-space: nowrap; }
     .queue-row form { flex: 0 0 auto; margin: 0; align-self: center; }
     .queue-remove {
       padding: 0.25rem 0.5rem;
-      border: 1px solid #d7deea;
+      border: 1px solid var(--color-surface);
       border-radius: 999px;
-      background: #fff;
-      color: #243447;
+      background: rgba(255, 255, 255, 0.52);
+      color: var(--color-text);
       font-size: 0.85rem;
       cursor: pointer;
     }
     .queue-empty {
       margin: 0;
       padding: 0.85rem 1rem;
-      border: 1px dashed #c7d3e6;
+      border: 1px dashed var(--color-surface);
       border-radius: 12px;
-      color: #5b6878;
-      background: #f8fbff;
+      color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
+      background: var(--color-primary-soft);
     }
     @media (max-width: 720px) {
       .queue-row { flex-direction: column; }
