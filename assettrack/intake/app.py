@@ -45,7 +45,7 @@ from assettrack.reference_data import (
     list_organization_building_mappings,
     list_organizations,
 )
-from assettrack.audit import record_event
+from assettrack.audit import ACTIVE_EVENTS_WHERE, record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.users import (
     change_own_password,
@@ -3838,6 +3838,176 @@ def admin_system():
     )
 
 
+def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
+    conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        asset_summary_row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_assets,
+                SUM(CASE WHEN location_type = 'STORAGE' THEN 1 ELSE 0 END) AS storage_assets,
+                SUM(CASE WHEN location_type = 'IN_CUSTODY' THEN 1 ELSE 0 END) AS in_custody_assets,
+                SUM(CASE WHEN location_type = 'DISPOSED' THEN 1 ELSE 0 END) AS disposed_assets
+            FROM assets;
+            """
+        ).fetchone()
+
+        assets = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    a.asset_tag,
+                    COALESCE(a.equipment_type, '') AS equipment_type,
+                    COALESCE(a.manufacturer, '') AS manufacturer,
+                    COALESCE(a.model, '') AS model,
+                    COALESCE(a.location_type, '') AS location_type,
+                    COALESCE(h.name, '') AS holder_name,
+                    COALESCE(h.organization, '') AS holder_organization,
+                    COALESCE(s.case_name || ' / ' || s.slot_position, '') AS home_slot
+                FROM assets a
+                LEFT JOIN holders h
+                  ON h.id = a.current_holder_id
+                LEFT JOIN slots s
+                  ON s.id = a.home_slot_id
+                ORDER BY a.asset_tag COLLATE NOCASE ASC, a.id ASC;
+                """
+            ).fetchall()
+        ]
+
+        holders = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    h.id,
+                    h.holder_type,
+                    h.name,
+                    COALESCE(h.organization, '') AS organization,
+                    COALESCE(h.identifier, '') AS identifier,
+                    COUNT(a.id) AS assets_in_custody
+                FROM holders h
+                LEFT JOIN assets a
+                  ON a.current_holder_id = h.id
+                 AND a.location_type = 'IN_CUSTODY'
+                GROUP BY h.id, h.holder_type, h.name, h.organization, h.identifier
+                ORDER BY h.name COLLATE NOCASE ASC, h.id ASC;
+                """
+            ).fetchall()
+        ]
+
+        organizations = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    o.id,
+                    o.name,
+                    COUNT(DISTINCT ob.building_id) AS building_count
+                FROM organizations o
+                LEFT JOIN organization_buildings ob
+                  ON ob.organization_id = o.id
+                GROUP BY o.id, o.name
+                ORDER BY o.name COLLATE NOCASE ASC, o.id ASC;
+                """
+            ).fetchall()
+        ]
+
+        organization_building_mappings = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    o.name AS organization_name,
+                    b.name AS building_name
+                FROM organization_buildings ob
+                JOIN organizations o
+                  ON o.id = ob.organization_id
+                JOIN buildings b
+                  ON b.id = ob.building_id
+                ORDER BY o.name COLLATE NOCASE ASC, b.name COLLATE NOCASE ASC;
+                """
+            ).fetchall()
+        ]
+
+        current_custody = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    h.name AS holder_name,
+                    COALESCE(h.organization, '') AS organization,
+                    a.asset_tag,
+                    COALESCE(a.equipment_type, '') AS equipment_type,
+                    COALESCE(a.building_room, '') AS current_location
+                FROM assets a
+                JOIN holders h
+                  ON h.id = a.current_holder_id
+                WHERE a.location_type = 'IN_CUSTODY'
+                ORDER BY h.name COLLATE NOCASE ASC, a.asset_tag COLLATE NOCASE ASC, a.id ASC;
+                """
+            ).fetchall()
+        ]
+
+        recent_active_events = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT
+                    e.id,
+                    e.event_date,
+                    e.asset_tag,
+                    e.event_type,
+                    COALESCE(h.name, '') AS holder_name,
+                    COALESCE(h.organization, '') AS holder_organization
+                FROM asset_events e
+                LEFT JOIN holders h
+                  ON h.id = e.holder_id
+                WHERE {ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)}
+                ORDER BY e.id DESC
+                LIMIT 25;
+                """
+            ).fetchall()
+        ]
+
+        cases = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                    s.case_name,
+                    COUNT(*) AS total_slots,
+                    COUNT(DISTINCT so.slot_id) AS occupied_slots
+                FROM slots s
+                LEFT JOIN slot_occupancy so
+                  ON so.slot_id = s.id
+                GROUP BY s.case_name
+                ORDER BY s.case_name COLLATE NOCASE ASC;
+                """
+            ).fetchall()
+        ]
+
+        return {
+            "asset_summary": {
+                "total_assets": int(asset_summary_row["total_assets"] or 0),
+                "storage_assets": int(asset_summary_row["storage_assets"] or 0),
+                "in_custody_assets": int(asset_summary_row["in_custody_assets"] or 0),
+                "disposed_assets": int(asset_summary_row["disposed_assets"] or 0),
+            },
+            "assets": assets,
+            "holders": holders,
+            "organizations": organizations,
+            "organization_building_mappings": organization_building_mappings,
+            "current_custody": current_custody,
+            "recent_active_events": recent_active_events,
+            "cases": cases,
+        }
+    finally:
+        conn.close()
+
+
 @app.route("/admin/reference-data", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
@@ -3889,6 +4059,41 @@ def admin_db_export():
         download_name=download_name,
         mimetype="application/octet-stream",
         conditional=False,
+    )
+
+
+@app.get("/admin/report")
+@require_login
+@require_role("admin")
+def admin_human_report():
+    resolved_db_path = _resolved_runtime_db_path()
+    report_error: str | None = None
+    report_data = {
+        "asset_summary": {
+            "total_assets": 0,
+            "storage_assets": 0,
+            "in_custody_assets": 0,
+            "disposed_assets": 0,
+        },
+        "assets": [],
+        "holders": [],
+        "organizations": [],
+        "organization_building_mappings": [],
+        "current_custody": [],
+        "recent_active_events": [],
+        "cases": [],
+    }
+
+    try:
+        report_data = _load_admin_human_report_data(resolved_db_path)
+    except sqlite3.Error as exc:
+        report_error = f"Could not read admin report data: {exc}"
+
+    return render_template(
+        "admin_human_report.html",
+        db_path=str(resolved_db_path),
+        report_error=report_error,
+        **report_data,
     )
 
 

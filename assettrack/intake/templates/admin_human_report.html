@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Human-Readable Report{% endblock %}
+{% block page_heading %}Admin: Human-Readable Report{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .report-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+    .report-stat {
+      padding: 0.85rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 10px;
+      background: var(--color-surface-soft);
+    }
+    .report-stat strong {
+      display: block;
+      font-size: 1.35rem;
+      margin-top: 0.25rem;
+    }
+    .card h2 {
+      margin-top: 0;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    @media print {
+      .page-tools,
+      .top-nav,
+      .report-actions {
+        display: none !important;
+      }
+      .card {
+        break-inside: avoid;
+        box-shadow: none;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="report-actions">
+    <a class="chip" href="{{ url_for('admin_system') }}">&larr; Back to System Health</a>
+    <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+  </div>
+
+  {% if report_error %}
+    <div class="flash error">{{ report_error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Report Scope</h2>
+    <p>This page is a read-only human-readable report for operators and admins. It does not replace the raw SQLite database backup.</p>
+    <p><strong>Database path:</strong> <code>{{ db_path }}</code></p>
+    <p><strong>Recent events section:</strong> showing recent active events only.</p>
+  </div>
+
+  <div class="card">
+    <h2>Assets</h2>
+    <div class="report-grid">
+      <div class="report-stat">Total assets<strong>{{ asset_summary.total_assets }}</strong></div>
+      <div class="report-stat">In storage<strong>{{ asset_summary.storage_assets }}</strong></div>
+      <div class="report-stat">In custody<strong>{{ asset_summary.in_custody_assets }}</strong></div>
+      <div class="report-stat">Disposed<strong>{{ asset_summary.disposed_assets }}</strong></div>
+    </div>
+    <div class="table-wrap" style="margin-top: 1rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset Tag</th>
+            <th>Type</th>
+            <th>Make / Model</th>
+            <th>Location Type</th>
+            <th>Current Holder</th>
+            <th>Home Slot</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in assets %}
+            <tr>
+              <td><code>{{ row.asset_tag }}</code></td>
+              <td>{{ row.equipment_type or "" }}</td>
+              <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
+              <td>{{ row.location_type or "" }}</td>
+              <td>
+                {% if row.holder_name %}
+                  {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
+                {% endif %}
+              </td>
+              <td>{{ row.home_slot or "" }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No assets found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Holders</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Name</th>
+            <th>Organization</th>
+            <th>Identifier</th>
+            <th>Assets In Custody</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in holders %}
+            <tr>
+              <td><code>{{ row.id }}</code></td>
+              <td>{{ row.holder_type }}</td>
+              <td>{{ row.name }}</td>
+              <td>{{ row.organization }}</td>
+              <td>{{ row.identifier }}</td>
+              <td>{{ row.assets_in_custody }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No holders found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Organizations and Building Access</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Mapped Buildings</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in organizations %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.building_count }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2">No organizations found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap" style="margin-top: 1rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Building</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in organization_building_mappings %}
+            <tr>
+              <td>{{ row.organization_name }}</td>
+              <td>{{ row.building_name }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2">No organization-to-building mappings found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Current Custody</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Holder</th>
+            <th>Organization</th>
+            <th>Asset Tag</th>
+            <th>Type</th>
+            <th>Current Location</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in current_custody %}
+            <tr>
+              <td>{{ row.holder_name }}</td>
+              <td>{{ row.organization }}</td>
+              <td><code>{{ row.asset_tag }}</code></td>
+              <td>{{ row.equipment_type }}</td>
+              <td>{{ row.current_location }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No assets are currently in custody.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Active Events</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>When</th>
+            <th>Asset Tag</th>
+            <th>Event Type</th>
+            <th>Holder</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent_active_events %}
+            <tr>
+              <td><code>{{ row.id }}</code></td>
+              <td>{{ row.event_date }}</td>
+              <td><code>{{ row.asset_tag }}</code></td>
+              <td>{{ row.event_type }}</td>
+              <td>
+                {% if row.holder_name %}
+                  {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No active events found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Location and Case Data</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Total Slots</th>
+            <th>Occupied Slots</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in cases %}
+            <tr>
+              <td>{{ row.case_name }}</td>
+              <td>{{ row.total_slots }}</td>
+              <td>{{ row.occupied_slots }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3">No case or slot data found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

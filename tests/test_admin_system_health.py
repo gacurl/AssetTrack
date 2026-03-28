@@ -113,6 +113,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b'id="holder-count">1<' in response.data
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
+    assert b"Open Human-Readable Report" in response.data
     assert b"Download Database Backup" in response.data
 
 
@@ -121,6 +122,15 @@ def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
     login_session(client_with_temp_db, operator_id)
 
     response = client_with_temp_db.get("/admin/system")
+
+    assert response.status_code == 403
+
+
+def test_operator_is_forbidden_for_human_readable_report(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-report", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.get("/admin/report")
 
     assert response.status_code == 403
 
@@ -175,3 +185,140 @@ def test_system_health_renders_warning_when_assets_query_fails(
     assert response.status_code == 200
     assert b"Could not read system health data:" in response.data
     assert b'id="asset-count">N/A<' in response.data
+
+
+def test_admin_can_open_human_readable_report_with_data_sections(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-report", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO organizations (name, created_at, updated_at)
+        VALUES ('Report Ops', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO buildings (name, created_at, updated_at)
+        VALUES ('Report HQ', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    organization_id = int(
+        conn.execute("SELECT id FROM organizations WHERE name = 'Report Ops' LIMIT 1;").fetchone()[0]
+    )
+    building_id = int(
+        conn.execute("SELECT id FROM buildings WHERE name = 'Report HQ' LIMIT 1;").fetchone()[0]
+    )
+    conn.execute(
+        """
+        INSERT INTO organization_buildings (organization_id, building_id, created_at)
+        VALUES (?, ?, '2026-01-01T00:00:00Z');
+        """
+        ,
+        (organization_id, building_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO holders (
+            id, holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
+        )
+        VALUES (
+            1, 'PERSON', 'Jane Operator', 'Report Ops', ?, 'H-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+        );
+        """,
+        (organization_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES (10, 'CASE-1', 1, 'AT-100');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES (
+            'AT-100',
+            'SN-100',
+            'Dell',
+            'laptop',
+            'Report HQ',
+            '100',
+            'Latitude',
+            'LAT',
+            NULL,
+            'Report HQ/100',
+            'issued_to',
+            'accountable',
+            'serviceable',
+            '2026-01-01',
+            '2026-01-01T00:00:00Z',
+            'IN_CUSTODY',
+            1,
+            10
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT 10, id, '2026-01-01T00:00:00Z'
+        FROM assets
+        WHERE asset_tag = 'AT-100';
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+        VALUES (
+            'AT-100',
+            'ISSUE',
+            '2026-01-02T00:00:00Z',
+            'system',
+            NULL,
+            '{"to_location_type":"IN_CUSTODY"}',
+            1
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.get("/admin/report")
+
+    assert response.status_code == 200
+    assert b"Admin: Human-Readable Report" in response.data
+    assert b"This page is a read-only human-readable report" in response.data
+    assert b"Download Database Backup" in response.data
+    assert b"showing recent active events only" in response.data
+    assert b"Assets" in response.data
+    assert b"Holders" in response.data
+    assert b"Organizations and Building Access" in response.data
+    assert b"Current Custody" in response.data
+    assert b"Recent Active Events" in response.data
+    assert b"Location and Case Data" in response.data
+    assert b"AT-100" in response.data
+    assert b"Jane Operator" in response.data
+    assert b"Report Ops" in response.data
+    assert b"CASE-1" in response.data
