@@ -59,6 +59,8 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.append(Scan.now("DDC4CY002645"))
 
@@ -95,6 +97,8 @@ def test_issue_commit_redirect_shows_success_without_holder_warning(client_with_
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.append(Scan.now("DDC4CY002645"))
 

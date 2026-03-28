@@ -86,6 +86,8 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     with client_with_temp_db.session_transaction() as sess:
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     issue_queue = client_with_temp_db.get("/issue")
     assert issue_queue.status_code == 200

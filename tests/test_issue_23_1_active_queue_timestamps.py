@@ -37,6 +37,8 @@ def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) 
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     scan = Scan(
         asset_tag="QUEUE-TAG-1",

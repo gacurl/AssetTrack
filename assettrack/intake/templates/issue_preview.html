@@ -92,6 +92,30 @@
   </div>
 
   <div class="card workflow-card">
+    <h2>Current Location</h2>
+    {% if issue_location_label and not issue_location_errors %}
+      <p class="holder-summary">
+        <strong>Current location:</strong> {{ issue_location_label }}
+      </p>
+    {% else %}
+      <p>No current location selected.</p>
+    {% endif %}
+    {% if issue_location_constrained_by_org %}
+      <p>Building choices are limited to the selected holder's organization.</p>
+    {% endif %}
+    {% if issue_location_errors %}
+      <ul>
+        {% for issue in issue_location_errors %}
+          <li>{{ issue }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <div class="actions" style="margin-top: 0.75rem;">
+      <a class="chip" href="{{ url_for('issue') }}">Update current location</a>
+    </div>
+  </div>
+
+  <div class="card workflow-card">
     <h2>Validation Summary</h2>
     <p class="workflow-summary">
       <strong>Queued assets:</strong> {{ queued_count }}
@@ -133,16 +157,19 @@
         <tbody>
           {% for row in assets %}
             {% set before_holder_display = "Not assigned" if row.before_holder == "null" else row.before_holder %}
-            {% set before_slot_display = "Not assigned" if row.before_slot == "null" else row.before_slot %}
-            {% set after_slot_display = "Not assigned" if row.after_slot == "null" else row.after_slot %}
+            {% set before_current_location_display = "Not assigned" if row.before_current_location == "null" else row.before_current_location %}
+            {% set after_current_location_display = "Not assigned" if row.after_current_location == "null" else row.after_current_location %}
+            {% set before_home_location_display = "Not assigned" if row.before_home_location == "null" else row.before_home_location %}
+            {% set after_home_location_display = "Not assigned" if row.after_home_location == "null" else row.after_home_location %}
             <tr>
               <td><code>{{ row.asset_tag }}</code></td>
 
               <td>
                 <div class="state-block">
                   <strong>Location:</strong> <code>{{ row.before_location_type }}</code><br />
+                  <strong>Current location:</strong> <code>{{ before_current_location_display }}</code><br />
                   <strong>Issued to:</strong> <code>{{ before_holder_display }}</code><br />
-                  <strong>Home location:</strong> <code>{{ before_slot_display }}</code><br />
+                  <strong>Home location:</strong> <code>{{ before_home_location_display }}</code><br />
                   <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code>
                 </div>
               </td>
@@ -150,8 +177,9 @@
               <td>
                 <div class="state-block">
                   <strong>Location:</strong> <code>{{ row.after_location_type }}</code><br />
+                  <strong>Current location:</strong> <code>{{ after_current_location_display }}</code><br />
                   <strong>Issued to:</strong> <code>{{ row.after_holder }}</code><br />
-                  <strong>Home location:</strong> <code>{{ after_slot_display }}</code><br />
+                  <strong>Home location:</strong> <code>{{ after_home_location_display }}</code><br />
                   <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
                 </div>
               </td>

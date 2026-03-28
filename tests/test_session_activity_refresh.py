@@ -35,6 +35,8 @@ def _login(client, monkeypatch: pytest.MonkeyPatch, *, last_seen: int = 100) -> 
         sess["user_id"] = user_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
         sess["last_seen"] = last_seen
     return user_id
 
