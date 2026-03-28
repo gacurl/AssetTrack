@@ -72,6 +72,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.append(Scan.now("DDC4CY002645"))
 
@@ -88,8 +90,9 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Issued to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
     assert b"Queued:</strong> 1 asset" in issue_preview.data
+    assert b"Current location:</strong> <code>HQ North / 210</code>" in issue_preview.data
     assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
-    assert b"Home location:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
     assert b"null" not in issue_preview.data
 
     commit = client_with_temp_db.post(
@@ -176,6 +179,8 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.extend(
         [

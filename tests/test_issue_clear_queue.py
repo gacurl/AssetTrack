@@ -45,6 +45,8 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.append(Scan.now("UNKNOWN-TAG"))
 
@@ -86,6 +88,8 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.extend(
         [
@@ -116,6 +120,8 @@ def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.extend([Scan.now("TAG-1"), Scan.now("TAG-2")])
 
@@ -153,6 +159,8 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.extend([Scan.now("TAG-1"), Scan.now("TAG-2")])
 
@@ -223,6 +231,8 @@ def test_issue_preview_discard_preserves_holder_through_rescan_preview_and_commi
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     intake_app.SCAN_QUEUE.extend([Scan.now("TAG-1"), Scan.now("TAG-2")])
 
@@ -290,6 +300,8 @@ def test_non_issue_preview_discard_still_clears_holder_selection(client_with_tem
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
         sess["equipment_type"] = "tablet"
 
     intake_app.SCAN_QUEUE.append(Scan.now("TAG-1"))
@@ -328,6 +340,8 @@ def test_issue_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_du
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     first = client_with_temp_db.post(
         "/",

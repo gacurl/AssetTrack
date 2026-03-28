@@ -34,6 +34,8 @@ def _login_issue_operator(client, username: str) -> None:
         sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
 
 def _insert_slot(conn, slot_id: int, case_name: str, slot_position: int) -> None:

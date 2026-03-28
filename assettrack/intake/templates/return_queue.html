@@ -89,6 +89,48 @@
     {% include "_workflow_context_banner.html" %}
   {% endif %}
 
+  {% if issue_location_form is defined %}
+    <div class="card workflow-card">
+      <h2>Current Location Prerequisite</h2>
+      <p class="workflow-summary">
+        <strong>Current location:</strong>
+        {% if issue_location_ready %}
+          <code>{{ issue_location_label }}</code>
+        {% else %}
+          <span class="pill bad">required</span>
+        {% endif %}
+      </p>
+      {% if issue_location_constrained_by_org %}
+        <p>Building choices are limited to the selected holder's organization.</p>
+      {% endif %}
+      {% if issue_location_errors %}
+        <div class="validation-messages">
+          {% for issue in issue_location_errors %}
+            <p class="validation-message">{{ issue }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('issue_location_update') }}" style="margin-top: 10px;">
+        <label for="issue-building"><strong>Current building</strong></label><br />
+        {% if issue_location_building_options %}
+          <select id="issue-building" name="building" data-timeout-lock-target>
+            <option value="">Choose building</option>
+            {% for building_name in issue_location_building_options %}
+              <option value="{{ building_name }}" {% if issue_location_form.building == building_name %}selected{% endif %}>{{ building_name }}</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input id="issue-building" type="text" name="building" value="{{ issue_location_form.building }}" data-timeout-lock-target />
+        {% endif %}
+        <br /><br />
+        <label for="issue-room"><strong>Current room / area</strong></label><br />
+        <input id="issue-room" type="text" name="room" value="{{ issue_location_form.room }}" data-timeout-lock-target />
+        <br /><br />
+        <button type="submit" data-timeout-lock-target>Save current location</button>
+      </form>
+    </div>
+  {% endif %}
+
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Scan returns" }}</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>

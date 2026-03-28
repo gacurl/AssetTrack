@@ -1719,6 +1719,90 @@ def _selected_holder_from_session() -> Optional[dict]:
     return holder
 
 
+def _issue_location_form_from_session() -> dict[str, str]:
+    return {
+        "building": str(session.get("issue_building") or "").strip(),
+        "room": str(session.get("issue_room") or "").strip(),
+    }
+
+
+def _issue_location_context(selected_holder: Optional[dict], form: Optional[dict[str, str]] = None) -> dict:
+    normalized_form = {
+        "building": str((form or {}).get("building") or "").strip(),
+        "room": str((form or {}).get("room") or "").strip(),
+    }
+    all_building_names = [str(row.get("name") or "").strip() for row in list_buildings()]
+    all_building_names = [name for name in all_building_names if name]
+    allowed_building_names = list(all_building_names)
+    constrained_by_org = False
+
+    holder_org_id = None if not selected_holder else selected_holder.get("organization_id")
+    try:
+        normalized_holder_org_id = None if holder_org_id in {None, ""} else int(holder_org_id)
+    except (TypeError, ValueError):
+        normalized_holder_org_id = None
+
+    if normalized_holder_org_id is not None:
+        mapped_buildings = [
+            str(mapping.get("building_name") or "").strip()
+            for mapping in list_organization_building_mappings()
+            if int(mapping["organization_id"]) == normalized_holder_org_id
+        ]
+        mapped_buildings = [name for name in mapped_buildings if name]
+        if mapped_buildings:
+            constrained_by_org = True
+            allowed_building_names = mapped_buildings
+
+    return {
+        "form": normalized_form,
+        "building_options": allowed_building_names,
+        "has_reference_buildings": bool(all_building_names),
+        "constrained_by_org": constrained_by_org,
+    }
+
+
+def _validate_issue_location_form(selected_holder: Optional[dict], form: dict[str, str]) -> tuple[dict[str, str], list[str], dict]:
+    context = _issue_location_context(selected_holder, form)
+    normalized_form = context["form"]
+    errors: list[str] = []
+
+    if selected_holder is None:
+        errors.append("Select a holder before choosing the current location.")
+        return normalized_form, errors, context
+
+    building = normalized_form["building"]
+    room = normalized_form["room"]
+    building_options = list(context["building_options"])
+    building_name_map = {name.upper(): name for name in building_options}
+
+    if not building:
+        errors.append("Choose the current building.")
+    elif building_name_map:
+        matched_name = building_name_map.get(building.upper())
+        if matched_name is None:
+            if context["constrained_by_org"]:
+                errors.append("Choose a building allowed for the selected organization.")
+            else:
+                errors.append("Choose a valid building.")
+        else:
+            normalized_form["building"] = matched_name
+
+    if not room:
+        errors.append("Enter the current room or area.")
+
+    return normalized_form, errors, context
+
+
+def _issue_location_label(form: dict[str, str]) -> str:
+    building = str(form.get("building") or "").strip()
+    room = str(form.get("room") or "").strip()
+    if building and room:
+        return f"{building} / {room}"
+    if building:
+        return building
+    return ""
+
+
 def _queue_asset_tags() -> list[str]:
     tags: list[str] = []
     for s in SCAN_QUEUE:
@@ -1734,6 +1818,11 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         identifier = (selected_holder.get("identifier") or "").strip()
         display_name = _holder_display_name(selected_holder)
         holder_label = display_name if not identifier else f"{display_name} ({identifier})"
+    issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+        selected_holder,
+        _issue_location_form_from_session(),
+    )
+    issue_location_label = _issue_location_label(issue_location_form)
 
     assets: list[dict] = []
     unknown_tags: list[str] = []
@@ -1753,6 +1842,8 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
     if selected_holder is None:
         blocking_issues.append("No holder selected. Select a holder before issuing assets.")
+    for error in issue_location_errors:
+        blocking_issues.append(error)
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         t = (scan_tag or "").strip()
@@ -1761,7 +1852,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
         rows = conn.execute(
             """
-            SELECT id, asset_tag, location_type, current_holder_id
+            SELECT id, asset_tag, location_type, current_holder_id, building_room, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -1781,7 +1872,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
     conn = get_connection()
     try:
         asset_columns = get_asset_table_columns(conn)
-        required_columns = {"location_type", "current_holder_id"}
+        required_columns = {"location_type", "current_holder_id", "building_room"}
         missing_columns = sorted(required_columns - asset_columns)
         if missing_columns:
             blocking_issues.append(f"Assets table missing columns: {', '.join(missing_columns)}")
@@ -1799,10 +1890,12 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
                 "canonical_tag": None,
                 "before_location_type": "UNKNOWN",
                 "after_location_type": "IN_CUSTODY",
+                "before_current_location": "null",
+                "after_current_location": issue_location_label or "(choose current location)",
                 "before_holder": "null",
                 "after_holder": holder_label or "(select holder)",
-                "before_slot": "null",
-                "after_slot": "null",
+                "before_home_location": "null",
+                "after_home_location": "null",
                 "before_slot_occupancy": "unknown",
                 "after_slot_occupancy": "vacated",
                 "ready": False,
@@ -1822,6 +1915,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
             before_location = str(asset_row["location_type"] or "").strip().upper()
             row["before_location_type"] = before_location or "UNKNOWN"
+            row["before_current_location"] = str(asset_row["building_room"] or "").strip() or "null"
             if _is_terminal_location_type(before_location):
                 row["asset_issues"].append("Asset is retired/disposed")
                 retired_assets.append(canon_tag)
@@ -1831,9 +1925,20 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
 
             current_slot = _asset_current_slot(conn, int(asset_row["id"]), canon_tag)
             slotted = current_slot is not None
-            if current_slot is not None:
-                row["before_slot"] = f"{current_slot['case_name']} / {current_slot['slot_position']}"
+            home_slot_id = asset_row.get("home_slot_id")
+            if home_slot_id is not None:
+                home_slot = conn.execute(
+                    """
+                    SELECT case_name, slot_position
+                    FROM slots
+                    WHERE id = ?;
+                    """,
+                    (int(home_slot_id),),
+                ).fetchone()
+                if home_slot is not None:
+                    row["before_home_location"] = f"{home_slot['case_name']} / {home_slot['slot_position']}"
             row["before_slot_occupancy"] = "occupied" if slotted else "vacant"
+            row["after_home_location"] = row["before_home_location"]
 
             if before_location != "STORAGE":
                 row["asset_issues"].append("Asset is not in STORAGE")
@@ -2002,7 +2107,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
 
 
-def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
+def _issue_batch(asset_tags: list[str], holder_id: int, issue_location: dict[str, str]) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to issue.")
 
@@ -2020,7 +2125,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
         rows = conn.execute(
             """
-            SELECT id, asset_tag, location_type
+            SELECT id, asset_tag, location_type, building_room, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -2042,10 +2147,14 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
     try:
         with conn:
             asset_columns = get_asset_table_columns(conn)
-            required_columns = {"location_type", "current_holder_id"}
+            required_columns = {"location_type", "current_holder_id", "building_room"}
             missing_columns = sorted(required_columns - asset_columns)
             if missing_columns:
                 raise ValueError(f"Assets table missing columns: {', '.join(missing_columns)}")
+
+            building = str(issue_location.get("building") or "").strip()
+            room = str(issue_location.get("room") or "").strip()
+            building_room = f"{building}/{room}"
 
             unknown_tags: list[str] = []
             not_storage: list[str] = []
@@ -2053,7 +2162,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
             not_slotted: list[str] = []
 
             # Map scan tags -> canonical DB rows (so we update/vacate consistently)
-            canon_assets: list[tuple[int, str]] = []
+            canon_assets: list[tuple[int, str, Optional[int]]] = []
 
             for scan_tag in asset_tags:
                 asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
@@ -2063,7 +2172,8 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
                 canon_tag = str(asset_row["asset_tag"])
                 asset_id = int(asset_row["id"])
-                canon_assets.append((asset_id, canon_tag))
+                home_slot_id = None if asset_row.get("home_slot_id") is None else int(asset_row["home_slot_id"])
+                canon_assets.append((asset_id, canon_tag, home_slot_id))
 
                 location_type = str(asset_row["location_type"] or "").strip().upper()
                 if _is_terminal_location_type(location_type):
@@ -2088,15 +2198,39 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
 
             now_iso = datetime.now(timezone.utc).isoformat()
 
-            for asset_id, canon_tag in canon_assets:
-                conn.execute(
+            for asset_id, canon_tag, home_slot_id in canon_assets:
+                asset_row = conn.execute(
                     """
+                    SELECT building_room
+                    FROM assets
+                    WHERE id = ?
+                    LIMIT 1;
+                    """,
+                    (asset_id,),
+                ).fetchone()
+                previous_building_room = "" if asset_row is None else str(asset_row["building_room"] or "").strip()
+
+                update_clauses = ["location_type = ?", "current_holder_id = ?"]
+                update_values: list[object] = ["IN_CUSTODY", holder_id]
+                if "building" in asset_columns:
+                    update_clauses.append("building = ?")
+                    update_values.append(building)
+                if "room" in asset_columns:
+                    update_clauses.append("room = ?")
+                    update_values.append(room)
+                if "building_room" in asset_columns:
+                    update_clauses.append("building_room = ?")
+                    update_values.append(building_room)
+                update_values.extend([canon_tag, canon_tag])
+
+                conn.execute(
+                    f"""
                     UPDATE assets
-                    SET location_type = ?, current_holder_id = ?
+                    SET {', '.join(update_clauses)}
                     WHERE UPPER(asset_tag) = UPPER(?)
                        OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
                     """,
-                    ("IN_CUSTODY", holder_id, canon_tag, canon_tag),
+                    tuple(update_values),
                 )
 
                 current_slot = _asset_current_slot(conn, asset_id, canon_tag)
@@ -2127,12 +2261,28 @@ def _issue_batch(asset_tags: list[str], holder_id: int) -> int:
                         event_date,
                         actor,
                         notes,
-                        payload,
-                        holder_id
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
-                    """,
-                    (canon_tag, ISSUE_EVENT_TYPE, now_iso, "system", None, None, holder_id),
+                    payload,
+                    holder_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                    (
+                        canon_tag,
+                        ISSUE_EVENT_TYPE,
+                        now_iso,
+                        "system",
+                        None,
+                        json.dumps(
+                            {
+                                "from_location_type": "STORAGE",
+                                "to_location_type": "IN_CUSTODY",
+                                "from_building_room": previous_building_room,
+                                "to_building_room": building_room,
+                                "home_slot_id": home_slot_id,
+                            }
+                        ),
+                        holder_id,
+                    ),
                 )
 
             return len(canon_assets)
@@ -2329,6 +2479,25 @@ def intake():
             return redirect(url_for("add_assets"))
 
         if scan_text:
+            if return_to_path == "/issue":
+                selected_holder = _selected_holder_from_session()
+                issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+                    selected_holder,
+                    _issue_location_form_from_session(),
+                )
+                if selected_holder is None:
+                    flash("Select a holder before issuing assets.", "error")
+                    touch_session()
+                    return redirect(url_for("holders_search", return_to=url_for("issue")))
+                if issue_location_errors:
+                    flash(issue_location_errors[0], "error")
+                    touch_session()
+                    if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                        return redirect(redirect_target)
+                    return redirect(url_for("issue"))
+                session["issue_building"] = issue_location_form["building"]
+                session["issue_room"] = issue_location_form["room"]
+
             value = sanitize_scan(scan_text)
             if not value:
                 flash("Scan rejected. Enter a valid asset tag.", "error")
@@ -2882,10 +3051,20 @@ def preview_commit():
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("preview"))
 
+    issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+        holder,
+        _issue_location_form_from_session(),
+    )
+    if issue_location_errors:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "; ".join(issue_location_errors)}, 400
+        flash("; ".join(issue_location_errors), "error")
+        return redirect(url_for("issue"))
+
     asset_tags = _queue_asset_tags()
 
     try:
-        committed_count = _issue_batch(asset_tags, holder["id"])
+        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form)
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
@@ -2921,6 +3100,12 @@ def issue():
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("holders_search", return_to=url_for("issue")))
 
+    issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
+        selected_holder,
+        _issue_location_form_from_session(),
+    )
+    session["issue_building"] = issue_location_form["building"]
+    session["issue_room"] = issue_location_form["room"]
     asset_tags = _queue_asset_tags()
     issue_state = _build_issue_preview_state(asset_tags, selected_holder)
     issued_count_raw = (request.args.get("issued") or "").strip()
@@ -2961,7 +3146,45 @@ def issue():
         ready_count=issue_state["ready_count"],
         blocking_issues=issue_state["blocking_issues"],
         selected_holder=selected_holder,
+        issue_location_form=issue_location_form,
+        issue_location_errors=issue_location_errors,
+        issue_location_building_options=issue_location_context["building_options"],
+        issue_location_constrained_by_org=issue_location_context["constrained_by_org"],
+        issue_location_ready=not issue_location_errors,
+        issue_location_label=_issue_location_label(issue_location_form),
     )
+
+
+@app.post("/issue/location")
+@require_login
+def issue_location_update():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("add_assets"))
+
+    selected_holder = _selected_holder_from_session()
+    if selected_holder is None:
+        flash("Select a holder before issuing assets.", "error")
+        return redirect(url_for("holders_search", return_to=url_for("issue")))
+
+    issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+        selected_holder,
+        {
+            "building": (request.form.get("building") or "").strip(),
+            "room": (request.form.get("room") or "").strip(),
+        },
+    )
+    session["issue_building"] = issue_location_form["building"]
+    session["issue_room"] = issue_location_form["room"]
+    touch_session()
+
+    if issue_location_errors:
+        flash("; ".join(issue_location_errors), "error")
+    else:
+        flash(f"Current location set to {_issue_location_label(issue_location_form)}.", "success")
+
+    return redirect(url_for("issue"))
 
 
 @app.get("/issue/preview")
@@ -2973,6 +3196,12 @@ def issue_preview():
         return redirect(url_for("issue"))
 
     selected_holder = _selected_holder_from_session()
+    issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
+        selected_holder,
+        _issue_location_form_from_session(),
+    )
+    session["issue_building"] = issue_location_form["building"]
+    session["issue_room"] = issue_location_form["room"]
     asset_tags = _queue_asset_tags()
     issue_preview_state = _build_issue_preview_state(asset_tags, selected_holder)
 
@@ -2988,6 +3217,11 @@ def issue_preview():
         blocking_issues=issue_preview_state["blocking_issues"],
         last_seen_age_seconds=seconds_since_last_seen(),
         timeout_seconds=INTAKE_TIMEOUT_SECONDS,
+        issue_location_form=issue_location_form,
+        issue_location_errors=issue_location_errors,
+        issue_location_building_options=issue_location_context["building_options"],
+        issue_location_constrained_by_org=issue_location_context["constrained_by_org"],
+        issue_location_label=_issue_location_label(issue_location_form),
     )
 
 
@@ -3026,6 +3260,16 @@ def issue_commit():
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("issue_preview"))
 
+    issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+        holder,
+        _issue_location_form_from_session(),
+    )
+    if issue_location_errors:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "; ".join(issue_location_errors)}, 400
+        flash("; ".join(issue_location_errors), "error")
+        return redirect(url_for("issue"))
+
     asset_tags = _queue_asset_tags()
     if not asset_tags:
         if wants_json():
@@ -3034,7 +3278,7 @@ def issue_commit():
         return redirect(url_for("issue_preview"))
 
     try:
-        committed_count = _issue_batch(asset_tags, holder["id"])
+        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form)
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
