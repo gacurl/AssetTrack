@@ -2490,7 +2490,10 @@ def intake():
                     touch_session()
                     return redirect(url_for("holders_search", return_to=url_for("issue")))
                 if issue_location_errors:
-                    flash(issue_location_errors[0], "error")
+                    flash(
+                        f"Scan not added. {issue_location_errors[0]} Set the current location, then scan again.",
+                        "error scan-feedback",
+                    )
                     touch_session()
                     if redirect_target.startswith("/") and not redirect_target.startswith("//"):
                         return redirect(redirect_target)

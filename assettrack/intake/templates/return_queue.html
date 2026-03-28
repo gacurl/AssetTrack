@@ -64,17 +64,24 @@
 
 {% block content %}
   {% set queue_return_to = (return_to or url_for('return_queue')) ~ '#queue-section' %}
+  {% set flashed_messages = get_flashed_messages(with_categories=true) %}
+  {% set message_ns = namespace(global_messages=[], scan_messages=[]) %}
+  {% for category, message in flashed_messages %}
+    {% if 'scan-feedback' in category %}
+      {% set message_ns.scan_messages = message_ns.scan_messages + [(category, message)] %}
+    {% else %}
+      {% set message_ns.global_messages = message_ns.global_messages + [(category, message)] %}
+    {% endif %}
+  {% endfor %}
   <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
 
   {% include "_timeout_status.html" %}
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="flash {{ category|e }}">{{ message }}</div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
+  {% if message_ns.global_messages %}
+    {% for category, message in message_ns.global_messages %}
+      <div class="flash {{ category|e }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
 
   {% if recent_return_cases %}
     <div class="flash success">
@@ -100,6 +107,7 @@
           <span class="pill bad">required</span>
         {% endif %}
       </p>
+      <p class="workflow-summary">Before scanning, set the current building and current room / area. Issue scans stay blocked until both are filled in.</p>
       {% if issue_location_constrained_by_org %}
         <p>Building choices are limited to the selected holder's organization.</p>
       {% endif %}
@@ -134,6 +142,16 @@
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Scan returns" }}</h2>
     <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
+    {% if issue_location_form is defined and not issue_location_ready %}
+      <div class="flash error">
+        <strong>Scanning is blocked.</strong> Set the current building and current room / area above, then scan again.
+      </div>
+    {% endif %}
+    {% if message_ns.scan_messages %}
+      {% for category, message in message_ns.scan_messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
