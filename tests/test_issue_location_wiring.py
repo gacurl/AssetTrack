@@ -283,12 +283,20 @@ def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db
 def test_issue_commit_missing_ack_shows_visible_message_on_issue_preview(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
 
+    location_response = client_with_temp_db.post(
+        "/issue/location",
+        data={"building": "HQ North", "room": "210"},
+        follow_redirects=True,
+    )
+    assert location_response.status_code == 200
+
     scan_response = client_with_temp_db.post(
         "/",
         data={"scan_text": "ISSUE-100", "return_to": "/issue"},
         follow_redirects=True,
     )
     assert scan_response.status_code == 200
+    assert len(intake_app.SCAN_QUEUE) == 1
 
     blocked = client_with_temp_db.post(
         "/issue/commit",

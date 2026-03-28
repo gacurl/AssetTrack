@@ -169,6 +169,11 @@
           I reviewed this batch and confirm these {{ ready_count }} assets should be returned.
         </label>
         <br /><br />
+        <label>
+          <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" value="1" />
+          I confirm responsibility for this return batch was acknowledged before commit.
+        </label>
+        <br /><br />
         <button type="submit" data-timeout-lock-target>Commit Return</button>
       </form>
     {% else %}
