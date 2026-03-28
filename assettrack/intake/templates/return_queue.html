@@ -7,7 +7,12 @@
 {% block extra_head %}
   <style>
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
-    .pill.good { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
+    .pill.good {
+      background: var(--color-success-soft);
+      border: 1px solid var(--color-success);
+      color: var(--color-text);
+      font-weight: 700;
+    }
     .pill.bad { background: var(--color-accent-soft); border: 1px solid var(--color-accent); }
     input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
     #issue-building,
@@ -73,9 +78,11 @@
 {% block content %}
   {% set queue_return_to = (return_to or url_for('return_queue')) ~ '#queue-section' %}
   {% set flashed_messages = get_flashed_messages(with_categories=true) %}
-  {% set message_ns = namespace(global_messages=[], scan_messages=[]) %}
+  {% set message_ns = namespace(global_messages=[], scan_messages=[], location_messages=[]) %}
   {% for category, message in flashed_messages %}
-    {% if 'scan-feedback' in category %}
+    {% if issue_location_form is defined and category.startswith('success') and message.startswith('Current location set to ') %}
+      {% set message_ns.location_messages = message_ns.location_messages + [(category, message)] %}
+    {% elif 'scan-feedback' in category %}
       {% set message_ns.scan_messages = message_ns.scan_messages + [(category, message)] %}
     {% else %}
       {% set message_ns.global_messages = message_ns.global_messages + [(category, message)] %}
@@ -116,6 +123,11 @@
         {% endif %}
       </p>
       <p class="workflow-summary">Before scanning, set the current building and current room / area. Issue scans stay blocked until both are filled in.</p>
+      {% if message_ns.location_messages %}
+        {% for category, message in message_ns.location_messages %}
+          <div class="flash {{ category|e }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
       {% if issue_location_constrained_by_org %}
         <p>Building choices are limited to the selected holder's organization.</p>
       {% endif %}
@@ -201,6 +213,8 @@
           <p class="validation-message">{{ issue }}</p>
         {% endfor %}
       </div>
+    {% elif queued_count > 0 %}
+      <div class="flash success">Ready for preview. No blocking issues found.</div>
     {% endif %}
   </div>
 
