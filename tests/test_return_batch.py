@@ -252,6 +252,89 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"KEEP-ME", preview.data)
         self.assertNotIn(b"REMOVE-ME", preview.data)
 
+    def test_return_case_scan_expands_assets_by_home_case(self) -> None:
+        self._insert_slot(70, "CASE-2", 1, None)
+        self._insert_slot(71, "CASE-2", 2, None)
+        self._insert_slot(72, "CASE-2", 3, None)
+        self._insert_asset("RT-100", location_type="IN_CUSTODY", holder_id=5, home_slot_id=70)
+        self._insert_asset("RT-101", location_type="IN_CUSTODY", holder_id=6, home_slot_id=71)
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "case-2", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT100", "RT101"])
+        self.assertIn(b"Case CASE-2 added 2 assets to queue.", response.data)
+        self.assertIn(b"Queue (2)", response.data)
+        self.assertNotIn(b"CASE2", response.data)
+
+    def test_return_case_scan_excludes_assets_already_returned_to_storage(self) -> None:
+        self._insert_slot(73, "CASE-3", 1, current_asset_tag="RT-300")
+        self._insert_slot(74, "CASE-3", 2, None)
+        self._insert_asset("RT-300", location_type="STORAGE", holder_id=None, home_slot_id=73)
+        self._insert_asset("RT-301", location_type="IN_CUSTODY", holder_id=6, home_slot_id=74)
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "CASE-3", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT301"])
+        self.assertIn(b"Case CASE-3 added 1 asset to queue.", response.data)
+        self.assertNotIn(b"RT300", response.data)
+
+    def test_return_case_scan_skips_assets_already_queued(self) -> None:
+        self._insert_slot(80, "CASE-20", 1, None)
+        self._insert_slot(81, "CASE-20", 2, None)
+        self._insert_asset("RT-200", location_type="IN_CUSTODY", holder_id=5, home_slot_id=80)
+        self._insert_asset("RT-201", location_type="IN_CUSTODY", holder_id=6, home_slot_id=81)
+
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now("RT200"))
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "CASE20", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT200", "RT201"])
+        self.assertIn(b"Case CASE-20 added 1 asset to queue. Skipped 1 already queued.", response.data)
+
+    def test_return_case_scan_allows_selective_removal_before_preview(self) -> None:
+        self._insert_slot(90, "CASE-30", 1, None)
+        self._insert_slot(91, "CASE-30", 2, None)
+        self._insert_asset("RT-300", location_type="IN_CUSTODY", holder_id=5, home_slot_id=90)
+        self._insert_asset("RT-301", location_type="IN_CUSTODY", holder_id=6, home_slot_id=91)
+
+        scanned = self.client.post(
+            "/",
+            data={"scan_text": "CASE-30", "return_to": "/return"},
+            follow_redirects=True,
+        )
+        self.assertEqual(scanned.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT300", "RT301"])
+
+        removed = self.client.post(
+            "/",
+            data={"action": "remove", "queue_index": "0", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT301"])
+        self.assertIn(b"Queue (1)", removed.data)
+
+        preview = self.client.get("/return/preview")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"RT301", preview.data)
+        self.assertNotIn(b"RT300", preview.data)
+
     def test_return_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_duplicate(self) -> None:
         self._insert_slot(26, "CASE-RT", 2, None)
         self._insert_asset("RT200", location_type="IN_CUSTODY", holder_id=9, home_slot_id=26)
