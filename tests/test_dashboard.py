@@ -266,9 +266,9 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"CASE-C", response.data)
         self.assertIn(b"1 open", response.data)
         self.assertNotIn(b"0 / 2", response.data)
-        self.assertIn(b".status-dot.full { background: #12b76a; }", response.data)
-        self.assertIn(b".status-dot.low { background: #f79009; }", response.data)
-        self.assertIn(b".status-dot.open { background: #b42318; }", response.data)
+        self.assertIn(b".status-dot.full { background: var(--color-primary); }", response.data)
+        self.assertIn(b".status-dot.low { background: var(--color-surface); }", response.data)
+        self.assertIn(b".status-dot.open { background: var(--color-accent); }", response.data)
         self.assertIn(b'status-dot full', response.data)
         self.assertIn(b'status-dot low', response.data)
 
