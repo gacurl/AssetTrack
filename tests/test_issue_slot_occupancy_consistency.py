@@ -69,7 +69,10 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
     assert b"Not currently slotted: DDC4CY002645" not in preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in preview.data
 
-    commit = client_with_temp_db.post("/issue/commit", data={"confirm_reviewed": "on"})
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+    )
     assert commit.status_code == 302
     assert (commit.headers.get("Location") or "").endswith("/issue?issued=1")
 
@@ -104,7 +107,7 @@ def test_issue_commit_redirect_shows_success_without_holder_warning(client_with_
 
     commit_response = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=True,
     )
 

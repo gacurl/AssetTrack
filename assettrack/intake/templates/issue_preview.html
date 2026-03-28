@@ -212,26 +212,20 @@
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
         I reviewed this batch and want to add it to the database.
       </label>
-      <button id="issue_btn" type="submit" disabled data-timeout-lock-target>Commit Issue</button>
+      <label style="display:block; margin-bottom: 10px;">
+        <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" />
+        I confirm the selected holder accepted responsibility for this issue batch.
+      </label>
+      <button id="issue_btn" type="submit" data-timeout-lock-target>Commit Issue</button>
     </form>
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="action" value="clear" />
       <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
       <button type="submit" data-timeout-lock-target>Clear Queue</button>
     </form>
-    <p style="margin-top: 10px;">{{ url_for('issue_commit') }}?json=1</p>
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script>
-    const cb = document.getElementById('confirm_reviewed');
-    const btn = document.getElementById('issue_btn');
-    if (cb && btn) {
-      const sync = () => { btn.disabled = !cb.checked; };
-      cb.addEventListener('change', sync);
-      sync();
-    }
-  </script>
   {% include "_timeout_lock_script.html" %}
 {% endblock %}

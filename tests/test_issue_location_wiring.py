@@ -139,7 +139,7 @@ def test_issue_commit_rejects_building_outside_selected_holder_org(client_with_t
 
     response = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=False,
     )
 
@@ -191,7 +191,7 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
 
     commit = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=False,
     )
 
@@ -241,3 +241,62 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert payload["from_building_room"] == "Storage/A1"
     assert payload["to_building_room"] == "HQ North/210"
     assert int(payload["home_slot_id"]) == 101
+    assert payload["responsibility_ack"]["acknowledged"] is True
+    assert int(payload["responsibility_ack"]["ack_holder_id"]) == 1
+    assert int(payload["responsibility_ack"]["ack_operator_user_id"]) > 0
+    assert payload["responsibility_ack"]["ack_at"]
+    assert payload["responsibility_ack"]["ack_scope"] == "batch"
+
+
+def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    scan_response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+    assert scan_response.status_code == 200
+
+    blocked = client_with_temp_db.post(
+        "/issue/commit?json=1",
+        data={"confirm_reviewed": "on"},
+    )
+
+    assert blocked.status_code == 400
+    assert blocked.json["ok"] is False
+    assert blocked.json["committed"] == 0
+    assert blocked.json["error"] == "Confirm responsibility acknowledgment before issuing assets."
+
+    conn = db.get_connection()
+    try:
+        event_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = 'ISSUE-100' AND event_type = 'ISSUE';"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert event_count is not None
+    assert int(event_count["c"]) == 0
+
+
+def test_issue_commit_missing_ack_shows_visible_message_on_issue_preview(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    scan_response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+    assert scan_response.status_code == 200
+
+    blocked = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on"},
+        follow_redirects=False,
+    )
+
+    assert blocked.status_code == 400
+    assert b"Issue Assets \xe2\x80\x94 Preview / Confirm" in blocked.data
+    assert b"Confirm responsibility acknowledgment before issuing assets." in blocked.data
+    assert len(intake_app.SCAN_QUEUE) == 1

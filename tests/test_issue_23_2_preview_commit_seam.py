@@ -93,11 +93,15 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Current location:</strong> <code>HQ North / 210</code>" in issue_preview.data
     assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
+    assert b'name="confirm_responsibility_ack"' in issue_preview.data
+    assert b"accepted responsibility for this issue batch" in issue_preview.data
+    assert b'id="issue_btn" type="submit" data-timeout-lock-target' in issue_preview.data
+    assert b"/issue/commit?json=1" not in issue_preview.data
     assert b"null" not in issue_preview.data
 
     commit = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=True,
     )
 
@@ -209,7 +213,7 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
 
     commit = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=True,
     )
 
