@@ -50,6 +50,8 @@ def test_login_screen_renders_theme_toggle_without_persistence_storage(client_wi
     assert response.status_code == 200
     assert b'id="theme-toggle"' in response.data
     assert b"assettrack_theme" in response.data
+    assert b"theme-toggle-icon" in response.data
+    assert "🌙".encode("utf-8") in response.data
     assert b"Dark mode" in response.data
     assert b"localStorage" not in response.data
     assert b"sessionStorage" not in response.data
@@ -65,12 +67,16 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
     assert b'<html lang="en" data-theme="dark">' in dashboard_response.data
     assert b'aria-pressed="true"' in dashboard_response.data
     assert b'aria-label="Switch to light mode"' in dashboard_response.data
+    assert "\u2600\ufe0f".encode("utf-8") in dashboard_response.data
+    assert b"Light mode" in dashboard_response.data
 
     asset_search_response = client_with_temp_db.get("/assets/search")
     assert asset_search_response.status_code == 200
     assert b'<html lang="en" data-theme="dark">' in asset_search_response.data
     assert b'aria-pressed="true"' in asset_search_response.data
     assert b'aria-label="Switch to light mode"' in asset_search_response.data
+    assert "\u2600\ufe0f".encode("utf-8") in asset_search_response.data
+    assert b"Light mode" in asset_search_response.data
 
 
 def test_inactive_user_login_fails(client_with_temp_db) -> None:

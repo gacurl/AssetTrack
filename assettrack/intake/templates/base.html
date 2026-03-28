@@ -99,6 +99,9 @@
       button.theme-toggle:hover {
         background: var(--color-surface-soft);
       }
+      .theme-toggle-icon {
+        line-height: 1;
+      }
       .chip {
         display: inline-flex;
         align-items: center;
@@ -210,7 +213,8 @@
           aria-pressed="{{ 'true' if current_theme == 'dark' else 'false' }}"
           aria-label="Switch to {{ 'light' if current_theme == 'dark' else 'dark' }} mode"
         >
-          {{ "Light mode" if current_theme == "dark" else "Dark mode" }}
+          <span class="theme-toggle-icon" aria-hidden="true">{{ "☀️" if current_theme == "dark" else "🌙" }}</span>
+          <span class="theme-toggle-text">{{ "Light mode" if current_theme == "dark" else "Dark mode" }}</span>
         </button>
       </div>
       {% set heading = self.page_heading() | trim %}
@@ -250,7 +254,14 @@
 
         function syncThemeToggle() {
           const isDark = root.dataset.theme === "dark";
-          themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
+          const icon = themeToggle.querySelector(".theme-toggle-icon");
+          const text = themeToggle.querySelector(".theme-toggle-text");
+          if (icon) {
+            icon.textContent = isDark ? "☀️" : "🌙";
+          }
+          if (text) {
+            text.textContent = isDark ? "Light mode" : "Dark mode";
+          }
           themeToggle.setAttribute("aria-pressed", isDark ? "true" : "false");
           themeToggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
         }
