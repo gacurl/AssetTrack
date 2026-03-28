@@ -37,6 +37,7 @@ class AdminReferenceDataTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Organizations", response.data)
         self.assertIn(b"Buildings", response.data)
+        self.assertIn(b"box-sizing: border-box;", response.data)
 
         create_org = self.client.post(
             "/admin/reference-data",
