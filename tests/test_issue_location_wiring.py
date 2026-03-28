@@ -167,6 +167,7 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     )
     assert location_response.status_code == 200
     assert b"Current location set to HQ North / 210." in location_response.data
+    assert b"flash success" in location_response.data
 
     scan_response = client_with_temp_db.post(
         "/",
@@ -175,6 +176,7 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     )
     assert scan_response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+    assert b"Ready for preview. No blocking issues found." in scan_response.data
 
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200
