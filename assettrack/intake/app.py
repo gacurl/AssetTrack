@@ -2168,7 +2168,12 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
 
 
-def _issue_batch(asset_tags: list[str], holder_id: int, issue_location: dict[str, str]) -> int:
+def _issue_batch(
+    asset_tags: list[str],
+    holder_id: int,
+    issue_location: dict[str, str],
+    responsibility_ack: dict[str, object],
+) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to issue.")
 
@@ -2340,6 +2345,7 @@ def _issue_batch(asset_tags: list[str], holder_id: int, issue_location: dict[str
                                 "from_building_room": previous_building_room,
                                 "to_building_room": building_room,
                                 "home_slot_id": home_slot_id,
+                                "responsibility_ack": responsibility_ack,
                             }
                         ),
                         holder_id,
@@ -3320,11 +3326,30 @@ def issue_commit():
         flash("Please confirm you reviewed the batch before adding it.", "error")
         return redirect(url_for("issue_preview"))
 
+    acknowledged = (request.form.get("confirm_responsibility_ack") or "").strip().lower() in {"on", "true", "1", "yes"}
+    if not acknowledged:
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Confirm responsibility acknowledgment before issuing assets.",
+            }, 400
+        flash("Confirm responsibility acknowledgment before issuing assets.", "error")
+        preview_response = issue_preview()
+        return preview_response, 400
+
     holder = _selected_holder_from_session()
     if holder is None:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "Select a holder before issuing assets."}, 400
         flash("Select a holder before issuing assets.", "error")
+        return redirect(url_for("issue_preview"))
+
+    user = current_user()
+    if user is None:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Authenticated operator not found."}, 400
+        flash("Authenticated operator not found.", "error")
         return redirect(url_for("issue_preview"))
 
     issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
@@ -3344,8 +3369,16 @@ def issue_commit():
         flash("No assets in the queue to issue..", "error")
         return redirect(url_for("issue_preview"))
 
+    responsibility_ack = {
+        "acknowledged": True,
+        "ack_holder_id": int(holder["id"]),
+        "ack_operator_user_id": int(user["id"]),
+        "ack_at": datetime.now(timezone.utc).isoformat(),
+        "ack_scope": "batch",
+    }
+
     try:
-        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form)
+        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form, responsibility_ack)
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400

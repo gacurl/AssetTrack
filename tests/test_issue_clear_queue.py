@@ -264,7 +264,7 @@ def test_issue_preview_discard_preserves_holder_through_rescan_preview_and_commi
 
     commit = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=True,
     )
 

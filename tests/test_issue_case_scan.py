@@ -182,7 +182,7 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
 
     commit_response = client_with_temp_db.post(
         "/issue/commit",
-        data={"confirm_reviewed": "on"},
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         follow_redirects=False,
     )
 
