@@ -30,7 +30,7 @@
     .card {
       width: min(480px, 100%);
       max-width: 92vw;
-      background: rgba(255, 255, 255, 0.52);
+      background: var(--color-panel-bg);
       border: 1px solid var(--color-surface);
       border-radius: 16px;
       box-shadow: 0 14px 30px rgba(16, 24, 40, 0.10);
@@ -83,14 +83,14 @@
       border-radius: 10px;
       border: 1px solid var(--color-surface);
       outline: none;
-      background: rgba(255, 255, 255, 0.52);
+      background: var(--color-surface-bg);
       color: var(--color-text);
     }
     .splash-input::placeholder { color: color-mix(in srgb, var(--color-surface) 72%, var(--color-text)); }
     .splash-input:focus {
       border-color: var(--color-primary);
       box-shadow: 0 0 0 3px var(--color-primary-soft);
-      background: rgba(255, 255, 255, 0.72);
+      background: var(--color-surface-bg);
     }
 
     .splash-button {
@@ -133,7 +133,7 @@
       border-radius: 8px;
       border: 1px solid var(--color-accent);
       background: var(--color-accent-soft);
-      color: var(--color-accent);
+      color: var(--color-text);
       font-size: 0.9rem;
       text-align: center;
     }
@@ -145,7 +145,7 @@
       width: min(820px, 100%);
       max-width: 94vw;
       box-sizing: border-box;
-      background: rgba(255, 255, 255, 0.52);
+      background: var(--color-panel-bg);
       border: 1px solid var(--color-surface);
       border-radius: 16px;
       box-shadow: 0 10px 24px rgba(18, 21, 28, 0.08);
@@ -198,7 +198,7 @@
     .bottom_left .wordmark_asset {
       font-size: clamp(0.68rem, 0.95vw, 0.78rem);
       font-weight: 400;
-      color: color-mix(in srgb, var(--color-primary) 44%, var(--color-text));
+      color: var(--color-text-muted);
       letter-spacing: 0.02em;
       text-transform: none;
       margin: 0;
@@ -249,13 +249,13 @@
     .deco_mark circle,
     .deco_mark rect {
       fill: none;
-      stroke: rgba(18, 32, 47, 0.78);
+      stroke: color-mix(in srgb, var(--color-primary) 38%, var(--color-text));
       stroke-linecap: round;
       stroke-linejoin: round;
       vector-effect: non-scaling-stroke;
     }
     .deco_mark text {
-      fill: rgba(18, 32, 47, 0.92);
+      fill: var(--color-text);
       font-family: Georgia, "Times New Roman", serif;
       font-weight: 700;
       letter-spacing: 1px;
