@@ -200,10 +200,29 @@ class AdminRetireAssetTests(unittest.TestCase):
         self._insert_asset("RET-300", location_type="DISPOSED", holder_id=None, home_slot_id=20)
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
-            intake_app._issue_batch(["RET-300"], holder_id=4)
+            intake_app._issue_batch(
+                ["RET-300"],
+                holder_id=4,
+                issue_location={"building": "HQ North", "room": "210"},
+                responsibility_ack={
+                    "acknowledged": True,
+                    "ack_holder_id": 4,
+                    "ack_operator_user_id": 1,
+                    "ack_at": "2026-03-28T00:00:00Z",
+                    "ack_scope": "batch",
+                },
+            )
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
-            intake_app._return_batch(["RET-300"])
+            intake_app._return_batch(
+                ["RET-300"],
+                responsibility_ack={
+                    "acknowledged": True,
+                    "ack_operator_user_id": 1,
+                    "ack_at": "2026-03-28T00:00:00Z",
+                    "ack_scope": "batch",
+                },
+            )
 
     def test_admin_assign_slot_refuses_retired_asset(self) -> None:
         self._insert_asset("RET-400", location_type="DISPOSED", holder_id=None, home_slot_id=None)
