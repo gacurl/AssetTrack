@@ -7,14 +7,31 @@
     <title>{% block title %}AssetTrack{% endblock %}</title>
     <style>
       :root {
-        --color-bg: #EBE4D1;
-        --color-surface: #B4B4B3;
-        --color-primary: #26577C;
-        --color-accent: #E55604;
-        --color-text: #12202f;
-        --color-surface-soft: rgba(180, 180, 179, 0.24);
-        --color-primary-soft: rgba(38, 87, 124, 0.12);
-        --color-accent-soft: rgba(229, 86, 4, 0.14);
+        --palette-bg: #F7F7F7;
+        --palette-surface: #FFFFFF;
+        --palette-primary: #1D3557;
+        --palette-primary-soft: #457B9D;
+        --palette-danger: #E63946;
+        --palette-warning: #F4A261;
+        --palette-success: #2A9D8F;
+        --palette-text-main: #1A1A1A;
+        --palette-text-muted: #6C757D;
+        --palette-border: #E0E0E0;
+
+        --color-bg: var(--palette-bg);
+        --color-surface: var(--palette-border);
+        --color-surface-bg: var(--palette-surface);
+        --color-primary: var(--palette-primary);
+        --color-primary-soft: rgba(69, 123, 157, 0.14);
+        --color-accent: var(--palette-danger);
+        --color-accent-soft: rgba(230, 57, 70, 0.12);
+        --color-warning: var(--palette-warning);
+        --color-warning-soft: rgba(244, 162, 97, 0.18);
+        --color-success: var(--palette-success);
+        --color-success-soft: rgba(42, 157, 143, 0.14);
+        --color-text: var(--palette-text-main);
+        --color-text-muted: var(--palette-text-muted);
+        --color-surface-soft: rgba(29, 53, 87, 0.05);
       }
       body {
         font-family: system-ui, -apple-system, Arial, sans-serif;
@@ -57,9 +74,9 @@
         font-weight: 600;
       }
       .chip.mode-badge {
-        background: var(--color-accent-soft);
-        border-color: var(--color-accent);
-        color: var(--color-accent);
+        background: var(--color-warning-soft);
+        border-color: var(--color-warning);
+        color: var(--color-primary);
         letter-spacing: 0.04em;
         font-size: 0.8rem;
         text-transform: uppercase;
@@ -69,22 +86,40 @@
         padding: 1rem;
         border: 1px solid var(--color-surface);
         border-radius: 10px;
-        background: rgba(255, 255, 255, 0.52);
+        background: var(--color-surface-bg);
+        box-shadow: 0 1px 2px rgba(29, 53, 87, 0.04);
       }
       .flash {
         padding: 0.75rem 1rem;
+        border: 1px solid var(--color-surface);
+        border-left-width: 6px;
         border-radius: 10px;
         margin: 0.75rem 0;
+        color: var(--color-text);
+        background: var(--color-surface-bg);
       }
-      .flash.error { background: var(--color-accent-soft); border: 1px solid var(--color-accent); }
-      .flash.success { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
+      .flash.error {
+        background: var(--color-accent-soft);
+        border-color: rgba(230, 57, 70, 0.32);
+        border-left-color: var(--color-accent);
+      }
+      .flash.success {
+        background: var(--color-success-soft);
+        border-color: rgba(42, 157, 143, 0.3);
+        border-left-color: var(--color-success);
+      }
+      .flash.warning {
+        background: var(--color-warning-soft);
+        border-color: rgba(244, 162, 97, 0.34);
+        border-left-color: var(--color-warning);
+      }
       table { width: 100%; border-collapse: collapse; }
       th, td { text-align: left; border-bottom: 1px solid var(--color-surface); padding: 0.5rem; vertical-align: top; }
       th { background: var(--color-primary-soft); }
       code { background: var(--color-surface-soft); padding: 0.15rem 0.3rem; border-radius: 4px; }
       button { padding: 0.6rem 1rem; font-size: 1rem; background: var(--color-primary); color: #fff; border: 1px solid var(--color-primary); border-radius: 8px; }
       .row { margin: 0.75rem 0; }
-      .muted { color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text)); }
+      .muted { color: var(--color-text-muted); }
       .timeout-panel {
         margin: 0 0 1rem 0;
         padding: 0.75rem 1rem;
@@ -95,7 +130,7 @@
       .timeout-panel.locked {
         background: var(--color-accent-soft);
         border-color: var(--color-accent);
-        color: var(--color-accent);
+        color: var(--color-text);
       }
       @keyframes timeoutWarningPulse {
         0%, 100% { opacity: 1; }
@@ -105,7 +140,7 @@
         font-weight: inherit;
       }
       .timeout-countdown.timeout-warning {
-        color: var(--color-accent);
+        color: var(--color-warning);
         animation: timeoutWarningPulse 1s ease-in-out infinite;
       }
       .locked-control {
@@ -113,7 +148,7 @@
         cursor: not-allowed;
       }
       a.locked-control {
-        color: color-mix(in srgb, var(--color-surface) 68%, var(--color-text));
+        color: var(--color-text-muted);
         pointer-events: none;
         text-decoration: none;
       }
