@@ -28,6 +28,67 @@ In plain language, it lets your team:
 
 AssetTrack is strict on purpose. If a page blocks a commit, it is protecting the audit trail and keeping the asset state consistent.
 
+## Custody is not ownership
+
+AssetTrack records custody, not ownership.
+
+Think of it like a tool room:
+
+- Ownership answers, "Who does this tool belong to?"
+- Custody answers, "Who signed it out right now?"
+
+In AssetTrack, an asset can belong to your organization and still be in one person's custody for today's work. The system proves who had custody, when that started, and what action recorded the handoff.
+
+This matters because operators need a clear answer to a simple field question:
+
+"Who is responsible for this item right now?"
+
+That is what AssetTrack is built to show.
+
+## One-off assignment, in plain language
+
+A one-off assignment means you are giving an item to a person or group for a specific job, shift, trip, or task. It does not mean they own it. It means they are the current responsible holder until the item is returned.
+
+Example:
+
+- A laptop is issued to `Taylor` for a site visit.
+- Taylor did not buy the laptop.
+- Taylor is the current holder until it comes back into storage.
+
+The live operator flow is still the same:
+
+1. Choose the holder and any required prerequisite information.
+2. Scan the items into the queue.
+3. Review the preview.
+4. Confirm the acknowledgment boxes.
+5. Commit the handoff.
+
+## What acknowledgment means
+
+Acknowledgment is like signing a hand receipt. It shows that the handoff was reviewed and that responsibility for the handoff was confirmed. It does not mean ownership changed.
+
+In practice, the acknowledgment step means:
+
+- the operator reviewed the batch
+- the responsible handoff was confirmed
+- the commit can now be recorded in the audit trail
+
+If acknowledgment is missing, AssetTrack blocks the commit on purpose. That protects the record and prevents an incomplete handoff from being saved.
+
+## What "pending email" means
+
+If your local process includes an email or message after a handoff, treat that message as a follow-up notice, not the main record.
+
+The main record is the stored audit event inside AssetTrack.
+
+That means:
+
+- if an email is delayed, the custody record in AssetTrack still stands
+- if an email is pending, the system still works
+- if there is a question later, use the audit record first
+
+Email can help people stay informed, but email is secondary. AssetTrack is the system of record for who had custody, when, and under what action.
+
 ## Before you begin
 
 1. Make sure the system is running.
@@ -98,6 +159,7 @@ Expected result:
 - You see the selected holder.
 - You see a validation summary.
 - You see a per-asset preview of what will change.
+- You see the confirmation and acknowledgment section before commit.
 
 ### Step 5. Review the preview carefully
 
@@ -105,11 +167,13 @@ Expected result:
 2. Confirm the current state shows the asset in storage.
 3. Confirm the after state shows the asset moving to custody under the correct holder.
 4. Read any warning or blocked message before continuing.
+5. Confirm the holder accepted responsibility for the issue batch.
 
 ### Step 6. Commit the issue
 
-1. Check the confirmation box.
-2. Select `Commit Issue`.
+1. Check the review confirmation box.
+2. Check the responsibility acknowledgment box.
+3. Select `Commit Issue`.
 
 Expected result:
 
@@ -143,17 +207,20 @@ Expected result:
 
 - You see the validation summary.
 - You see the before and after return state.
+- You see the confirmation and acknowledgment section before commit.
 
 ### Step 4. Review the return preview
 
 1. Confirm the asset is currently in custody.
 2. Confirm the return target slot looks correct.
 3. Read any blocked message before continuing.
+4. Confirm responsibility for the return handoff was acknowledged before commit.
 
 ### Step 5. Commit the return
 
-1. Check the confirmation box.
-2. Select `Commit Return`.
+1. Check the review confirmation box.
+2. Check the responsibility acknowledgment box.
+3. Select `Commit Return`.
 
 Expected result:
 
