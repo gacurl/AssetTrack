@@ -324,6 +324,67 @@ def _find_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
     }
 
 
+def _find_return_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
+    t = (scan_tag or "").strip()
+    if not t:
+        return None
+
+    slot_rows = conn.execute(
+        """
+        SELECT id, case_name, slot_position
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+           OR REPLACE(UPPER(case_name), '-', '') = UPPER(?)
+        ORDER BY slot_position ASC, id ASC;
+        """,
+        (t, t),
+    ).fetchall()
+    if not slot_rows:
+        return None
+
+    case_names = {str(row["case_name"] or "").strip().upper() for row in slot_rows if str(row["case_name"] or "").strip()}
+    if len(case_names) > 1:
+        raise ValueError(f"Ambiguous case match for scan '{t}'")
+
+    case_name = str(slot_rows[0]["case_name"] or "").strip().upper()
+    assets: list[dict] = []
+    seen_asset_tags: set[str] = set()
+
+    for slot_row in slot_rows:
+        slot_id = int(slot_row["id"])
+        slot_position = int(slot_row["slot_position"])
+        asset_rows = conn.execute(
+            """
+            SELECT asset_tag
+            FROM assets
+            WHERE home_slot_id = ?
+              AND UPPER(COALESCE(location_type, '')) = 'IN_CUSTODY'
+            ORDER BY UPPER(asset_tag) ASC, id ASC;
+            """,
+            (slot_id,),
+        ).fetchall()
+
+        for asset_row in asset_rows:
+            asset_tag = sanitize_scan(str(asset_row["asset_tag"] or ""))
+            if not asset_tag or asset_tag in seen_asset_tags:
+                continue
+
+            seen_asset_tags.add(asset_tag)
+            assets.append(
+                {
+                    "asset_tag": asset_tag,
+                    "home_slot_id": slot_id,
+                    "case_name": case_name,
+                    "slot_position": slot_position,
+                }
+            )
+
+    return {
+        "case_name": case_name,
+        "assets": assets,
+    }
+
+
 def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
     occupancy_row = conn.execute(
         """
@@ -2518,9 +2579,12 @@ def intake():
                 conn = get_connection()
                 try:
                     case_match = None
-                    if return_to_path == "/issue":
+                    if return_to_path in {"/issue", "/return"}:
                         try:
-                            case_match = _find_case_assets_for_scan_tag(conn, value)
+                            if return_to_path == "/issue":
+                                case_match = _find_case_assets_for_scan_tag(conn, value)
+                            else:
+                                case_match = _find_return_case_assets_for_scan_tag(conn, value)
                         except ValueError as e:
                             flash(str(e), "error")
                             touch_session()
