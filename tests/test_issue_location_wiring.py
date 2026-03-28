@@ -110,6 +110,9 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"box-sizing: border-box;" in issue_page.data
     assert b"padding: 0.6rem;" in issue_page.data
     assert b"font-size: 1rem;" in issue_page.data
+    assert b'href="#scan-input"' in issue_page.data
+    assert b'id="scan-input"' in issue_page.data
+    assert b"autofocus" not in issue_page.data
     assert b"HQ North" in issue_page.data
     assert b"Warehouse West" not in issue_page.data
 
@@ -177,6 +180,7 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert scan_response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
     assert b"Ready for preview. No blocking issues found." in scan_response.data
+    assert b'href="#queue-section"' in scan_response.data
 
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200

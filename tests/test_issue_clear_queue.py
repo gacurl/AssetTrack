@@ -56,7 +56,7 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
+    assert (response.headers.get("Location") or "").endswith("/issue")
     assert len(intake_app.SCAN_QUEUE) == 0
 
     with client_with_temp_db.session_transaction() as sess:
@@ -105,7 +105,7 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue#queue-section")
+    assert (response.headers.get("Location") or "").endswith("/issue")
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DUP-TAG", "KEEP-TAG"]
 
     issue_page = client_with_temp_db.get("/issue")

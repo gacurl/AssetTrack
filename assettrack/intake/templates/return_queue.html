@@ -76,7 +76,7 @@
 {% endblock %}
 
 {% block content %}
-  {% set queue_return_to = (return_to or url_for('return_queue')) ~ '#queue-section' %}
+  {% set queue_return_to = return_to or url_for('return_queue') %}
   {% set flashed_messages = get_flashed_messages(with_categories=true) %}
   {% set message_ns = namespace(global_messages=[], scan_messages=[], location_messages=[]) %}
   {% for category, message in flashed_messages %}
@@ -88,6 +88,8 @@
       {% set message_ns.global_messages = message_ns.global_messages + [(category, message)] %}
     {% endif %}
   {% endfor %}
+  {% set jump_to_scan_href = "#scan-input" %}
+  {% set jump_to_queue_href = "#queue-section" %}
   <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
 
   {% include "_timeout_status.html" %}
@@ -109,6 +111,10 @@
 
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
+  {% endif %}
+
+  {% if issue_location_form is defined %}
+    <p><a class="chip" href="{{ jump_to_scan_href }}">Jump to scan</a></p>
   {% endif %}
 
   {% if issue_location_form is defined %}
@@ -172,6 +178,9 @@
         <div class="flash {{ category|e }}">{{ message }}</div>
       {% endfor %}
     {% endif %}
+    {% if queue_len > 0 %}
+      <p><a class="chip" href="{{ jump_to_queue_href }}">Jump to queue</a></p>
+    {% endif %}
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
       <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
@@ -180,7 +189,7 @@
         type="text"
         name="scan_text"
         placeholder="Scan here..."
-        autofocus
+        {% if issue_location_form is not defined %}autofocus{% endif %}
         data-timeout-lock-target
       />
       <button type="submit" data-timeout-lock-target>Submit</button>
