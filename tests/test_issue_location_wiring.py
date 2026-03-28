@@ -103,6 +103,8 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
 
     assert issue_page.status_code == 200
     assert b"Current Location Prerequisite" in issue_page.data
+    assert b"Before scanning, set the current building and current room / area." in issue_page.data
+    assert b"Scanning is blocked." in issue_page.data
     assert b"HQ North" in issue_page.data
     assert b"Warehouse West" not in issue_page.data
 
@@ -114,7 +116,8 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
 
     assert scan_response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Choose the current building." in scan_response.data
+    assert b"Scan not added. Choose the current building. Set the current location, then scan again." in scan_response.data
+    assert b"Scanning is blocked." in scan_response.data
 
 
 def test_issue_commit_rejects_building_outside_selected_holder_org(client_with_temp_db) -> None:
