@@ -43,6 +43,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.get("/holders/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Create Holder", response.data)
+        self.assertIn(b"box-sizing: border-box;", response.data)
         self.assertIn(b"novalidate", response.data)
         self.assertNotIn(b'name="organization_id" required', response.data)
 
@@ -169,6 +170,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         edit_get = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
         self.assertEqual(edit_get.status_code, 200)
         self.assertIn(b"Edit Holder", edit_get.data)
+        self.assertIn(b"box-sizing: border-box;", edit_get.data)
         self.assertIn(b"novalidate", edit_get.data)
         self.assertNotIn(b'name="organization_id" required', edit_get.data)
 
