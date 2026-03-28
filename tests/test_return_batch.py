@@ -1,6 +1,7 @@
 # file: tests/test_return_batch.py
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,6 +89,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Location: IN_CUSTODY", preview_render.data)
         self.assertIn(b"Issued to: holder_id 5", preview_render.data)
         self.assertIn(b"Home location: A / 1", preview_render.data)
+        self.assertIn(b'name="confirm_responsibility_ack"', preview_render.data)
+        self.assertIn(b"responsibility for this return batch was acknowledged before commit", preview_render.data)
         self.assertNotIn(b"null", preview_render.data)
 
         unreviewed = self.client.post("/return/commit?json=1")
@@ -99,13 +102,25 @@ class ReturnBatchTests(unittest.TestCase):
             "Please confirm you reviewed the batch before returning assets.",
         )
 
+        missing_ack = self.client.post(
+            "/return/commit?json=1",
+            data={"confirm_reviewed": "on"},
+        )
+        self.assertEqual(missing_ack.status_code, 400)
+        self.assertFalse(missing_ack.json["ok"])
+        self.assertEqual(missing_ack.json["committed"], 0)
+        self.assertEqual(
+            missing_ack.json["error"],
+            "Confirm responsibility acknowledgment before returning assets.",
+        )
+
         intake_app.SCAN_QUEUE.clear()
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-VALID", equipment_type="laptop"))
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="UNKNOWN", equipment_type="laptop"))
 
         blocked = self.client.post(
             "/return/commit?json=1",
-            data={"confirm_reviewed": "on"},
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         )
         self.assertEqual(blocked.status_code, 400)
         self.assertFalse(blocked.json["ok"])
@@ -128,7 +143,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         success = self.client.post(
             "/return/commit?json=1",
-            data={"confirm_reviewed": "on"},
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
         )
         self.assertEqual(success.status_code, 200)
         self.assertTrue(success.json["ok"])
@@ -151,7 +166,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         event_row = self.conn.execute(
             """
-            SELECT event_type FROM asset_events
+            SELECT event_type, payload FROM asset_events
             WHERE asset_tag = ?
             ORDER BY id DESC
             LIMIT 1;
@@ -160,6 +175,36 @@ class ReturnBatchTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(event_row)
         self.assertEqual(event_row["event_type"], "RETURN")
+        payload = json.loads(str(event_row["payload"]))
+        self.assertEqual(payload["from_location_type"], "IN_CUSTODY")
+        self.assertEqual(payload["to_location_type"], "STORAGE")
+        self.assertEqual(int(payload["home_slot_id"]), 20)
+        self.assertTrue(payload["responsibility_ack"]["acknowledged"])
+        self.assertEqual(int(payload["responsibility_ack"]["ack_holder_id"]), 9)
+        self.assertGreater(int(payload["responsibility_ack"]["ack_operator_user_id"]), 0)
+        self.assertTrue(payload["responsibility_ack"]["ack_at"])
+        self.assertEqual(payload["responsibility_ack"]["ack_scope"], "batch")
+
+    def test_return_commit_missing_ack_redirects_back_to_preview_with_message(self) -> None:
+        self._insert_slot(21, "C", 3, None)
+        self._insert_asset("TAG-MSG", location_type="IN_CUSTODY", holder_id=11, home_slot_id=21)
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-MSG", equipment_type="laptop"))
+
+        blocked = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue((blocked.headers.get("Location") or "").endswith("/return/preview"))
+
+        follow = self.client.get("/return/preview")
+        self.assertEqual(follow.status_code, 200)
+        self.assertIn(b"Confirm responsibility acknowledgment before returning assets.", follow.data)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 1)
 
     def test_single_asset_return_success_message_shows_final_location(self) -> None:
         self._insert_slot(30, "CASE-13", 6, None)
@@ -170,7 +215,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         response = self.client.post(
             "/return/commit",
-            data={"confirm_reviewed": "on"},
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
             follow_redirects=True,
         )
 
@@ -201,7 +246,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         response = self.client.post(
             "/return/commit",
-            data={"confirm_reviewed": "on"},
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
             follow_redirects=True,
         )
 
@@ -222,7 +267,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         response = self.client.post(
             "/return/commit",
-            data={"confirm_reviewed": "on"},
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
             follow_redirects=True,
         )
 
@@ -332,8 +377,8 @@ class ReturnBatchTests(unittest.TestCase):
 
         preview = self.client.get("/return/preview")
         self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"RT301", preview.data)
-        self.assertNotIn(b"RT300", preview.data)
+        self.assertIn(b"RT-301", preview.data)
+        self.assertNotIn(b"RT-300", preview.data)
 
     def test_return_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_duplicate(self) -> None:
         self._insert_slot(26, "CASE-RT", 2, None)

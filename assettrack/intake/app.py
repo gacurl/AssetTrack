@@ -2357,7 +2357,7 @@ def _issue_batch(
         conn.close()
 
 
-def _return_batch(asset_tags: list[str]) -> int:
+def _return_batch(asset_tags: list[str], responsibility_ack: dict[str, object]) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to return")
 
@@ -2368,7 +2368,7 @@ def _return_batch(asset_tags: list[str]) -> int:
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type, home_slot_id
+            SELECT asset_tag, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -2435,7 +2435,13 @@ def _return_batch(asset_tags: list[str]) -> int:
                 if slot["current_asset_tag"] is not None:
                     occupied_home_slot.append(canon_tag)
 
-                validated_rows.append({"asset_tag": canon_tag, "home_slot_id": int(slot["id"])})
+                validated_rows.append(
+                    {
+                        "asset_tag": canon_tag,
+                        "home_slot_id": int(slot["id"]),
+                        "current_holder_id": None if asset_row["current_holder_id"] is None else int(asset_row["current_holder_id"]),
+                    }
+                )
 
             if unknown_tags or not_in_custody or retired_assets or no_home_slot or occupied_home_slot:
                 parts: list[str] = []
@@ -2456,6 +2462,7 @@ def _return_batch(asset_tags: list[str]) -> int:
             for row in validated_rows:
                 canon_tag = row["asset_tag"]
                 home_slot_id = row["home_slot_id"]
+                current_holder_id = row["current_holder_id"]
 
                 conn.execute(
                     """
@@ -2491,7 +2498,25 @@ def _return_batch(asset_tags: list[str]) -> int:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                     """,
-                    (canon_tag, RETURN_EVENT_TYPE, now_iso, "system", None, None, None),
+                    (
+                        canon_tag,
+                        RETURN_EVENT_TYPE,
+                        now_iso,
+                        "system",
+                        None,
+                        json.dumps(
+                            {
+                                "from_location_type": "IN_CUSTODY",
+                                "to_location_type": "STORAGE",
+                                "home_slot_id": home_slot_id,
+                                "responsibility_ack": {
+                                    **responsibility_ack,
+                                    "ack_holder_id": current_holder_id,
+                                },
+                            }
+                        ),
+                        None,
+                    ),
                 )
 
             return len(validated_rows)
@@ -3484,6 +3509,17 @@ def return_commit():
         flash("Please confirm you reviewed the batch before returning assets.", "error")
         return redirect(url_for("return_preview"))
 
+    acknowledged = (request.form.get("confirm_responsibility_ack") or "").strip().lower() in {"on", "true", "1", "yes"}
+    if not acknowledged:
+        if wants_json():
+            return {
+                "ok": False,
+                "committed": 0,
+                "error": "Confirm responsibility acknowledgment before returning assets.",
+            }, 400
+        flash("Confirm responsibility acknowledgment before returning assets.", "error")
+        return redirect(url_for("return_preview"))
+
     asset_tags = _queue_asset_tags()
     state = _build_return_preview_state(asset_tags)
     if state["blocking_issues"]:
@@ -3493,8 +3529,22 @@ def return_commit():
         flash(f"Return failed: {message}", "error")
         return redirect(url_for("return_preview"))
 
+    user = current_user()
+    if user is None:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Authenticated operator not found."}, 400
+        flash("Authenticated operator not found.", "error")
+        return redirect(url_for("return_preview"))
+
+    responsibility_ack = {
+        "acknowledged": True,
+        "ack_operator_user_id": int(user["id"]),
+        "ack_at": datetime.now(timezone.utc).isoformat(),
+        "ack_scope": "batch",
+    }
+
     try:
-        committed_count = _return_batch(asset_tags)
+        committed_count = _return_batch(asset_tags, responsibility_ack)
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
