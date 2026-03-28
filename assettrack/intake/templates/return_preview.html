@@ -7,7 +7,7 @@
 {% block extra_head %}
   <style>
     .pill { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.9rem; }
-    .pill.good { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
+    .pill.good { background: var(--color-success-soft); border: 1px solid var(--color-success); color: var(--color-text); font-weight: 700; }
     .pill.bad { background: var(--color-accent-soft); border: 1px solid var(--color-accent); }
     ul { margin: 0.5rem 0 0 1.25rem; }
     .workflow-card h2 { margin: 0 0 0.55rem 0; }
@@ -41,6 +41,7 @@
 {% endblock %}
 
 {% block content %}
+  {% set blocked_count = queued_count - ready_count %}
   <nav class="actions" aria-label="Return preview navigation">
     <a class="chip" href="{{ url_for('return_queue') }}">Back to Return Queue</a>
   </nav>
@@ -60,18 +61,18 @@
   {% endif %}
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
-    <h2>{% if blocking_issues %}Review Before Returning{% else %}Ready to Return{% endif %}</h2>
+    <h2>{% if blocking_issues %}Batch Return Needs Review{% else %}Confirm This Return Batch{% endif %}</h2>
     <p>
       {% if blocking_issues %}
-        Check the issues below before you commit this return batch.
+        This batch cannot be returned yet. Review the blocked items below before committing.
       {% else %}
-        Review the listed assets below. Commit Return is the next step.
+        You are confirming the full return batch below. Commit Return is the next step.
       {% endif %}
     </p>
   </div>
 
   <div class="card workflow-card">
-    <h2>Validation Summary</h2>
+    <h2>Batch Confirmation</h2>
     <p class="workflow-summary">
       <strong>Queued assets:</strong> {{ queued_count }}
       &nbsp;|&nbsp;
@@ -84,6 +85,11 @@
         <span class="pill good">ready</span>
       {% endif %}
     </p>
+    {% if blocking_issues %}
+      <p class="workflow-summary">{{ ready_count }} ready, {{ blocked_count }} blocked. Blocked items stay listed below and must be fixed before this batch can be returned.</p>
+    {% else %}
+      <p class="workflow-summary">All {{ ready_count }} queued assets are ready. Commit Return will confirm this batch and place the assets back into storage.</p>
+    {% endif %}
 
     {% if blocking_issues %}
       <ul><template>
@@ -160,7 +166,7 @@
       <form method="post" action="{{ url_for('return_commit') }}">
         <label>
           <input type="checkbox" name="confirm_reviewed" value="1" required />
-          I have reviewed the changes and confirm this return batch.
+          I reviewed this batch and confirm these {{ ready_count }} assets should be returned.
         </label>
         <br /><br />
         <button type="submit" data-timeout-lock-target>Commit Return</button>
