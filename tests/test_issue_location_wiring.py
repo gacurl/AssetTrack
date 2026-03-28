@@ -105,6 +105,11 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"Current Location Prerequisite" in issue_page.data
     assert b"Before scanning, set the current building and current room / area." in issue_page.data
     assert b"Scanning is blocked." in issue_page.data
+    assert b"#issue-building," in issue_page.data
+    assert b"max-width: 520px;" in issue_page.data
+    assert b"box-sizing: border-box;" in issue_page.data
+    assert b"padding: 0.6rem;" in issue_page.data
+    assert b"font-size: 1rem;" in issue_page.data
     assert b"HQ North" in issue_page.data
     assert b"Warehouse West" not in issue_page.data
 
