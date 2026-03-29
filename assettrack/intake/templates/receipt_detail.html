@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Receipt Detail{% endblock %}
+{% block page_heading %}Receipt {{ receipt.id }}{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+    }
+    .meta-grid p {
+      margin: 0;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% set operator = receipt.commit_operator %}
+  {% set holder = receipt.holder_snapshot %}
+  {% set organization = receipt.organization_snapshot %}
+  <nav class="actions" aria-label="Receipt navigation">
+    <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
+  </nav>
+
+  <section class="card">
+    <div class="meta-grid">
+      <p><strong>Receipt ID:</strong> <span class="mono">{{ receipt.id }}</span></p>
+      <p><strong>Receipt key:</strong> <span class="mono">{{ receipt.receipt_key }}</span></p>
+      <p><strong>Receipt type:</strong> {{ receipt.receipt_type or "Unknown" }}</p>
+      <p><strong>Committed at:</strong> {{ receipt.commit_at or "Unknown" }}</p>
+      <p>
+        <strong>Committed by:</strong>
+        {% if operator and operator.username %}
+          {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %} [user_id {{ operator.id }}]
+        {% else %}
+          user_id {{ receipt.commit_operator_user_id }}
+        {% endif %}
+      </p>
+      {% if holder or receipt.holder_id is not none %}
+        <p>
+          <strong>Receipt holder:</strong>
+          {% if holder and holder.name %}
+            {{ holder.name }}
+            {% if holder.identifier %}(ID {{ holder.identifier }}){% endif %}
+          {% else %}
+            holder_id {{ receipt.holder_id }}
+          {% endif %}
+        </p>
+      {% endif %}
+      {% if organization %}
+        <p>
+          <strong>Organization:</strong>
+          {{ organization.organization or "Unknown" }}
+          {% if organization.organization_id is not none %}(org_id {{ organization.organization_id }}){% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if receipt.acknowledgment %}
+    <section class="card">
+      <h2>Acknowledgment</h2>
+      <p>
+        <strong>Acknowledged:</strong> {{ "Yes" if receipt.acknowledgment.get("acknowledged") else "No" }}<br />
+        {% if receipt.acknowledgment.get("ack_scope") %}
+          <strong>Scope:</strong> {{ receipt.acknowledgment.get("ack_scope") }}<br />
+        {% endif %}
+        {% if receipt.acknowledgment.get("ack_at") %}
+          <strong>Captured at:</strong> {{ receipt.acknowledgment.get("ack_at") }}<br />
+        {% endif %}
+        {% if receipt.acknowledgment.get("ack_operator_user_id") is not none %}
+          <strong>Operator user ID:</strong> {{ receipt.acknowledgment.get("ack_operator_user_id") }}<br />
+        {% endif %}
+        {% if receipt.acknowledgment.get("ack_holder_id") is not none %}
+          <strong>Holder ID:</strong> {{ receipt.acknowledgment.get("ack_holder_id") }}
+        {% endif %}
+      </p>
+    </section>
+  {% endif %}
+
+  {% if receipt.location_context %}
+    <section class="card">
+      <h2>Issue Location</h2>
+      <p>
+        <strong>Building:</strong> {{ receipt.location_context.get("building") or "Unknown" }}<br />
+        <strong>Room:</strong> {{ receipt.location_context.get("room") or "Unknown" }}<br />
+        <strong>Combined location:</strong> {{ receipt.location_context.get("building_room") or "Unknown" }}
+      </p>
+    </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Assets ({{ receipt.assets|length }})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Asset Tag</th>
+          <th>Equipment</th>
+          <th>Serial</th>
+          <th>Make / Model</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Holder</th>
+          <th>Home Slot</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asset in receipt.assets %}
+          {% set issue_holder = asset.get("holder_snapshot") if asset.get("holder_snapshot") is mapping else None %}
+          {% set return_holder = asset.get("from_holder_snapshot") if asset.get("from_holder_snapshot") is mapping else None %}
+          {% set home_slot = asset.get("home_slot") if asset.get("home_slot") is mapping else None %}
+          <tr>
+            <td class="mono">{{ asset.get("asset_tag") or "" }}</td>
+            <td>{{ asset.get("equipment_type") or "" }}</td>
+            <td class="mono">{{ asset.get("serial_number") or "" }}</td>
+            <td>
+              {{ asset.get("manufacturer") or "" }}
+              {% if asset.get("model") %} / {{ asset.get("model") }}{% endif %}
+              {% if asset.get("model_code") %} ({{ asset.get("model_code") }}){% endif %}
+            </td>
+            <td>{{ asset.get("from_location_type") or "" }}{% if asset.get("from_building_room") %}<br />{{ asset.get("from_building_room") }}{% endif %}</td>
+            <td>{{ asset.get("to_location_type") or "" }}{% if asset.get("to_building_room") %}<br />{{ asset.get("to_building_room") }}{% endif %}</td>
+            <td>
+              {% if receipt.receipt_type == "ISSUE" %}
+                {% if issue_holder and issue_holder.get("name") %}
+                  {{ issue_holder.get("name") }}
+                  {% if issue_holder.get("identifier") %}<br />ID {{ issue_holder.get("identifier") }}{% endif %}
+                {% elif asset.get("holder_id") is not none %}
+                  holder_id {{ asset.get("holder_id") }}
+                {% else %}
+                  Unknown
+                {% endif %}
+              {% else %}
+                {% if return_holder and return_holder.get("name") %}
+                  {{ return_holder.get("name") }}
+                  {% if return_holder.get("identifier") %}<br />ID {{ return_holder.get("identifier") }}{% endif %}
+                {% elif asset.get("from_holder_id") is not none %}
+                  holder_id {{ asset.get("from_holder_id") }}
+                {% else %}
+                  None
+                {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              {% if home_slot %}
+                {{ home_slot.get("case_name") or "Unknown" }} / {{ home_slot.get("slot_position") if home_slot.get("slot_position") is not none else "Unknown" }}
+              {% else %}
+                Unknown
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8">No assets were captured in this receipt snapshot.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Source Events</h2>
+    <p>
+      {% if receipt.source_event_ids %}
+        {% for event_id in receipt.source_event_ids %}
+          <span class="mono">{{ event_id }}</span>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      {% else %}
+        None recorded.
+      {% endif %}
+    </p>
+  </section>
+{% endblock %}

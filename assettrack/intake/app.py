@@ -3917,6 +3917,94 @@ def holder_detail(holder_id: int):
     )
 
 
+@app.get("/receipts/<int:receipt_id>")
+@require_login
+def receipt_detail(receipt_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                id,
+                receipt_key,
+                receipt_type,
+                source_event_ids_json,
+                snapshot_json,
+                commit_at,
+                commit_operator_user_id,
+                holder_id
+            FROM receipt_queue
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        abort(404)
+
+    source_event_ids = json.loads(str(row["source_event_ids_json"] or "[]"))
+    if not isinstance(source_event_ids, list):
+        source_event_ids = []
+
+    snapshot = json.loads(str(row["snapshot_json"] or "{}"))
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    snapshot_assets = snapshot.get("assets")
+    assets = snapshot_assets if isinstance(snapshot_assets, list) else []
+    location_context = snapshot.get("location_context")
+    if not isinstance(location_context, dict):
+        location_context = None
+    acknowledgment = snapshot.get("acknowledgment")
+    if not isinstance(acknowledgment, dict):
+        acknowledgment = None
+
+    snapshot_receipt_type = str(snapshot.get("receipt_type") or "").strip().upper()
+    row_receipt_type = str(row["receipt_type"] or "").strip().upper()
+    receipt_type = snapshot_receipt_type or row_receipt_type
+
+    snapshot_commit_at = str(snapshot.get("commit_at") or "").strip()
+    commit_at = snapshot_commit_at or str(row["commit_at"] or "")
+
+    snapshot_operator_id = snapshot.get("commit_operator_user_id")
+    commit_operator_user_id = (
+        int(snapshot_operator_id)
+        if snapshot_operator_id is not None
+        else int(row["commit_operator_user_id"])
+    )
+
+    receipt = {
+        "id": int(row["id"]),
+        "receipt_key": str(row["receipt_key"] or ""),
+        "receipt_type": receipt_type,
+        "commit_at": commit_at,
+        "commit_operator_user_id": commit_operator_user_id,
+        "commit_operator": snapshot.get("commit_operator") if isinstance(snapshot.get("commit_operator"), dict) else None,
+        "holder_id": snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"],
+        "holder_snapshot": snapshot.get("holder_snapshot") if isinstance(snapshot.get("holder_snapshot"), dict) else None,
+        "organization_snapshot": (
+            snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
+        ),
+        "acknowledgment": acknowledgment,
+        "location_context": location_context,
+        "assets": assets,
+        "source_event_ids": source_event_ids,
+    }
+
+    return render_template(
+        "receipt_detail.html",
+        receipt=receipt,
+    )
+
+
 @app.get("/holders/new")
 @require_login
 def holders_new():
