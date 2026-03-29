@@ -568,7 +568,7 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     assert response.mimetype == "application/pdf"
     disposition = response.headers.get("Content-Disposition") or ""
     assert "attachment;" in disposition
-    assert f"receipt-{receipt_id}-issue.pdf" in disposition
+    assert "Issue Receipt - Issue Holder - Mar 29, 2026.pdf" in disposition
 
     pdf_text = _extract_pdf_text(response.data)
     assert "Custody Acknowledgment Receipt" in pdf_text
@@ -583,6 +583,17 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     assert "Dell / Latitude (LAT-14)" in pdf_text
     assert "IN CUSTODY" in pdf_text
     assert "IN_CUSTODY" not in pdf_text
+
+
+def test_return_receipt_pdf_download_uses_human_readable_filename(client_with_temp_db) -> None:
+    receipt_id = _create_return_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+
+    assert response.status_code == 200
+    disposition = response.headers.get("Content-Disposition") or ""
+    assert "attachment;" in disposition
+    assert "Return Receipt - Return Holder One - Mar 29, 2026.pdf" in disposition
 
 
 def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:

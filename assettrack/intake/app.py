@@ -4445,6 +4445,14 @@ def _receipt_display_title(receipt_type: str, holder_name: str, display_date: st
     return f"{_receipt_type_label(receipt_type)} — {holder_name or 'Unknown Holder'} — {display_date or 'Unknown Date'}"
 
 
+def _receipt_pdf_download_name(receipt: dict[str, object]) -> str:
+    title = str(receipt.get("display_title") or "").strip() or "Receipt"
+    sanitized = title.replace(" — ", " - ")
+    sanitized = re.sub(r'[<>:"/\\|?*]', " ", sanitized)
+    sanitized = re.sub(r"\s+", " ", sanitized).strip().rstrip(". ")
+    return f"{sanitized or 'Receipt'}.pdf"
+
+
 def _receipt_pdf_ack_name(receipt: dict[str, object]) -> str:
     holder_snapshot = receipt.get("holder_snapshot")
     if isinstance(holder_snapshot, dict):
@@ -4794,8 +4802,7 @@ def receipt_pdf(receipt_id: int):
 
     receipt = _receipt_from_queue_row(row)
     pdf_bytes = _build_receipt_pdf(receipt)
-    receipt_type = str(receipt.get("receipt_type") or "").strip().lower() or "acknowledgment"
-    download_name = f"receipt-{receipt['id']}-{receipt_type}.pdf"
+    download_name = _receipt_pdf_download_name(receipt)
     return send_file(
         BytesIO(pdf_bytes),
         as_attachment=True,
