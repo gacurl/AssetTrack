@@ -4246,6 +4246,39 @@ def admin_db_export():
     )
 
 
+@app.get("/report")
+@require_login
+def human_report():
+    resolved_db_path = _resolved_runtime_db_path()
+    report_error: str | None = None
+    report_data = {
+        "asset_summary": {
+            "total_assets": 0,
+            "storage_assets": 0,
+            "in_custody_assets": 0,
+            "disposed_assets": 0,
+        },
+        "assets": [],
+        "holders": [],
+        "organizations": [],
+        "organization_building_mappings": [],
+        "current_custody": [],
+        "recent_active_events": [],
+        "cases": [],
+    }
+
+    try:
+        report_data = _load_admin_human_report_data(resolved_db_path)
+    except sqlite3.Error as exc:
+        report_error = f"Could not read report data: {exc}"
+
+    return render_template(
+        "report_readonly.html",
+        report_error=report_error,
+        **report_data,
+    )
+
+
 @app.get("/admin/report")
 @require_login
 @require_role("admin")

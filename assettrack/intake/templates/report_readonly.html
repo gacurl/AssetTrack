@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Admin Current Status Report{% endblock %}
-{% block page_heading %}Admin: Current Status Report{% endblock %}
+{% block title %}Current Status Report{% endblock %}
+{% block page_heading %}Current Status Report{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -49,9 +49,7 @@
 
 {% block content %}
   <div class="report-actions">
-    <a class="chip" href="{{ url_for('admin_system') }}">&larr; Back to Admin Tools</a>
-    <a class="chip" href="{{ url_for('admin_human_report_pdf') }}">Download PDF</a>
-    <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    <a class="chip" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
   </div>
 
   {% if report_error %}
@@ -60,8 +58,7 @@
 
   <div class="card">
     <h2>Report Scope</h2>
-    <p>This page is a read-only human-readable report for operators and admins. It does not replace the raw SQLite database backup.</p>
-    <p><strong>Database path:</strong> <code>{{ db_path }}</code></p>
+    <p>This page is a read-only human-readable report for custody review and verification.</p>
     <p><strong>Recent events section:</strong> showing recent active events only.</p>
   </div>
 
