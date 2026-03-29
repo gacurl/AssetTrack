@@ -211,6 +211,7 @@ class AdminRetireAssetTests(unittest.TestCase):
                     "ack_at": "2026-03-28T00:00:00Z",
                     "ack_scope": "batch",
                 },
+                commit_operator_user_id=1,
             )
 
         with self.assertRaisesRegex(ValueError, "Retired/disposed"):
@@ -222,6 +223,7 @@ class AdminRetireAssetTests(unittest.TestCase):
                     "ack_at": "2026-03-28T00:00:00Z",
                     "ack_scope": "batch",
                 },
+                commit_operator_user_id=1,
             )
 
     def test_admin_assign_slot_refuses_retired_asset(self) -> None:

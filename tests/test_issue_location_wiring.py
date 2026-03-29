@@ -211,9 +211,17 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
         ).fetchone()
         event_row = conn.execute(
             """
-            SELECT payload, holder_id
+            SELECT id, payload, holder_id
             FROM asset_events
             WHERE asset_tag = 'ISSUE-100' AND event_type = 'ISSUE'
+            ORDER BY id DESC
+            LIMIT 1;
+            """
+        ).fetchone()
+        receipt_row = conn.execute(
+            """
+            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json
+            FROM receipt_queue
             ORDER BY id DESC
             LIMIT 1;
             """
@@ -246,6 +254,23 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert int(payload["responsibility_ack"]["ack_operator_user_id"]) > 0
     assert payload["responsibility_ack"]["ack_at"]
     assert payload["responsibility_ack"]["ack_scope"] == "batch"
+    assert receipt_row is not None
+    assert str(receipt_row["receipt_type"]) == "ISSUE"
+    assert int(receipt_row["commit_operator_user_id"]) > 0
+    assert int(receipt_row["holder_id"]) == 1
+    assert json.loads(str(receipt_row["source_event_ids_json"])) == [int(event_row["id"])]
+    receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
+    assert receipt_snapshot["receipt_type"] == "ISSUE"
+    assert receipt_snapshot["holder_id"] == 1
+    assert receipt_snapshot["source_event_ids"] == [int(event_row["id"])]
+    assert receipt_snapshot["location_context"]["building"] == "HQ North"
+    assert receipt_snapshot["location_context"]["room"] == "210"
+    assert receipt_snapshot["location_context"]["building_room"] == "HQ North/210"
+    assert receipt_snapshot["acknowledgment"]["ack_scope"] == "batch"
+    assert len(receipt_snapshot["assets"]) == 1
+    assert receipt_snapshot["assets"][0]["asset_tag"] == "ISSUE-100"
+    assert receipt_snapshot["assets"][0]["from_location_type"] == "STORAGE"
+    assert receipt_snapshot["assets"][0]["to_location_type"] == "IN_CUSTODY"
 
 
 def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db) -> None:
@@ -273,11 +298,14 @@ def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db
         event_count = conn.execute(
             "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = 'ISSUE-100' AND event_type = 'ISSUE';"
         ).fetchone()
+        receipt_count = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
     finally:
         conn.close()
 
     assert event_count is not None
     assert int(event_count["c"]) == 0
+    assert receipt_count is not None
+    assert int(receipt_count["c"]) == 0
 
 
 def test_issue_commit_missing_ack_shows_visible_message_on_issue_preview(client_with_temp_db) -> None:
