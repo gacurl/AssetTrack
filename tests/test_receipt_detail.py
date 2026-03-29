@@ -581,6 +581,8 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     assert "Initials: IH" in pdf_text
     assert "ISSUE-100" in pdf_text
     assert "Dell / Latitude (LAT-14)" in pdf_text
+    assert "IN CUSTODY" in pdf_text
+    assert "IN_CUSTODY" not in pdf_text
 
 
 def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:
