@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Receipt Detail{% endblock %}
-{% block page_heading %}Receipt {{ receipt.id }}{% endblock %}
+{% block title %}{{ receipt.display_title }}{% endblock %}
+{% block page_heading %}{{ receipt.display_title }}{% endblock %}
 {% block page_class %} receipt-detail-page{% endblock %}
 
 {% block extra_head %}
@@ -92,6 +92,7 @@
   </nav>
 
   <section class="card">
+    <p class="summary-label">Internal receipt ID {{ receipt.id }}</p>
     <div class="receipt-summary">
       <section class="summary-group">
         <h2 class="summary-group-title">Identity</h2>
@@ -100,8 +101,8 @@
           <div class="summary-copy mono">{{ receipt.id }}</div>
         </div>
         <div class="summary-value">
-          <div class="summary-label">Receipt type</div>
-          <div class="summary-copy">{{ receipt.receipt_type or "Unknown" }}</div>
+          <div class="summary-label">Receipt title</div>
+          <div class="summary-copy">{{ receipt.display_title }}</div>
         </div>
         <div class="summary-value">
           <div class="summary-label">Receipt key</div>
