@@ -204,7 +204,7 @@
     {% block extra_head %}{% endblock %}
   </head>
   <body>
-    <div class="page">
+    <div class="page{% block page_class %}{% endblock %}">
       <div class="page-tools">
         <button
           type="button"

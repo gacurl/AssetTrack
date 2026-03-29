@@ -32,7 +32,10 @@ def test_receipts_list_asset_tag_search_returns_expected_receipt(client_with_tem
 
     assert response.status_code == 200
     assert f'href="/receipts/{return_receipt_id}"'.encode("utf-8") in response.data
-    assert response.data.count(b'">Open</a>') == 1
+    assert b"Matched asset tag" in response.data
+    assert b"Matched by asset tag search" in response.data
+    assert b"RETURN-200" in response.data
+    assert response.data.count(b'href="/receipts/') == 1
 
 
 def test_receipts_list_holder_name_search_returns_expected_receipt(client_with_temp_db) -> None:
@@ -44,7 +47,7 @@ def test_receipts_list_holder_name_search_returns_expected_receipt(client_with_t
     assert response.status_code == 200
     assert f'href="/receipts/{issue_receipt_id}"'.encode("utf-8") in response.data
     assert b"Issue Holder" in response.data
-    assert response.data.count(b'">Open</a>') == 1
+    assert response.data.count(b'href="/receipts/') == 1
 
 
 def test_receipts_list_building_room_search_returns_expected_receipt(client_with_temp_db) -> None:
@@ -55,7 +58,7 @@ def test_receipts_list_building_room_search_returns_expected_receipt(client_with
 
     assert response.status_code == 200
     assert f'href="/receipts/{mixed_return_receipt_id}"'.encode("utf-8") in response.data
-    assert response.data.count(b'">Open</a>') == 1
+    assert response.data.count(b'href="/receipts/') == 1
 
 
 def test_mixed_holder_return_renders_multiple_holders_summary(client_with_temp_db) -> None:
@@ -66,6 +69,27 @@ def test_mixed_holder_return_renders_multiple_holders_summary(client_with_temp_d
     assert response.status_code == 200
     assert f'href="/receipts/{mixed_return_receipt_id}"'.encode("utf-8") in response.data
     assert b"Multiple holders" in response.data
+    assert b"Return location varies by asset" in response.data
+
+
+def test_receipts_list_shows_asset_tag_in_default_results(client_with_temp_db) -> None:
+    _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get("/receipts")
+
+    assert response.status_code == 200
+    assert b"Asset Tag" in response.data
+    assert b"ISSUE-100" in response.data
+
+
+def test_receipts_list_renders_clear_search_link_when_filters_are_active(client_with_temp_db) -> None:
+    _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get("/receipts?holder_name=Issue%20Holder")
+
+    assert response.status_code == 200
+    assert b'href="/receipts"' in response.data
+    assert b"Clear search" in response.data
 
 
 @pytest.mark.parametrize("role", ["operator", "admin"])
@@ -110,6 +134,8 @@ def test_receipts_list_links_to_existing_receipt_detail(client_with_temp_db) -> 
 
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
+    assert f"Receipt ID {receipt_id}".encode("utf-8") in response.data
+    assert b"Detail" not in response.data
 
     detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert detail_response.status_code == 200
