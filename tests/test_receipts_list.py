@@ -33,7 +33,7 @@ def test_receipts_list_asset_tag_search_returns_expected_receipt(client_with_tem
     assert response.status_code == 200
     assert f'href="/receipts/{return_receipt_id}"'.encode("utf-8") in response.data
     assert b"Matched asset tag" in response.data
-    assert b"Matched by asset tag search" in response.data
+    assert b"Asset tag search match" in response.data
     assert b"RETURN-200" in response.data
     assert response.data.count(b'href="/receipts/') == 1
 

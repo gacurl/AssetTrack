@@ -38,6 +38,9 @@
       vertical-align: top;
       padding-block: 0.9rem;
     }
+    .receipts-table td {
+      overflow-wrap: anywhere;
+    }
     .receipt-primary {
       display: grid;
       gap: 0.2rem;
@@ -69,9 +72,27 @@
     .asset-tag-extra {
       color: var(--color-text-muted);
     }
-    .asset-tag-match {
+    .matched-tag {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--color-primary);
+      border-radius: 999px;
+      background: var(--color-primary-soft);
       color: var(--color-primary);
-      font-weight: 600;
+      font-weight: 700;
+    }
+    .asset-tag-match {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: var(--color-warning-soft);
+      color: var(--color-primary);
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
     .commit-cell {
       white-space: nowrap;
@@ -82,6 +103,51 @@
     }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .muted-cell { color: var(--color-text-muted); }
+    @media (max-width: 1180px) {
+      .receipts-table {
+        table-layout: auto;
+      }
+      .receipts-table thead {
+        display: none;
+      }
+      .receipts-table tbody,
+      .receipts-table tr {
+        display: block;
+      }
+      .receipts-table tr {
+        margin-bottom: 1rem;
+        border: 1px solid var(--color-surface);
+        border-radius: 10px;
+        background: var(--color-surface-bg);
+      }
+      .receipts-table td {
+        display: block;
+        padding: 0.75rem 0.9rem;
+        border-bottom: 1px solid var(--color-surface);
+      }
+      .receipts-table td:last-child {
+        border-bottom: 0;
+      }
+      .receipts-table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.25rem;
+        color: var(--color-text-muted);
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .commit-cell {
+        white-space: normal;
+      }
+      .commit-stamp {
+        width: fit-content;
+        padding: 0.18rem 0.45rem;
+        border-radius: 6px;
+        background: var(--color-surface-soft);
+      }
+    }
   </style>
 {% endblock %}
 
@@ -134,22 +200,22 @@
       <tbody>
         {% for receipt in receipts %}
           <tr>
-            <td>
+            <td data-label="Receipt">
               <div class="receipt-primary">
                 <div class="receipt-title">{{ receipt.receipt_type }}</div>
                 <div class="receipt-meta mono">{{ receipt.receipt_key }}</div>
                 <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
                 {% if receipt.matched_asset_tags %}
-                  <div class="receipt-meta">Matched by asset tag search</div>
+                  <div class="asset-tag-match">Asset tag search match</div>
                 {% endif %}
               </div>
             </td>
-            <td>
+            <td data-label="Asset Tag">
               <div class="receipt-primary">
                 {% if receipt.visible_asset_tags %}
                   {% for asset_tag in receipt.visible_asset_tags %}
-                    <div class="asset-tag-line mono">{{ asset_tag }}</div>
+                    <div class="asset-tag-line mono{% if receipt.matched_asset_tags and asset_tag in receipt.matched_asset_tags %} matched-tag{% endif %}">{{ asset_tag }}</div>
                   {% endfor %}
                 {% else %}
                   <div class="asset-tag-line muted-cell">No asset tag</div>
@@ -161,12 +227,12 @@
                 {% endif %}
               </div>
             </td>
-            <td class="commit-cell">
+            <td class="commit-cell" data-label="Commit">
               <div class="receipt-primary">
                 <div class="commit-stamp mono">{{ receipt.commit_at_display }}</div>
               </div>
             </td>
-            <td>
+            <td data-label="Holder">
               <div class="receipt-primary">
                 <div>{{ receipt.holder_summary }}</div>
                 {% if receipt.organization_summary %}
@@ -174,7 +240,7 @@
                 {% endif %}
               </div>
             </td>
-            <td class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Return location varies by asset'] else '' }}">
+            <td data-label="Location" class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Return location varies by asset'] else '' }}">
               <div class="receipt-primary">
                 <div>{{ receipt.location_summary }}</div>
                 {% if receipt.location_summary == "Return location varies by asset" %}
@@ -185,7 +251,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="5">No receipts matched the current search.</td>
+            <td colspan="5" data-label="Results">No receipts matched the current search.</td>
           </tr>
         {% endfor %}
       </tbody>
