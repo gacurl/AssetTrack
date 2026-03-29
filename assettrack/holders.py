@@ -1,10 +1,22 @@
 # file: assettrack/holders.py
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from assettrack.db import DEFAULT_AD_HOC_ORGANIZATION, get_connection
 from assettrack.reference_data import get_organization
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_email(email: str | None) -> str | None:
+    normalized = str(email or "").strip().lower()
+    if not normalized:
+        return None
+    if len(normalized) > 254 or not EMAIL_PATTERN.match(normalized):
+        raise ValueError("email is invalid")
+    return normalized
 
 
 def search_holders(query: str, limit: int = 20) -> list[dict]:
@@ -45,12 +57,13 @@ def list_holders() -> list[dict]:
                 h.name,
                 h.organization,
                 h.identifier,
+                h.email,
                 h.contact_info,
                 COUNT(a.id) AS asset_count
             FROM holders h
             LEFT JOIN assets a
               ON a.current_holder_id = h.id
-            GROUP BY h.id, h.holder_type, h.name, h.organization, h.identifier, h.contact_info
+            GROUP BY h.id, h.holder_type, h.name, h.organization, h.identifier, h.email, h.contact_info
             ORDER BY h.name COLLATE NOCASE ASC, h.id ASC;
             """
         ).fetchall()
@@ -88,6 +101,7 @@ def create_holder(
     *,
     holder_type: str = "PERSON",
     organization_id: int,
+    email: str | None = None,
     identifier: str | None = None,
     contact_info: str | None = None,
 ) -> dict:
@@ -105,14 +119,17 @@ def create_holder(
         raise ValueError("name is required")
     normalized_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else holder_type
     persisted_name = normalized_name or normalized_organization
+    normalized_email = _normalize_email(email)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
         cursor = conn.execute(
             """
-            INSERT INTO holders (holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO holders (
+                holder_type, name, organization, organization_id, identifier, email, contact_info, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 normalized_holder_type,
@@ -120,6 +137,7 @@ def create_holder(
                 normalized_organization,
                 normalized_organization_id,
                 identifier,
+                normalized_email,
                 contact_info,
                 now_iso,
                 now_iso,
@@ -144,6 +162,7 @@ def update_holder(
     *,
     name: str,
     organization_id: int,
+    email: str | None = None,
 ) -> dict:
     try:
         normalized_id = int(holder_id)
@@ -164,6 +183,7 @@ def update_holder(
         raise ValueError("name is required")
     persisted_name = normalized_name or normalized_organization
     persisted_holder_type = "ORGANIZATION" if not normalized_name and normalized_organization else "PERSON"
+    normalized_email = _normalize_email(email)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     conn = get_connection()
@@ -171,7 +191,7 @@ def update_holder(
         cursor = conn.execute(
             """
             UPDATE holders
-            SET holder_type = ?, name = ?, organization = ?, organization_id = ?, updated_at = ?
+            SET holder_type = ?, name = ?, organization = ?, organization_id = ?, email = ?, updated_at = ?
             WHERE id = ?;
             """,
             (
@@ -179,6 +199,7 @@ def update_holder(
                 persisted_name,
                 normalized_organization,
                 normalized_organization_id,
+                normalized_email,
                 now_iso,
                 normalized_id,
             ),

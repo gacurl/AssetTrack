@@ -73,6 +73,7 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual(holder["name"], "Jane Doe")
         self.assertEqual(holder["identifier"], "ID-123")
         self.assertEqual(holder["organization"], "Ad Hoc")
+        self.assertIsNone(holder["email"])
 
     def test_search_holders_by_name_and_identifier(self) -> None:
         ad_hoc_id = self._insert_organization("Ad Hoc")
@@ -115,15 +116,23 @@ class HoldersTests(unittest.TestCase):
     def test_create_and_update_holder_organization(self) -> None:
         alpha_org_id = self._insert_organization("Alpha Org")
         bravo_org_id = self._insert_organization("Bravo Org")
-        created = create_holder("Org Holder", organization_id=alpha_org_id)
+        created = create_holder("Org Holder", organization_id=alpha_org_id, email="first@example.org")
         self.assertEqual(created["organization"], "Alpha Org")
+        self.assertEqual(created["email"], "first@example.org")
 
-        updated = update_holder(int(created["id"]), name="Org Holder", organization_id=bravo_org_id)
+        updated = update_holder(
+            int(created["id"]),
+            name="Org Holder",
+            organization_id=bravo_org_id,
+            email="second@example.org",
+        )
         self.assertEqual(updated["organization"], "Bravo Org")
+        self.assertEqual(updated["email"], "second@example.org")
 
         fetched = get_holder(int(created["id"]))
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched["organization"], "Bravo Org")
+        self.assertEqual(fetched["email"], "second@example.org")
 
     def test_create_holder_with_organization_id_sets_denormalized_text(self) -> None:
         organization_id = self._insert_organization("Support Org")
@@ -149,3 +158,17 @@ class HoldersTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "name is required"):
             create_holder("", organization_id=ad_hoc_id)
+
+    def test_create_holder_rejects_invalid_email(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+
+        with self.assertRaisesRegex(ValueError, "email is invalid"):
+            create_holder("Bad Email", organization_id=organization_id, email="not-an-email")
+
+    def test_update_holder_allows_clearing_email(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+        created = create_holder("Email Holder", organization_id=organization_id, email="holder@example.org")
+
+        updated = update_holder(int(created["id"]), name="Email Holder", organization_id=organization_id, email="")
+
+        self.assertIsNone(updated["email"])

@@ -58,6 +58,7 @@ def test_initialize_schema_adds_holders_organization_column(tmp_path: Path) -> N
 
     assert "organization" in columns
     assert "organization_id" in columns
+    assert "email" in columns
     assert "organizations" in tables
     assert "buildings" in tables
     assert "organization_buildings" in tables
@@ -212,6 +213,61 @@ def test_initialize_schema_creates_ad_hoc_and_backfills_null_holder_organization
     assert holder is not None
     assert holder[0] == "Ad Hoc"
     assert holder[1] == ad_hoc[0]
+
+
+def test_initialize_schema_adds_holder_email_column_to_existing_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE holders (
+                id INTEGER PRIMARY KEY,
+                holder_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                organization TEXT NULL,
+                organization_id INTEGER NULL,
+                identifier TEXT NULL,
+                contact_info TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL UNIQUE
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE asset_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_date TEXT NOT NULL,
+                actor TEXT,
+                notes TEXT,
+                payload TEXT
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(holders);").fetchall()}
+    finally:
+        conn.close()
+
+    assert "email" in columns
 
 
 def test_initialize_if_missing_or_empty_does_not_mask_invalid_nonempty_db(tmp_path: Path) -> None:

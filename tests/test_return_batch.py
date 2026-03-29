@@ -59,7 +59,21 @@ class ReturnBatchTests(unittest.TestCase):
         )
         self.conn.commit()
 
+    def _insert_holder(self, holder_id: int, name: str, email: str = "") -> None:
+        self.conn.execute(
+            """
+            INSERT INTO holders (
+                id, holder_type, name, identifier, email, contact_info, created_at, updated_at
+            )
+            VALUES (?, 'PERSON', ?, ?, ?, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """,
+            (holder_id, name, f"H-{holder_id}", email),
+        )
+        self.conn.commit()
+
     def test_return_preview_and_commit_gating(self) -> None:
+        self._insert_holder(5, "Return Holder Five")
+        self._insert_holder(9, "Return Holder Nine", email="return@example.org")
         self._insert_slot(10, "A", 1, None)
         self._insert_slot(20, "B", 2, None)
         self._insert_asset("TAG-VALID", location_type="IN_CUSTODY", holder_id=5, home_slot_id=10)
@@ -87,7 +101,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Current State", preview_render.data)
         self.assertIn(b"After Return", preview_render.data)
         self.assertIn(b"Location: IN_CUSTODY", preview_render.data)
-        self.assertIn(b"Issued to: holder_id 5", preview_render.data)
+        self.assertIn(b"Issued to: Return Holder Five", preview_render.data)
         self.assertIn(b"Home location: A / 1", preview_render.data)
         self.assertIn(b'name="confirm_responsibility_ack"', preview_render.data)
         self.assertIn(b"responsibility for this return batch was acknowledged before commit", preview_render.data)
@@ -203,13 +217,48 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(receipt_snapshot["holder_id"], 9)
         self.assertEqual(receipt_snapshot["source_event_ids"], [int(event_row["id"])])
         self.assertEqual(receipt_snapshot["delivery"]["state"], "pending")
+        self.assertEqual(receipt_snapshot["recipient_email"], "return@example.org")
+        self.assertEqual(receipt_snapshot["holder_snapshot"]["email"], "return@example.org")
         self.assertEqual(len(receipt_snapshot["assets"]), 1)
         self.assertEqual(receipt_snapshot["assets"][0]["asset_tag"], "TAG-OK")
+        self.assertEqual(receipt_snapshot["assets"][0]["from_holder_snapshot"]["email"], "return@example.org")
         self.assertEqual(receipt_snapshot["assets"][0]["from_location_type"], "IN_CUSTODY")
         self.assertEqual(receipt_snapshot["assets"][0]["to_location_type"], "STORAGE")
         self.assertIsNone(receipt_row["sent_at"])
         self.assertIsNone(receipt_row["last_attempt_at"])
         self.assertIsNone(receipt_row["last_error"])
+
+    def test_return_commit_with_mixed_holders_keeps_snapshot_email_blank(self) -> None:
+        self._insert_holder(5, "Return Holder Five", email="five@example.org")
+        self._insert_holder(9, "Return Holder Nine", email="nine@example.org")
+        self._insert_slot(10, "A", 1, None)
+        self._insert_slot(20, "B", 2, None)
+        self._insert_asset("TAG-ONE", location_type="IN_CUSTODY", holder_id=5, home_slot_id=10)
+        self._insert_asset("TAG-TWO", location_type="IN_CUSTODY", holder_id=9, home_slot_id=20)
+
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-ONE", equipment_type="laptop"))
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-TWO", equipment_type="laptop"))
+
+        success = self.client.post(
+            "/return/commit?json=1",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        )
+
+        self.assertEqual(success.status_code, 200)
+
+        receipt_row = self.conn.execute(
+            """
+            SELECT holder_id, snapshot_json
+            FROM receipt_queue
+            ORDER BY id DESC
+            LIMIT 1;
+            """
+        ).fetchone()
+        self.assertIsNotNone(receipt_row)
+        self.assertIsNone(receipt_row["holder_id"])
+        receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
+        self.assertIsNone(receipt_snapshot["holder_id"])
+        self.assertEqual(receipt_snapshot["recipient_email"], "")
 
     def test_return_commit_missing_ack_redirects_back_to_preview_with_message(self) -> None:
         self._insert_slot(21, "C", 3, None)
