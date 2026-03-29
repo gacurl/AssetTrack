@@ -2,13 +2,40 @@
 
 {% block title %}Asset Search{% endblock %}
 {% block page_heading %}Asset Search{% endblock %}
+{% block page_class %} asset-search-page{% endblock %}
 
 {% block extra_head %}
   <style>
-    .search-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    input[type="text"] { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
+    .search-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1rem; }
+    .asset-search-page .search-grid .row { min-width: 0; }
+    .asset-search-page input[type="text"] {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 0.6rem;
+      font-size: 1rem;
+    }
+    .search-actions {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.25rem;
+    }
+    .search-clear {
+      display: inline-flex;
+      align-items: center;
+      color: var(--color-text-muted);
+      font-weight: 600;
+    }
     .result-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     .results-table code { white-space: nowrap; }
+    @media (max-width: 720px) {
+      .search-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 {% endblock %}
 
@@ -31,7 +58,12 @@
           <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" />
         </div>
       </div>
-      <button type="submit">Search</button>
+      <div class="search-actions">
+        <button type="submit">Search</button>
+        {% if form.asset_tag or form.serial_number %}
+          <a class="search-clear" href="{{ url_for('asset_search') }}">Clear</a>
+        {% endif %}
+      </div>
     </form>
   </div>
 
