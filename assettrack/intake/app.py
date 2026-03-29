@@ -4005,7 +4005,7 @@ def receipt_detail(receipt_id: int):
     )
 
 
-def _receipt_summary_from_row(row: sqlite3.Row) -> dict[str, object]:
+def _receipt_summary_from_row(row: sqlite3.Row, asset_tag_filter: str = "") -> dict[str, object]:
     snapshot = json.loads(str(row["snapshot_json"] or "{}"))
     if not isinstance(snapshot, dict):
         snapshot = {}
@@ -4040,7 +4040,7 @@ def _receipt_summary_from_row(row: sqlite3.Row) -> dict[str, object]:
     if location_context and str(location_context.get("building_room") or "").strip():
         location_summary = str(location_context.get("building_room") or "").strip()
     elif receipt_type == "RETURN":
-        location_summary = "Asset-specific return locations"
+        location_summary = "Return location varies by asset"
     else:
         location_summary = "Unknown"
 
@@ -4049,16 +4049,45 @@ def _receipt_summary_from_row(row: sqlite3.Row) -> dict[str, object]:
     else:
         committed_by = f"user_id {int(row['commit_operator_user_id'])}"
 
+    try:
+        commit_at_display = datetime.fromisoformat(commit_at).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        commit_at_display = commit_at or "Unknown"
+
+    normalized_asset_tag_filter = asset_tag_filter.strip().upper()
+    matched_asset_tags: list[str] = []
+    asset_tags: list[str] = []
+    if normalized_asset_tag_filter:
+        for asset in asset_list:
+            if not isinstance(asset, dict):
+                continue
+            asset_tag = str(asset.get("asset_tag") or "").strip()
+            if asset_tag and normalized_asset_tag_filter in asset_tag.upper():
+                matched_asset_tags.append(asset_tag)
+    for asset in asset_list:
+        if not isinstance(asset, dict):
+            continue
+        asset_tag = str(asset.get("asset_tag") or "").strip()
+        if asset_tag:
+            asset_tags.append(asset_tag)
+
+    visible_asset_tags = matched_asset_tags or asset_tags[:1]
+    additional_asset_tag_count = max(len(asset_tags) - len(visible_asset_tags), 0)
+
     return {
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
         "commit_at": commit_at,
+        "commit_at_display": commit_at_display,
         "committed_by": committed_by,
         "holder_summary": holder_summary,
         "organization_summary": organization_summary,
         "location_summary": location_summary,
         "asset_count": len(asset_list),
+        "visible_asset_tags": visible_asset_tags,
+        "additional_asset_tag_count": additional_asset_tag_count,
+        "matched_asset_tags": matched_asset_tags,
     }
 
 
@@ -4146,7 +4175,7 @@ def receipts_list():
     finally:
         conn.close()
 
-    receipts = [_receipt_summary_from_row(row) for row in rows]
+    receipts = [_receipt_summary_from_row(row, asset_tag_filter=asset_tag) for row in rows]
 
     return render_template(
         "receipts_list.html",

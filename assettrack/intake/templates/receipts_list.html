@@ -2,9 +2,13 @@
 
 {% block title %}Receipts{% endblock %}
 {% block page_heading %}Receipts{% endblock %}
+{% block page_class %} receipts-page{% endblock %}
 
 {% block extra_head %}
   <style>
+    .page.receipts-page {
+      max-width: 1440px;
+    }
     .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .filters {
       display: grid;
@@ -12,8 +16,69 @@
       gap: 0.75rem;
       align-items: end;
     }
+    .filter-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
     .filters .row {
       margin: 0;
+    }
+    .receipts-table {
+      table-layout: fixed;
+    }
+    .receipts-table th:nth-child(1) { width: 29%; }
+    .receipts-table th:nth-child(2) { width: 21%; }
+    .receipts-table th:nth-child(3) { width: 14%; }
+    .receipts-table th:nth-child(4) { width: 20%; }
+    .receipts-table th:nth-child(5) { width: 16%; }
+    .receipts-table th,
+    .receipts-table td {
+      vertical-align: top;
+      padding-block: 0.9rem;
+    }
+    .receipt-primary {
+      display: grid;
+      gap: 0.2rem;
+    }
+    .receipt-title {
+      font-weight: 600;
+    }
+    .receipt-link {
+      display: inline-block;
+      color: var(--color-primary);
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 0.12em;
+      cursor: pointer;
+    }
+    .asset-tag-line {
+      font-weight: 600;
+    }
+    .receipt-meta,
+    .location-note {
+      color: var(--color-text-muted);
+      font-size: 0.95rem;
+    }
+    .asset-tag-line,
+    .asset-tag-extra,
+    .asset-tag-match {
+      font-size: 0.95rem;
+    }
+    .asset-tag-extra {
+      color: var(--color-text-muted);
+    }
+    .asset-tag-match {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+    .commit-cell {
+      white-space: nowrap;
+    }
+    .commit-stamp {
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
     }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .muted-cell { color: var(--color-text-muted); }
@@ -43,7 +108,12 @@
           <input id="building_room" name="building_room" type="text" value="{{ filters.building_room }}" />
         </div>
         <div class="row">
-          <button type="submit">Search</button>
+          <div class="filter-actions">
+            <button type="submit">Search</button>
+            {% if filters.asset_tag or filters.holder_name or filters.building_room %}
+              <a href="{{ url_for('receipts_list') }}">Clear search</a>
+            {% endif %}
+          </div>
         </div>
       </div>
     </form>
@@ -51,40 +121,71 @@
 
   <section class="card">
     <h2>Receipt Results ({{ receipts|length }})</h2>
-    <table>
+    <table class="receipts-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Receipt Key</th>
-          <th>Type</th>
-          <th>Committed At</th>
-          <th>Committed By</th>
+          <th>Receipt</th>
+          <th>Asset Tag</th>
+          <th>Commit</th>
           <th>Holder</th>
-          <th>Organization</th>
           <th>Location</th>
-          <th>Assets</th>
-          <th>Detail</th>
         </tr>
       </thead>
       <tbody>
         {% for receipt in receipts %}
           <tr>
-            <td class="mono">{{ receipt.id }}</td>
-            <td class="mono">{{ receipt.receipt_key }}</td>
-            <td>{{ receipt.receipt_type }}</td>
-            <td>{{ receipt.commit_at or "Unknown" }}</td>
-            <td>{{ receipt.committed_by }}</td>
-            <td>{{ receipt.holder_summary }}</td>
-            <td>{{ receipt.organization_summary or "" }}</td>
-            <td class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Asset-specific return locations'] else '' }}">
-              {{ receipt.location_summary }}
+            <td>
+              <div class="receipt-primary">
+                <div class="receipt-title">{{ receipt.receipt_type }}</div>
+                <div class="receipt-meta mono">{{ receipt.receipt_key }}</div>
+                <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
+                <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
+                {% if receipt.matched_asset_tags %}
+                  <div class="receipt-meta">Matched by asset tag search</div>
+                {% endif %}
+              </div>
             </td>
-            <td>{{ receipt.asset_count }}</td>
-            <td><a href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Open</a></td>
+            <td>
+              <div class="receipt-primary">
+                {% if receipt.visible_asset_tags %}
+                  {% for asset_tag in receipt.visible_asset_tags %}
+                    <div class="asset-tag-line mono">{{ asset_tag }}</div>
+                  {% endfor %}
+                {% else %}
+                  <div class="asset-tag-line muted-cell">No asset tag</div>
+                {% endif %}
+                {% if receipt.matched_asset_tags %}
+                  <div class="asset-tag-match">Matched asset tag</div>
+                {% elif receipt.additional_asset_tag_count > 0 %}
+                  <div class="asset-tag-extra">+{{ receipt.additional_asset_tag_count }} more asset{% if receipt.additional_asset_tag_count != 1 %}s{% endif %}</div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="commit-cell">
+              <div class="receipt-primary">
+                <div class="commit-stamp mono">{{ receipt.commit_at_display }}</div>
+              </div>
+            </td>
+            <td>
+              <div class="receipt-primary">
+                <div>{{ receipt.holder_summary }}</div>
+                {% if receipt.organization_summary %}
+                  <div class="receipt-meta">{{ receipt.organization_summary }}</div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Return location varies by asset'] else '' }}">
+              <div class="receipt-primary">
+                <div>{{ receipt.location_summary }}</div>
+                {% if receipt.location_summary == "Return location varies by asset" %}
+                  <div class="location-note">See the receipt details for each asset's return location.</div>
+                {% endif %}
+              </div>
+            </td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="10">No receipts matched the current search.</td>
+            <td colspan="5">No receipts matched the current search.</td>
           </tr>
         {% endfor %}
       </tbody>
