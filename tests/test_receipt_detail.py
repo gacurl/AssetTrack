@@ -27,6 +27,7 @@ def _insert_holder(
     identifier: str,
     organization: str = "",
     organization_id: int | None = None,
+    contact_info: str = "",
 ) -> None:
     conn = db.get_connection()
     try:
@@ -43,9 +44,9 @@ def _insert_holder(
             INSERT INTO holders (
                 id, holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
             )
-            VALUES (?, 'PERSON', ?, ?, ?, ?, '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            VALUES (?, 'PERSON', ?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
             """,
-            (holder_id, name, organization, organization_id, identifier),
+            (holder_id, name, organization, organization_id, identifier, contact_info),
         )
         conn.commit()
     finally:
@@ -594,6 +595,187 @@ def test_return_receipt_pdf_download_uses_human_readable_filename(client_with_te
     disposition = response.headers.get("Content-Disposition") or ""
     assert "attachment;" in disposition
     assert "Return Receipt - Return Holder One - Mar 29, 2026.pdf" in disposition
+
+
+def test_receipt_send_success_updates_delivery_state(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        contact_info="issue@example.org",
+    )
+    _insert_slot(10, "CASE-10", 1)
+    _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
+    _occupy_slot(10, 100)
+    _login_issue_operator(client_with_temp_db)
+    intake_app.SCAN_QUEUE.clear()
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="ISSUE-100", equipment_type="laptop"))
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+    assert commit.status_code == 302
+    receipt_id = _latest_receipt_id()
+
+    sent_receipts: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        sent_receipts.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 200
+    assert response.json["ok"] is True
+    assert int(response.json["receipt_id"]) == receipt_id
+    assert response.json["recipients"] == ["issue@example.org"]
+    assert sent_receipts == [receipt_id]
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["sent_at"] is not None
+    assert row["last_attempt_at"] is not None
+    assert row["last_error"] is None
+
+
+def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        contact_info="issue@example.org",
+    )
+    _insert_slot(10, "CASE-10", 1)
+    _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
+    _occupy_slot(10, 100)
+    _login_issue_operator(client_with_temp_db)
+    intake_app.SCAN_QUEUE.clear()
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="ISSUE-100", equipment_type="laptop"))
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+    assert commit.status_code == 302
+    receipt_id = _latest_receipt_id()
+
+    def _fake_send(_receipt: dict[str, object]) -> list[str]:
+        raise RuntimeError("smtp offline")
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 500
+    assert response.json == {"ok": False, "error": "smtp offline"}
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["sent_at"] is None
+    assert row["last_attempt_at"] is not None
+    assert row["last_error"] == "smtp offline"
+
+
+def test_receipt_send_rejects_historical_nonqueued_receipt(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT snapshot_json FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot.pop("delivery", None)
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = NULL, last_attempt_at = NULL, last_error = NULL
+            WHERE id = ?;
+            """,
+            (json.dumps(snapshot, sort_keys=True), receipt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 400
+    assert response.json == {"ok": False, "error": "Receipt is not queued for email."}
+    assert send_calls == []
+
+
+def test_receipt_send_does_not_resend_after_success(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        contact_info="issue@example.org",
+    )
+    _insert_slot(10, "CASE-10", 1)
+    _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
+    _occupy_slot(10, 100)
+    _login_issue_operator(client_with_temp_db)
+    intake_app.SCAN_QUEUE.clear()
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="ISSUE-100", equipment_type="laptop"))
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+    assert commit.status_code == 302
+    receipt_id = _latest_receipt_id()
+
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    first = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+    second = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert first.status_code == 200
+    assert second.status_code == 400
+    assert second.json == {"ok": False, "error": "Receipt is not queued for email."}
+    assert send_calls == [receipt_id]
 
 
 def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:
