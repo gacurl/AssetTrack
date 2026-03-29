@@ -17,8 +17,8 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn = db.get_connection()
     conn.execute(
         """
-        INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
-        VALUES (1, 'PERSON', 'Issue Holder', 'IH-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        INSERT INTO holders (id, holder_type, name, identifier, email, contact_info, created_at, updated_at)
+        VALUES (1, 'PERSON', 'Issue Holder', 'IH-1', 'issue@example.org', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
         """
     )
     conn.commit()
@@ -230,7 +230,10 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
     assert receipt_snapshot["source_event_ids"] == source_event_ids
     assert receipt_snapshot["delivery"]["state"] == "pending"
+    assert receipt_snapshot["recipient_email"] == "issue@example.org"
+    assert receipt_snapshot["holder_snapshot"]["email"] == "issue@example.org"
     assert len(receipt_snapshot["assets"]) == 2
+    assert receipt_snapshot["assets"][0]["holder_snapshot"]["email"] == "issue@example.org"
     assert receipt_row["sent_at"] is None
     assert receipt_row["last_attempt_at"] is None
     assert receipt_row["last_error"] is None

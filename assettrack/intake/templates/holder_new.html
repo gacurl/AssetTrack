@@ -41,6 +41,10 @@
           {% endfor %}
         </select>
       </div>
+      <div class="row">
+        <label for="email"><strong>Email</strong> (optional)</label><br />
+        <input type="text" id="email" name="email" value="{{ form.email or '' }}" inputmode="email" autocomplete="email" />
+      </div>
       <button type="submit">Create Holder</button>
     </form>
   </div>

@@ -60,7 +60,8 @@
         <strong>Type:</strong> {{ holder_display_type(selected_holder) }}<br />
         <strong>Person or group:</strong> {{ holder_display_name(selected_holder) }}<br />
         <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
-        <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
+        <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}<br />
+        <strong>Email:</strong> {{ selected_holder["email"] or "" }}
       </p>
       <form method="post" action="{{ url_for('holders_clear') }}">
         <button type="submit">Clear selection</button>
@@ -80,6 +81,7 @@
             <th style="width: 220px;">Name</th>
             <th style="width: 200px;">Organization</th>
             <th style="width: 180px;">Identifier</th>
+            <th style="width: 220px;">Email</th>
             <th>Contact</th>
             <th style="width: 100px;">Assets</th>
             <th style="width: 120px;">Edit</th>
@@ -99,6 +101,7 @@
               </td>
               <td>{{ h["organization"] or "" }}</td>
               <td><code>{{ h["identifier"] or "" }}</code></td>
+              <td>{{ h["email"] or "" }}</td>
               <td>{{ h["contact_info"] or "" }}</td>
               <td>{{ h.get("asset_count", "") }}</td>
               <td>

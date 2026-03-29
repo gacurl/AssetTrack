@@ -57,18 +57,19 @@ class HolderCreationViabilityTests(unittest.TestCase):
         org_id = self._create_org("Alpha Org")
         response = self.client.post(
             "/holders/new",
-            data={"name": holder_name, "organization_id": str(org_id)},
+            data={"name": holder_name, "organization_id": str(org_id), "email": "holder@example.org"},
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/holders"))
 
         row = self.conn.execute(
-            "SELECT id, name, organization, organization_id FROM holders WHERE name = ?;",
+            "SELECT id, name, organization, organization_id, email FROM holders WHERE name = ?;",
             (holder_name,),
         ).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row["organization"], "Alpha Org")
         self.assertEqual(int(row["organization_id"]), org_id)
+        self.assertEqual(row["email"], "holder@example.org")
 
     def test_post_holders_new_rejects_missing_organization(self) -> None:
         response = self.client.post(
@@ -176,18 +177,19 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         edit_post = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
-            data={"name": "Editable Holder", "organization_id": str(org_two_id)},
+            data={"name": "Editable Holder", "organization_id": str(org_two_id), "email": "updated@example.org"},
             follow_redirects=True,
         )
         self.assertEqual(edit_post.status_code, 200)
         self.assertIn(b"Updated holder: Editable Holder", edit_post.data)
 
         updated = self.conn.execute(
-            "SELECT organization, organization_id FROM holders WHERE id = ?;",
+            "SELECT organization, organization_id, email FROM holders WHERE id = ?;",
             (int(holder_row["id"]),),
         ).fetchone()
         self.assertEqual(updated["organization"], "Org Two")
         self.assertEqual(int(updated["organization_id"]), org_two_id)
+        self.assertEqual(updated["email"], "updated@example.org")
 
     def test_edit_holder_rejects_missing_organization(self) -> None:
         org_id = self._create_org("Org One")
@@ -317,9 +319,50 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Holder: Detail Holder", response.data)
         self.assertIn(b"Organization:</strong> Org Detail", response.data)
+        self.assertIn(b"Email:</strong>", response.data)
         self.assertIn(b"Assigned Assets (1)", response.data)
         self.assertIn(b"DETAIL-ASSET-1", response.data)
         self.assertIn(f'href="/holders/edit/{holder_id}"'.encode("utf-8"), response.data)
+
+    def test_post_holders_new_rejects_invalid_email_with_clear_feedback(self) -> None:
+        org_id = self._create_org("Alpha Org")
+
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "Invalid Email Holder", "organization_id": str(org_id), "email": "bad-email"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders/new"))
+
+        follow_up = self.client.get("/holders/new")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Enter a valid email address or leave it blank.", follow_up.data)
+        self.assertIn(b'value="bad-email"', follow_up.data)
+
+    def test_edit_holder_rejects_invalid_email_with_clear_feedback(self) -> None:
+        org_id = self._create_org("Alpha Org")
+        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_id)})
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Editable Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.post(
+            f"/holders/edit/{int(holder_row['id'])}",
+            data={"name": "Editable Holder", "organization_id": str(org_id), "email": "bad-email"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith(f"/holders/edit/{int(holder_row['id'])}"))
+
+        follow_up = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Enter a valid email address or leave it blank.", follow_up.data)
+        self.assertIn(b'value="bad-email"', follow_up.data)
 
     def test_holder_detail_shows_zero_assets_state(self) -> None:
         organization_id = self._create_org("Ad Hoc")

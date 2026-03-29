@@ -125,6 +125,10 @@
             </div>
           </div>
         {% endif %}
+        <div class="summary-value">
+          <div class="summary-label">Recipient email</div>
+          <div class="summary-copy">{{ receipt.recipient_email or "Not captured" }}</div>
+        </div>
         {% if receipt.delivery.last_attempt_at %}
           <div class="summary-value">
             <div class="summary-label">Last delivery attempt</div>

@@ -27,6 +27,7 @@ def _insert_holder(
     identifier: str,
     organization: str = "",
     organization_id: int | None = None,
+    email: str = "",
     contact_info: str = "",
 ) -> None:
     conn = db.get_connection()
@@ -42,11 +43,11 @@ def _insert_holder(
         conn.execute(
             """
             INSERT INTO holders (
-                id, holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
+                id, holder_type, name, organization, organization_id, identifier, email, contact_info, created_at, updated_at
             )
-            VALUES (?, 'PERSON', ?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            VALUES (?, 'PERSON', ?, ?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
             """,
-            (holder_id, name, organization, organization_id, identifier, contact_info),
+            (holder_id, name, organization, organization_id, identifier, email, contact_info),
         )
         conn.commit()
     finally:
@@ -169,7 +170,14 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
 
 
 def _create_issue_receipt(client) -> int:
-    _insert_holder(1, name="Issue Holder", identifier="IH-1", organization="Operations", organization_id=9)
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        email="issue@example.org",
+    )
     _insert_slot(10, "CASE-10", 1)
     _insert_asset(
         100,
@@ -200,8 +208,8 @@ def _create_issue_receipt(client) -> int:
 
 
 def _create_return_receipt(client, *, mixed_holders: bool = False) -> int:
-    _insert_holder(7, name="Return Holder One", identifier="RH-7")
-    _insert_holder(8, name="Return Holder Two", identifier="RH-8")
+    _insert_holder(7, name="Return Holder One", identifier="RH-7", email="return.one@example.org")
+    _insert_holder(8, name="Return Holder Two", identifier="RH-8", email="return.two@example.org")
     _insert_slot(20, "CASE-20", 1)
     _insert_slot(21, "CASE-20", 2)
     _insert_asset(
@@ -265,6 +273,7 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
     assert b"issue-operator" in response.data
     assert b"Receipt holder" in response.data
     assert b"Issue Holder" in response.data
+    assert b"issue@example.org" in response.data
     assert b"Issue Location" in response.data
     assert b"HQ North" in response.data
     assert b"210" in response.data
@@ -286,6 +295,7 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     assert b"Return Receipt \xe2\x80\x94 Return Holder One \xe2\x80\x94 Mar 29, 2026" in response.data
     assert b"RETURN:" in response.data
     assert b"Return Holder One" in response.data
+    assert b"return.one@example.org" in response.data
     assert b"RETURN-200" in response.data
     assert b"Apple" in response.data
     assert b"iPad" in response.data
@@ -560,6 +570,53 @@ def test_receipt_detail_uses_stable_holder_fallback_when_snapshot_name_is_missin
     assert b"Issue Receipt \xe2\x80\x94 Holder 1 \xe2\x80\x94 Mar 29, 2026" in response.data
 
 
+def test_issue_receipt_snapshot_stores_holder_email(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    snapshot = json.loads(str(row["snapshot_json"]))
+    assert snapshot["recipient_email"] == "issue@example.org"
+    assert snapshot["holder_snapshot"]["email"] == "issue@example.org"
+    assert snapshot["assets"][0]["holder_snapshot"]["email"] == "issue@example.org"
+
+
+def test_return_receipt_snapshot_stores_unique_holder_email(client_with_temp_db) -> None:
+    receipt_id = _create_return_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    snapshot = json.loads(str(row["snapshot_json"]))
+    assert snapshot["recipient_email"] == "return.one@example.org"
+    assert snapshot["holder_snapshot"]["email"] == "return.one@example.org"
+    assert snapshot["assets"][0]["from_holder_snapshot"]["email"] == "return.one@example.org"
+
+
+def test_mixed_holder_return_snapshot_keeps_recipient_email_blank(client_with_temp_db) -> None:
+    receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    snapshot = json.loads(str(row["snapshot_json"]))
+    assert snapshot["holder_id"] is None
+    assert snapshot["recipient_email"] == ""
+
+
 def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_db) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
 
@@ -604,7 +661,7 @@ def test_receipt_send_success_updates_delivery_state(client_with_temp_db, monkey
         identifier="IH-1",
         organization="Operations",
         organization_id=9,
-        contact_info="issue@example.org",
+        email="issue@example.org",
     )
     _insert_slot(10, "CASE-10", 1)
     _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
@@ -658,7 +715,7 @@ def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkey
         identifier="IH-1",
         organization="Operations",
         organization_id=9,
-        contact_info="issue@example.org",
+        email="issue@example.org",
     )
     _insert_slot(10, "CASE-10", 1)
     _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
@@ -745,7 +802,7 @@ def test_receipt_send_does_not_resend_after_success(client_with_temp_db, monkeyp
         identifier="IH-1",
         organization="Operations",
         organization_id=9,
-        contact_info="issue@example.org",
+        email="issue@example.org",
     )
     _insert_slot(10, "CASE-10", 1)
     _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
@@ -776,6 +833,15 @@ def test_receipt_send_does_not_resend_after_success(client_with_temp_db, monkeyp
     assert second.status_code == 400
     assert second.json == {"ok": False, "error": "Receipt is not queued for email."}
     assert send_calls == [receipt_id]
+
+
+def test_receipt_send_fails_clearly_when_snapshot_email_is_missing(client_with_temp_db) -> None:
+    receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 400
+    assert response.json == {"ok": False, "error": "Receipt has no stored email recipient."}
 
 
 def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:

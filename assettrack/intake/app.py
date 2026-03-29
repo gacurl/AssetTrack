@@ -638,6 +638,8 @@ def _holder_form_error_message(exc: ValueError) -> str:
         return "Choose an organization for this holder."
     if message == "name is required":
         return "Enter a person or group name when using Ad Hoc."
+    if message == "email is invalid":
+        return "Enter a valid email address or leave it blank."
     return message
 
 
@@ -2231,7 +2233,7 @@ def _receipt_holder_snapshot(conn, holder_id: Optional[int]) -> Optional[dict]:
 
     row = conn.execute(
         """
-        SELECT id, holder_type, name, organization, organization_id, identifier, contact_info
+        SELECT id, holder_type, name, organization, organization_id, identifier, email, contact_info
         FROM holders
         WHERE id = ?
         LIMIT 1;
@@ -2248,8 +2250,15 @@ def _receipt_holder_snapshot(conn, holder_id: Optional[int]) -> Optional[dict]:
         "organization": str(row["organization"] or ""),
         "organization_id": None if row["organization_id"] is None else int(row["organization_id"]),
         "identifier": str(row["identifier"] or ""),
+        "email": str(row["email"] or ""),
         "contact_info": str(row["contact_info"] or ""),
     }
+
+
+def _receipt_recipient_email(holder_snapshot: object) -> str:
+    if not isinstance(holder_snapshot, dict):
+        return ""
+    return str(holder_snapshot.get("email") or "").strip().lower()
 
 
 def _receipt_operator_snapshot(conn, user_id: int) -> Optional[dict]:
@@ -2486,6 +2495,7 @@ def _build_receipt_snapshot_from_stored_facts(
             "commit_operator": commit_operator_snapshot,
             "holder_id": batch_holder_id,
             "holder_snapshot": batch_holder_snapshot,
+            "recipient_email": _receipt_recipient_email(batch_holder_snapshot),
             "organization_snapshot": None if batch_holder_snapshot is None else {
                 "organization": str(batch_holder_snapshot.get("organization") or ""),
                 "organization_id": batch_holder_snapshot.get("organization_id"),
@@ -2562,6 +2572,7 @@ def _build_receipt_snapshot_from_stored_facts(
         "commit_operator": commit_operator_snapshot,
         "holder_id": batch_holder_id,
         "holder_snapshot": batch_holder_snapshot,
+        "recipient_email": _receipt_recipient_email(batch_holder_snapshot),
         "organization_snapshot": None if batch_holder_snapshot is None else {
             "organization": str(batch_holder_snapshot.get("organization") or ""),
             "organization_id": batch_holder_snapshot.get("organization_id"),
@@ -4258,6 +4269,7 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
         "commit_operator": snapshot.get("commit_operator") if isinstance(snapshot.get("commit_operator"), dict) else None,
         "holder_id": snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"],
         "holder_snapshot": holder_snapshot,
+        "recipient_email": str(snapshot.get("recipient_email") or "").strip().lower(),
         "organization_snapshot": (
             snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
         ),
@@ -4480,26 +4492,14 @@ def _receipt_display_title(receipt_type: str, holder_name: str, display_date: st
 
 
 def _receipt_email_recipients(receipt: dict[str, object]) -> list[str]:
-    contact_values: list[str] = []
-
-    def _append_contact(snapshot: object) -> None:
-        if not isinstance(snapshot, dict):
-            return
-        contact_info = str(snapshot.get("contact_info") or "").strip()
-        if contact_info:
-            contact_values.append(contact_info)
-
-    _append_contact(receipt.get("holder_snapshot"))
-    for asset in receipt.get("assets", []):
-        if not isinstance(asset, dict):
-            continue
-        _append_contact(asset.get("holder_snapshot"))
-        _append_contact(asset.get("from_holder_snapshot"))
+    recipient_email = str(receipt.get("recipient_email") or "").strip().lower()
+    if not recipient_email:
+        return []
 
     recipients: list[str] = []
-    for _, email_address in getaddresses(contact_values):
-        normalized = str(email_address or "").strip()
-        if normalized and "@" in normalized and normalized not in recipients:
+    for _, email_address in getaddresses([recipient_email]):
+        normalized = str(email_address or "").strip().lower()
+        if normalized and normalized not in recipients:
             recipients.append(normalized)
 
     return recipients
@@ -5059,7 +5059,7 @@ def holders_new():
     return_to = _safe_local_return_to(request.args.get("return_to") or "")
     form = session.pop("holder_new_form", None)
     if not isinstance(form, dict):
-        form = {"name": "", "organization_id": ""}
+        form = {"name": "", "organization_id": "", "email": ""}
 
     return render_template(
         "holder_new.html",
@@ -5080,12 +5080,14 @@ def holders_create():
     return_to = _safe_local_return_to(request.form.get("return_to") or "")
     name = (request.form.get("name") or "").strip()
     organization_id_raw = (request.form.get("organization_id") or "").strip()
-    form = {"name": name, "organization_id": organization_id_raw}
+    email = (request.form.get("email") or "").strip()
+    form = {"name": name, "organization_id": organization_id_raw, "email": email}
 
     try:
         created = create_holder(
             name,
             organization_id=None if not organization_id_raw else int(organization_id_raw),
+            email=email,
         )
     except ValueError as e:
         session["holder_new_form"] = form
@@ -5118,6 +5120,7 @@ def holders_edit(holder_id: int):
         form = {
             "name": str(holder.get("name") or ""),
             "organization_id": "" if holder.get("organization_id") is None else str(holder.get("organization_id")),
+            "email": str(holder.get("email") or ""),
         }
 
     return render_template(
@@ -5141,6 +5144,7 @@ def holders_edit_submit(holder_id: int):
     form = {
         "name": (request.form.get("name") or "").strip(),
         "organization_id": (request.form.get("organization_id") or "").strip(),
+        "email": (request.form.get("email") or "").strip(),
     }
 
     holder = get_holder(holder_id)
@@ -5152,6 +5156,7 @@ def holders_edit_submit(holder_id: int):
             holder_id,
             name=form["name"],
             organization_id=None if not form["organization_id"] else int(form["organization_id"]),
+            email=form["email"],
         )
     except ValueError as e:
         session[f"holder_edit_form:{holder_id}"] = form

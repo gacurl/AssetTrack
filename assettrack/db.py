@@ -405,6 +405,7 @@ def _create_schema(conn: sqlite3.Connection):
             organization TEXT NULL,
             organization_id INTEGER NULL REFERENCES organizations(id),
             identifier TEXT NULL,
+            email TEXT NULL,
             contact_info TEXT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -494,6 +495,13 @@ def _create_schema(conn: sqlite3.Connection):
             """
             ALTER TABLE holders
             ADD COLUMN organization_id INTEGER NULL REFERENCES organizations(id);
+            """
+        )
+    if _table_exists(conn, "holders") and not _column_exists(conn, "holders", "email"):
+        cursor.execute(
+            """
+            ALTER TABLE holders
+            ADD COLUMN email TEXT NULL;
             """
         )
 
