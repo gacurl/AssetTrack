@@ -664,15 +664,54 @@ def _lookup_asset_for_verification(
 ) -> tuple[list[dict], Optional[str], str]:
     asset_tag_clean = str(asset_tag or "").strip().upper()
     serial_clean = str(serial_number or "").strip()
+    has_asset_tag = bool(asset_tag_clean)
+    has_serial_number = bool(serial_clean)
 
-    if not asset_tag_clean and not serial_clean:
+    if not has_asset_tag and not has_serial_number:
         return [], "Enter an asset tag or serial number.", "none"
 
-    lookup_mode = "asset_tag" if asset_tag_clean else "serial_number"
-    query_value = asset_tag_clean if lookup_mode == "asset_tag" else serial_clean
-    like_pattern = f"%{query_value}%"
-
-    if lookup_mode == "asset_tag":
+    if has_asset_tag and has_serial_number:
+        lookup_mode = "asset_tag"
+        rows = conn.execute(
+            """
+            SELECT
+                a.*,
+                h.id AS holder_record_id,
+                h.holder_type AS holder_record_type,
+                h.name AS holder_record_name,
+                h.organization AS holder_record_organization
+            FROM assets a
+            LEFT JOIN holders h
+              ON h.id = a.current_holder_id
+            WHERE UPPER(a.asset_tag) LIKE UPPER(?)
+              AND TRIM(COALESCE(a.serial_number, '')) <> ''
+              AND UPPER(a.serial_number) LIKE UPPER(?)
+            ORDER BY
+                CASE
+                    WHEN UPPER(a.asset_tag) = UPPER(?) AND UPPER(a.serial_number) = UPPER(?) THEN 0
+                    WHEN UPPER(a.asset_tag) = UPPER(?) THEN 1
+                    WHEN UPPER(a.serial_number) = UPPER(?) THEN 2
+                    ELSE 3
+                END,
+                UPPER(a.asset_tag) ASC,
+                UPPER(a.serial_number) ASC,
+                a.id ASC
+            LIMIT 25;
+            """,
+            (
+                f"%{asset_tag_clean}%",
+                f"%{serial_clean}%",
+                asset_tag_clean,
+                serial_clean,
+                asset_tag_clean,
+                serial_clean,
+            ),
+        ).fetchall()
+        if not rows:
+            return [], "Asset not found.", lookup_mode
+    elif has_asset_tag:
+        lookup_mode = "asset_tag"
+        like_pattern = f"%{asset_tag_clean}%"
         rows = conn.execute(
             """
             SELECT
@@ -696,6 +735,8 @@ def _lookup_asset_for_verification(
         if not rows:
             return [], "Asset not found.", lookup_mode
     else:
+        lookup_mode = "serial_number"
+        like_pattern = f"%{serial_clean}%"
         rows = conn.execute(
             """
             SELECT
