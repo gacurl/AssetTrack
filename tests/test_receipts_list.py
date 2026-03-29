@@ -47,6 +47,7 @@ def test_receipts_list_holder_name_search_returns_expected_receipt(client_with_t
     assert response.status_code == 200
     assert f'href="/receipts/{issue_receipt_id}"'.encode("utf-8") in response.data
     assert b"Issue Holder" in response.data
+    assert b"Holder search match" in response.data
     assert response.data.count(b'href="/receipts/') == 1
 
 
@@ -58,6 +59,8 @@ def test_receipts_list_building_room_search_returns_expected_receipt(client_with
 
     assert response.status_code == 200
     assert f'href="/receipts/{mixed_return_receipt_id}"'.encode("utf-8") in response.data
+    assert b"Location search match" in response.data
+    assert b"HQ North/211" in response.data
     assert response.data.count(b'href="/receipts/') == 1
 
 
@@ -149,3 +152,5 @@ def test_receipts_list_building_room_search_matches_issue_location_summary(clien
 
     assert response.status_code == 200
     assert f'href="/receipts/{issue_receipt_id}"'.encode("utf-8") in response.data
+    assert b"Location search match" in response.data
+    assert b"HQ North/210" in response.data
