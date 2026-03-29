@@ -11,8 +11,10 @@ Feynman-brief:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 from io import BytesIO
@@ -25,6 +27,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import assettrack.db as db_module
@@ -4157,6 +4160,15 @@ def receipt_detail(receipt_id: int):
     if row is None:
         abort(404)
 
+    receipt = _receipt_from_queue_row(row)
+
+    return render_template(
+        "receipt_detail.html",
+        receipt=receipt,
+    )
+
+
+def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
     source_event_ids = json.loads(str(row["source_event_ids_json"] or "[]"))
     if not isinstance(source_event_ids, list):
         source_event_ids = []
@@ -4189,7 +4201,7 @@ def receipt_detail(receipt_id: int):
         else int(row["commit_operator_user_id"])
     )
 
-    receipt = {
+    return {
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
@@ -4207,11 +4219,6 @@ def receipt_detail(receipt_id: int):
         "assets": assets,
         "source_event_ids": source_event_ids,
     }
-
-    return render_template(
-        "receipt_detail.html",
-        receipt=receipt,
-    )
 
 
 def _receipt_summary_from_row(
@@ -4348,6 +4355,192 @@ def _receipt_summary_from_row(
     }
 
 
+def _receipt_pdf_ack_name(receipt: dict[str, object]) -> str:
+    holder_snapshot = receipt.get("holder_snapshot")
+    if isinstance(holder_snapshot, dict):
+        holder_name = str(holder_snapshot.get("name") or "").strip()
+        if holder_name:
+            return holder_name
+
+    names: list[str] = []
+    for asset in receipt.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        for field_name in ("holder_snapshot", "from_holder_snapshot"):
+            snapshot = asset.get(field_name)
+            if not isinstance(snapshot, dict):
+                continue
+            holder_name = str(snapshot.get("name") or "").strip()
+            if holder_name and holder_name not in names:
+                names.append(holder_name)
+
+    if names:
+        return ", ".join(names)
+
+    return "Unknown"
+
+
+def _receipt_pdf_initials(name: str) -> str:
+    parts = [part for part in name.replace(",", " ").split() if part]
+    initials = "".join(part[0].upper() for part in parts[:4] if part and part[0].isalnum())
+    return initials or "N/A"
+
+
+def _receipt_pdf_location_summary(receipt: dict[str, object]) -> str:
+    location_context = receipt.get("location_context")
+    if isinstance(location_context, dict):
+        building_room = str(location_context.get("building_room") or "").strip()
+        if building_room:
+            return building_room
+        building = str(location_context.get("building") or "").strip()
+        room = str(location_context.get("room") or "").strip()
+        if building and room:
+            return f"{building}/{room}"
+        if building or room:
+            return building or room
+
+    locations: list[str] = []
+    for asset in receipt.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        for field_name in ("to_building_room", "from_building_room"):
+            location = str(asset.get(field_name) or "").strip()
+            if location and location not in locations:
+                locations.append(location)
+
+    if locations:
+        return ", ".join(locations)
+
+    return "Unknown"
+
+
+def _receipt_acknowledgment_statement(receipt_type: str) -> str:
+    if receipt_type == "RETURN":
+        return "Custody return was reviewed and confirmed from the stored receipt record."
+    return "Custody issue was reviewed and confirmed from the stored receipt record."
+
+
+def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
+    styles = getSampleStyleSheet()
+    body = styles["BodyText"]
+    heading = styles["Heading2"]
+    title = styles["Title"]
+
+    def _text(value: object) -> str:
+        return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _p(value: object) -> Paragraph:
+        return Paragraph(_text(value), body)
+
+    def _render_table(headers: list[str], rows: list[list[object]], column_widths: list[float]) -> Table:
+        data = [[Paragraph(f"<b>{_text(header)}</b>", body) for header in headers]]
+        for row in rows:
+            data.append([_p(value) for value in row])
+
+        table = Table(data, colWidths=column_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbe7f3")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8d2dc")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        return table
+
+    receipt_type = str(receipt.get("receipt_type") or "").strip().upper() or "UNKNOWN"
+    organization_name = "Unknown"
+    organization_snapshot = receipt.get("organization_snapshot")
+    if isinstance(organization_snapshot, dict):
+        organization_name = str(organization_snapshot.get("organization") or "").strip() or "Unknown"
+    acknowledgment = receipt.get("acknowledgment")
+    ack_timestamp = ""
+    if isinstance(acknowledgment, dict):
+        ack_timestamp = str(acknowledgment.get("ack_at") or "").strip()
+    if not ack_timestamp:
+        ack_timestamp = str(receipt.get("commit_at") or "").strip()
+
+    typed_name = _receipt_pdf_ack_name(receipt)
+    location_summary = _receipt_pdf_location_summary(receipt)
+    asset_rows: list[list[object]] = []
+
+    for asset in receipt.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        make_model = str(asset.get("manufacturer") or "").strip()
+        model = str(asset.get("model") or "").strip()
+        model_code = str(asset.get("model_code") or "").strip()
+        if model:
+            make_model = f"{make_model} / {model}" if make_model else model
+        if model_code:
+            make_model = f"{make_model} ({model_code})" if make_model else model_code
+        asset_rows.append(
+            [
+                str(asset.get("asset_tag") or "").strip(),
+                str(asset.get("equipment_type") or "").strip(),
+                str(asset.get("serial_number") or "").strip(),
+                make_model,
+                str(asset.get("from_location_type") or "").strip(),
+                str(asset.get("to_location_type") or "").strip(),
+            ]
+        )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+        title=f"AssetTrack Receipt {receipt.get('receipt_key') or receipt.get('id')}",
+        author="AssetTrack",
+    )
+
+    story: list[object] = [
+        Paragraph("Custody Acknowledgment Receipt", title),
+        Spacer(1, 0.1 * inch),
+        Paragraph(f"Receipt ID: {_text(receipt.get('id'))}", body),
+        Paragraph(f"Receipt key: {_text(receipt.get('receipt_key'))}", body),
+        Paragraph(f"Receipt type: {_text(receipt_type)}", body),
+        Paragraph(f"Holder: {_text(typed_name)}", body),
+        Paragraph(f"Organization: {_text(organization_name)}", body),
+        Paragraph(f"Location: {_text(location_summary)}", body),
+        Paragraph(f"Acknowledgment: {_text(_receipt_acknowledgment_statement(receipt_type))}", body),
+        Paragraph(f"Typed name: {_text(typed_name)}", body),
+        Paragraph(f"Initials: {_text(_receipt_pdf_initials(typed_name))}", body),
+        Paragraph(f"Timestamp: {_text(ack_timestamp or 'Unknown')}", body),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Assets", heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["Asset Tag", "Equipment", "Serial", "Make / Model", "From", "To"],
+            asset_rows or [["No assets captured.", "", "", "", "", ""]],
+            [1.1 * inch, 1.0 * inch, 1.2 * inch, 2.0 * inch, 1.0 * inch, 1.0 * inch],
+        ),
+    ]
+
+    def _invariant_canvas(*args, **kwargs):
+        kwargs.setdefault("invariant", 1)
+        return canvas.Canvas(*args, **kwargs)
+
+    doc.build(story, canvasmaker=_invariant_canvas)
+    pdf_bytes = buffer.getvalue()
+    stable_digest = hashlib.md5(json.dumps(receipt, sort_keys=True).encode("utf-8")).hexdigest().encode("ascii")
+    return re.sub(
+        rb"/ID\s*\[\s*<[^>]+>\s*<[^>]+>\s*\]",
+        b"/ID [<" + stable_digest + b"><" + stable_digest + b">]",
+        pdf_bytes,
+        count=1,
+    )
+
+
 @app.get("/receipts")
 @require_login
 def receipts_list():
@@ -4453,6 +4646,55 @@ def receipts_list():
             "holder_name": holder_name,
             "building_room": building_room,
         },
+    )
+
+
+@app.get("/receipts/<int:receipt_id>/pdf")
+@require_login
+def receipt_pdf(receipt_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                id,
+                receipt_key,
+                receipt_type,
+                source_event_ids_json,
+                snapshot_json,
+                commit_at,
+                commit_operator_user_id,
+                holder_id,
+                sent_at,
+                last_attempt_at,
+                last_error
+            FROM receipt_queue
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        abort(404)
+
+    receipt = _receipt_from_queue_row(row)
+    pdf_bytes = _build_receipt_pdf(receipt)
+    receipt_type = str(receipt.get("receipt_type") or "").strip().lower() or "acknowledgment"
+    download_name = f"receipt-{receipt['id']}-{receipt_type}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+        conditional=False,
     )
 
 
