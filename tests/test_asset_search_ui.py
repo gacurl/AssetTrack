@@ -144,6 +144,33 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"AT-201", response.data)
         self.assertNotIn(b"AT-999", response.data)
 
+    def test_combined_asset_tag_and_serial_search_uses_both_filters(self) -> None:
+        self._insert_asset("AT-400", serial_number="SER-400", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("AT-400X", serial_number="SER-999", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("ZZ-400", serial_number="SER-400", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-400&serial_number=SER-400")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset Found", response.data)
+        self.assertIn(b"AT-400", response.data)
+        self.assertIn(b"SER-400", response.data)
+        self.assertNotIn(b"AT-400X", response.data)
+        self.assertNotIn(b"ZZ-400", response.data)
+
+    def test_combined_partial_asset_tag_and_serial_search_stays_narrow(self) -> None:
+        self._insert_asset("AT-510", serial_number="SER-510", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("AT-511", serial_number="SER-777", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset("BT-510", serial_number="SER-510", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-51&serial_number=SER-51")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset Found", response.data)
+        self.assertIn(b"AT-510", response.data)
+        self.assertNotIn(b"AT-511", response.data)
+        self.assertNotIn(b"BT-510", response.data)
+
     def test_search_shows_plain_not_found_feedback(self) -> None:
         response = self.client.get("/assets/search?asset_tag=AT-MISSING")
         self.assertEqual(response.status_code, 200)
