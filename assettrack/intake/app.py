@@ -15,11 +15,17 @@ import json
 import os
 import sqlite3
 import time
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import assettrack.db as db_module
 from assettrack.assets import get_asset_table_columns
@@ -4008,6 +4014,184 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
         conn.close()
 
 
+def _build_admin_human_report_pdf(report_data: dict, db_path: str) -> bytes:
+    styles = getSampleStyleSheet()
+    body = styles["BodyText"]
+    heading = styles["Heading1"]
+    section_heading = styles["Heading2"]
+    title = styles["Title"]
+
+    def _p(value: object) -> Paragraph:
+        text = str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return Paragraph(text, body)
+
+    def _render_table(headers: list[str], rows: list[list[object]], column_widths: list[float]) -> Table:
+        data = [[Paragraph(f"<b>{header}</b>", body) for header in headers]]
+        for row in rows:
+            data.append([_p(value) for value in row])
+
+        table = Table(data, colWidths=column_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbe7f3")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8d2dc")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        return table
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+
+    story: list[object] = [
+        Paragraph("Admin Human-Readable Report", title),
+        Spacer(1, 0.15 * inch),
+        Paragraph("Read-only report. The raw SQLite database backup remains authoritative.", body),
+        Paragraph(f"Database path: {db_path}", body),
+        Paragraph("Recent events section: recent active events only.", body),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Assets", heading),
+        Spacer(1, 0.08 * inch),
+        Paragraph(
+            (
+                f"Total assets: {report_data['asset_summary']['total_assets']} | "
+                f"In storage: {report_data['asset_summary']['storage_assets']} | "
+                f"In custody: {report_data['asset_summary']['in_custody_assets']} | "
+                f"Disposed: {report_data['asset_summary']['disposed_assets']}"
+            ),
+            body,
+        ),
+        Spacer(1, 0.1 * inch),
+        _render_table(
+            ["Asset Tag", "Type", "Make / Model", "Location Type", "Current Holder", "Home Slot"],
+            [
+                [
+                    row["asset_tag"],
+                    row["equipment_type"],
+                    f"{row['manufacturer']}{' / ' + row['model'] if row['model'] else ''}",
+                    row["location_type"],
+                    (
+                        f"{row['holder_name']} ({row['holder_organization']})"
+                        if row["holder_name"] and row["holder_organization"] and row["holder_organization"] != row["holder_name"]
+                        else row["holder_name"]
+                    ),
+                    row["home_slot"],
+                ]
+                for row in report_data["assets"]
+            ]
+            or [["No assets found.", "", "", "", "", ""]],
+            [1.1 * inch, 0.8 * inch, 1.4 * inch, 1.1 * inch, 1.6 * inch, 1.0 * inch],
+        ),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Holders", section_heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["ID", "Type", "Name", "Organization", "Identifier", "Assets In Custody"],
+            [
+                [
+                    row["id"],
+                    row["holder_type"],
+                    row["name"],
+                    row["organization"],
+                    row["identifier"],
+                    row["assets_in_custody"],
+                ]
+                for row in report_data["holders"]
+            ]
+            or [["No holders found.", "", "", "", "", ""]],
+            [0.5 * inch, 0.9 * inch, 1.6 * inch, 1.5 * inch, 1.0 * inch, 0.9 * inch],
+        ),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Organizations and Building Access", section_heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["Organization", "Mapped Buildings"],
+            [[row["name"], row["building_count"]] for row in report_data["organizations"]]
+            or [["No organizations found.", ""]],
+            [4.5 * inch, 2.0 * inch],
+        ),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["Organization", "Building"],
+            [
+                [row["organization_name"], row["building_name"]]
+                for row in report_data["organization_building_mappings"]
+            ]
+            or [["No organization-to-building mappings found.", ""]],
+            [3.5 * inch, 3.0 * inch],
+        ),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Current Custody", section_heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["Holder", "Organization", "Asset Tag", "Type", "Current Location"],
+            [
+                [
+                    row["holder_name"],
+                    row["organization"],
+                    row["asset_tag"],
+                    row["equipment_type"],
+                    row["current_location"],
+                ]
+                for row in report_data["current_custody"]
+            ]
+            or [["No assets are currently in custody.", "", "", "", ""]],
+            [1.5 * inch, 1.5 * inch, 1.1 * inch, 0.8 * inch, 2.0 * inch],
+        ),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Recent Active Events", section_heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["ID", "When", "Asset Tag", "Event Type", "Holder"],
+            [
+                [
+                    row["id"],
+                    row["event_date"],
+                    row["asset_tag"],
+                    row["event_type"],
+                    (
+                        f"{row['holder_name']} ({row['holder_organization']})"
+                        if row["holder_name"] and row["holder_organization"] and row["holder_organization"] != row["holder_name"]
+                        else row["holder_name"]
+                    ),
+                ]
+                for row in report_data["recent_active_events"]
+            ]
+            or [["No active events found.", "", "", "", ""]],
+            [0.5 * inch, 1.8 * inch, 1.1 * inch, 1.0 * inch, 2.6 * inch],
+        ),
+        Spacer(1, 0.2 * inch),
+        Paragraph("Location and Case Data", section_heading),
+        Spacer(1, 0.08 * inch),
+        _render_table(
+            ["Case", "Total Slots", "Occupied Slots"],
+            [
+                [row["case_name"], row["total_slots"], row["occupied_slots"]]
+                for row in report_data["cases"]
+            ]
+            or [["No case or slot data found.", "", ""]],
+            [3.5 * inch, 1.5 * inch, 1.5 * inch],
+        ),
+    ]
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 @app.route("/admin/reference-data", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
@@ -4094,6 +4278,27 @@ def admin_human_report():
         db_path=str(resolved_db_path),
         report_error=report_error,
         **report_data,
+    )
+
+
+@app.get("/admin/report/pdf")
+@require_login
+@require_role("admin")
+def admin_human_report_pdf():
+    resolved_db_path = _resolved_runtime_db_path()
+    try:
+        report_data = _load_admin_human_report_data(resolved_db_path)
+        pdf_bytes = _build_admin_human_report_pdf(report_data, str(resolved_db_path))
+    except sqlite3.Error as exc:
+        return f"Could not build admin PDF report: {exc}", 500
+
+    download_name = f"assettrack-human-report-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+        conditional=False,
     )
 
 
