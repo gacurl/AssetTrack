@@ -254,12 +254,12 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt Detail" in response.data
-    assert f"Receipt {receipt_id}".encode("utf-8") in response.data
+    assert b"Issue Receipt" in response.data
+    assert b"Issue Receipt \xe2\x80\x94 Issue Holder \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert f"Internal receipt ID {receipt_id}".encode("utf-8") in response.data
     assert b"Receipt key" in response.data
     assert b"ISSUE:" in response.data
-    assert b"Receipt type" in response.data
-    assert b"ISSUE" in response.data
+    assert b"Receipt title" in response.data
     assert b"Committed by" in response.data
     assert b"issue-operator" in response.data
     assert b"Receipt holder" in response.data
@@ -281,8 +281,8 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt type" in response.data
-    assert b"RETURN" in response.data
+    assert b"Return Receipt" in response.data
+    assert b"Return Receipt \xe2\x80\x94 Return Holder One \xe2\x80\x94 Mar 29, 2026" in response.data
     assert b"RETURN:" in response.data
     assert b"Return Holder One" in response.data
     assert b"RETURN-200" in response.data
@@ -408,8 +408,8 @@ def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt type" in response.data
-    assert b"RETURN" in response.data
+    assert b"Receipt title" in response.data
+    assert b"Return Receipt \xe2\x80\x94 Multiple Holders \xe2\x80\x94 Mar 29, 2026" in response.data
     assert b"Receipt holder" not in response.data
     assert b"Return Holder One" in response.data
     assert b"Return Holder Two" in response.data
@@ -518,6 +518,45 @@ def test_receipt_detail_links_to_receipt_pdf(client_with_temp_db) -> None:
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}/pdf"'.encode("utf-8") in response.data
     assert b"Download Receipt PDF" in response.data
+
+
+def test_receipt_detail_uses_stable_holder_fallback_when_snapshot_name_is_missing(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["holder_snapshot"]["name"] = ""
+        asset_holder = snapshot["assets"][0]["holder_snapshot"]
+        asset_holder["name"] = ""
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?
+            WHERE id = ?;
+            """,
+            (
+                json.dumps(snapshot, sort_keys=True),
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+
+    assert response.status_code == 200
+    assert b"Issue Receipt \xe2\x80\x94 Holder 1 \xe2\x80\x94 Mar 29, 2026" in response.data
 
 
 def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_db) -> None:

@@ -4179,6 +4179,9 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
 
     snapshot_assets = snapshot.get("assets")
     assets = snapshot_assets if isinstance(snapshot_assets, list) else []
+    holder_snapshot = snapshot.get("holder_snapshot")
+    if not isinstance(holder_snapshot, dict):
+        holder_snapshot = None
     location_context = snapshot.get("location_context")
     if not isinstance(location_context, dict):
         location_context = None
@@ -4200,16 +4203,27 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
         if snapshot_operator_id is not None
         else int(row["commit_operator_user_id"])
     )
+    holder_display_name = _receipt_display_holder_name(
+        holder_snapshot,
+        holder_id=snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"],
+        receipt_type=receipt_type,
+        assets=assets,
+    )
+    display_date = _receipt_display_date(commit_at)
 
     return {
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
+        "receipt_type_label": _receipt_type_label(receipt_type),
+        "holder_display_name": holder_display_name,
         "commit_at": commit_at,
+        "display_date": display_date,
+        "display_title": _receipt_display_title(receipt_type, holder_display_name, display_date),
         "commit_operator_user_id": commit_operator_user_id,
         "commit_operator": snapshot.get("commit_operator") if isinstance(snapshot.get("commit_operator"), dict) else None,
         "holder_id": snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"],
-        "holder_snapshot": snapshot.get("holder_snapshot") if isinstance(snapshot.get("holder_snapshot"), dict) else None,
+        "holder_snapshot": holder_snapshot,
         "organization_snapshot": (
             snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
         ),
@@ -4270,6 +4284,14 @@ def _receipt_summary_from_row(
         committed_by = str(operator.get("username") or "").strip()
     else:
         committed_by = f"user_id {int(row['commit_operator_user_id'])}"
+
+    display_date = _receipt_display_date(commit_at)
+    display_holder_name = _receipt_display_holder_name(
+        holder_snapshot,
+        holder_id=holder_id,
+        receipt_type=receipt_type,
+        assets=asset_list,
+    )
 
     try:
         commit_at_display = datetime.fromisoformat(commit_at).strftime("%Y-%m-%d %H:%M")
@@ -4339,11 +4361,15 @@ def _receipt_summary_from_row(
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
+        "receipt_type_label": _receipt_type_label(receipt_type),
+        "display_title": _receipt_display_title(receipt_type, display_holder_name, display_date),
+        "display_date": display_date,
         "delivery_state": delivery.get("state"),
         "commit_at": commit_at,
         "commit_at_display": commit_at_display,
         "committed_by": committed_by,
         "holder_summary": holder_summary,
+        "holder_display_name": display_holder_name,
         "organization_summary": organization_summary,
         "location_summary": location_summary,
         "asset_count": len(asset_list),
@@ -4353,6 +4379,70 @@ def _receipt_summary_from_row(
         "matched_holder_names": matched_holder_names,
         "matched_locations": matched_locations,
     }
+
+
+def _receipt_type_label(receipt_type: str) -> str:
+    normalized = str(receipt_type or "").strip().upper()
+    if normalized == "ISSUE":
+        return "Issue Receipt"
+    if normalized == "RETURN":
+        return "Return Receipt"
+    return "Receipt"
+
+
+def _receipt_display_date(commit_at: str) -> str:
+    value = str(commit_at or "").strip()
+    if not value:
+        return "Unknown Date"
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+
+    month = parsed.strftime("%b")
+    day = parsed.day
+    year = parsed.year
+    return f"{month} {day}, {year}"
+
+
+def _receipt_display_holder_name(
+    holder_snapshot: Optional[dict[str, object]],
+    *,
+    holder_id: object,
+    receipt_type: str,
+    assets: list[object],
+) -> str:
+    if isinstance(holder_snapshot, dict):
+        holder_name = str(holder_snapshot.get("name") or "").strip()
+        if holder_name:
+            return holder_name
+
+    unique_names: list[str] = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        for field_name in ("holder_snapshot", "from_holder_snapshot"):
+            snapshot = asset.get(field_name)
+            if not isinstance(snapshot, dict):
+                continue
+            holder_name = str(snapshot.get("name") or "").strip()
+            if holder_name and holder_name not in unique_names:
+                unique_names.append(holder_name)
+
+    if len(unique_names) == 1:
+        return unique_names[0]
+    if len(unique_names) > 1:
+        return "Multiple Holders"
+    if holder_id is not None:
+        return f"Holder {holder_id}"
+    if str(receipt_type or "").strip().upper() == "RETURN":
+        return "Returning Holder"
+    return "Unknown Holder"
+
+
+def _receipt_display_title(receipt_type: str, holder_name: str, display_date: str) -> str:
+    return f"{_receipt_type_label(receipt_type)} — {holder_name or 'Unknown Holder'} — {display_date or 'Unknown Date'}"
 
 
 def _receipt_pdf_ack_name(receipt: dict[str, object]) -> str:

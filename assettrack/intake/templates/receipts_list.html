@@ -234,9 +234,11 @@
           <tr>
             <td data-label="Receipt">
               <div class="receipt-primary">
-                <div class="receipt-title">{{ receipt.receipt_type }}</div>
+                <div class="receipt-title">
+                  <a class="receipt-link" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">{{ receipt.display_title }}</a>
+                </div>
                 <div class="receipt-meta mono">{{ receipt.receipt_key }}</div>
-                <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
+                <div class="receipt-meta">Internal receipt ID <span class="mono">{{ receipt.id }}</span></div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
                 {% if receipt.delivery_state %}
                   <div class="receipt-status" data-state="{{ receipt.delivery_state }}">{{ email_status_label }}</div>
