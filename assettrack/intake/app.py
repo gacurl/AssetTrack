@@ -2174,11 +2174,128 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
 
 
+def _receipt_key(receipt_type: str, source_event_ids: list[int]) -> str:
+    return f"{receipt_type}:{'-'.join(str(event_id) for event_id in source_event_ids)}"
+
+
+def _receipt_holder_snapshot(conn, holder_id: Optional[int]) -> Optional[dict]:
+    if holder_id is None:
+        return None
+
+    row = conn.execute(
+        """
+        SELECT id, holder_type, name, organization, organization_id, identifier, contact_info
+        FROM holders
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (int(holder_id),),
+    ).fetchone()
+    if row is None:
+        return None
+
+    return {
+        "id": int(row["id"]),
+        "holder_type": str(row["holder_type"] or ""),
+        "name": str(row["name"] or ""),
+        "organization": str(row["organization"] or ""),
+        "organization_id": None if row["organization_id"] is None else int(row["organization_id"]),
+        "identifier": str(row["identifier"] or ""),
+        "contact_info": str(row["contact_info"] or ""),
+    }
+
+
+def _receipt_operator_snapshot(conn, user_id: int) -> Optional[dict]:
+    row = conn.execute(
+        """
+        SELECT id, username, role, active
+        FROM users
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (int(user_id),),
+    ).fetchone()
+    if row is None:
+        return None
+
+    return {
+        "id": int(row["id"]),
+        "username": str(row["username"] or ""),
+        "role": str(row["role"] or ""),
+        "active": bool(int(row["active"] or 0)),
+    }
+
+
+def _receipt_slot_snapshot(conn, slot_id: Optional[int]) -> Optional[dict]:
+    if slot_id is None:
+        return None
+
+    row = conn.execute(
+        """
+        SELECT id, case_name, slot_position
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (int(slot_id),),
+    ).fetchone()
+    if row is None:
+        return None
+
+    return {
+        "slot_id": int(row["id"]),
+        "case_name": str(row["case_name"] or ""),
+        "slot_position": int(row["slot_position"]),
+    }
+
+
+def _insert_receipt_queue_row(
+    conn,
+    *,
+    receipt_type: str,
+    source_event_ids: list[int],
+    snapshot: dict[str, object],
+    commit_at: str,
+    commit_operator_user_id: int,
+    holder_id: Optional[int],
+) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO receipt_queue (
+            receipt_key,
+            receipt_type,
+            source_event_ids_json,
+            snapshot_json,
+            commit_at,
+            commit_operator_user_id,
+            holder_id,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            _receipt_key(receipt_type, source_event_ids),
+            receipt_type,
+            json.dumps(source_event_ids),
+            json.dumps(snapshot),
+            commit_at,
+            int(commit_operator_user_id),
+            None if holder_id is None else int(holder_id),
+            now_iso,
+            now_iso,
+        ),
+    )
+
+
 def _issue_batch(
     asset_tags: list[str],
     holder_id: int,
     issue_location: dict[str, str],
     responsibility_ack: dict[str, object],
+    *,
+    commit_operator_user_id: int,
 ) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to issue.")
@@ -2269,11 +2386,15 @@ def _issue_batch(
                 raise ValueError("; ".join(parts))
 
             now_iso = datetime.now(timezone.utc).isoformat()
+            event_ids: list[int] = []
+            asset_snapshots: list[dict[str, object]] = []
+            holder_snapshot = _receipt_holder_snapshot(conn, holder_id)
+            commit_operator_snapshot = _receipt_operator_snapshot(conn, commit_operator_user_id)
 
             for asset_id, canon_tag, home_slot_id in canon_assets:
                 asset_row = conn.execute(
                     """
-                    SELECT building_room
+                    SELECT serial_number, equipment_type, manufacturer, model, model_code, notes, building_room
                     FROM assets
                     WHERE id = ?
                     LIMIT 1;
@@ -2281,6 +2402,7 @@ def _issue_batch(
                     (asset_id,),
                 ).fetchone()
                 previous_building_room = "" if asset_row is None else str(asset_row["building_room"] or "").strip()
+                home_slot_snapshot = _receipt_slot_snapshot(conn, home_slot_id)
 
                 update_clauses = ["location_type = ?", "current_holder_id = ?"]
                 update_values: list[object] = ["IN_CUSTODY", holder_id]
@@ -2325,7 +2447,7 @@ def _issue_batch(
                     (int(current_slot["slot_id"]),),
                 )
 
-                conn.execute(
+                event_cursor = conn.execute(
                     """
                     INSERT INTO asset_events (
                         asset_tag,
@@ -2357,13 +2479,68 @@ def _issue_batch(
                         holder_id,
                     ),
                 )
+                event_ids.append(int(event_cursor.lastrowid))
+                asset_snapshots.append(
+                    {
+                        "asset_id": asset_id,
+                        "asset_tag": canon_tag,
+                        "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
+                        "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
+                        "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
+                        "model": "" if asset_row is None else str(asset_row["model"] or ""),
+                        "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
+                        "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
+                        "from_location_type": "STORAGE",
+                        "to_location_type": "IN_CUSTODY",
+                        "from_building_room": previous_building_room,
+                        "to_building_room": building_room,
+                        "holder_id": int(holder_id),
+                        "holder_snapshot": holder_snapshot,
+                        "home_slot": home_slot_snapshot,
+                    }
+                )
+
+            snapshot = {
+                "receipt_type": "ISSUE",
+                "commit_at": now_iso,
+                "commit_operator_user_id": int(commit_operator_user_id),
+                "commit_operator": commit_operator_snapshot,
+                "holder_id": int(holder_id),
+                "holder_snapshot": holder_snapshot,
+                "organization_snapshot": None if holder_snapshot is None else {
+                    "organization": str(holder_snapshot.get("organization") or ""),
+                    "organization_id": holder_snapshot.get("organization_id"),
+                },
+                "acknowledgment": dict(responsibility_ack),
+                "location_context": {
+                    "building": building,
+                    "room": room,
+                    "building_room": building_room,
+                },
+                "assets": asset_snapshots,
+                "source_event_ids": event_ids,
+            }
+            _insert_receipt_queue_row(
+                conn,
+                receipt_type="ISSUE",
+                source_event_ids=event_ids,
+                snapshot=snapshot,
+                commit_at=now_iso,
+                commit_operator_user_id=commit_operator_user_id,
+                holder_id=holder_id,
+            )
 
             return len(canon_assets)
     finally:
         conn.close()
 
 
-def _return_batch(asset_tags: list[str], responsibility_ack: dict[str, object]) -> int:
+def _return_batch(
+    asset_tags: list[str],
+    responsibility_ack: dict[str, object],
+    *,
+    commit_operator_user_id: int,
+) -> int:
     if not asset_tags:
         raise ValueError("No assets in the queue to return")
 
@@ -2464,11 +2641,29 @@ def _return_batch(asset_tags: list[str], responsibility_ack: dict[str, object]) 
                 raise ValueError("; ".join(parts))
 
             now_iso = datetime.now(timezone.utc).isoformat()
+            event_ids: list[int] = []
+            asset_snapshots: list[dict[str, object]] = []
+            batch_holder_ids: set[int] = set()
+            commit_operator_snapshot = _receipt_operator_snapshot(conn, commit_operator_user_id)
 
             for row in validated_rows:
                 canon_tag = row["asset_tag"]
                 home_slot_id = row["home_slot_id"]
                 current_holder_id = row["current_holder_id"]
+                if current_holder_id is not None:
+                    batch_holder_ids.add(int(current_holder_id))
+                asset_row = conn.execute(
+                    """
+                    SELECT id, serial_number, equipment_type, manufacturer, model, model_code, notes, building_room
+                    FROM assets
+                    WHERE UPPER(asset_tag) = UPPER(?)
+                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+                    LIMIT 1;
+                    """,
+                    (canon_tag, canon_tag),
+                ).fetchone()
+                holder_snapshot = _receipt_holder_snapshot(conn, current_holder_id)
+                home_slot_snapshot = _receipt_slot_snapshot(conn, home_slot_id)
 
                 conn.execute(
                     """
@@ -2491,7 +2686,7 @@ def _return_batch(asset_tags: list[str], responsibility_ack: dict[str, object]) 
                 if cursor.rowcount != 1:
                     raise ValueError(f"Home slot became occupied for {canon_tag}")
 
-                conn.execute(
+                event_cursor = conn.execute(
                     """
                     INSERT INTO asset_events (
                         asset_tag,
@@ -2524,6 +2719,54 @@ def _return_batch(asset_tags: list[str], responsibility_ack: dict[str, object]) 
                         None,
                     ),
                 )
+                event_ids.append(int(event_cursor.lastrowid))
+                asset_snapshots.append(
+                    {
+                        "asset_id": None if asset_row is None else int(asset_row["id"]),
+                        "asset_tag": canon_tag,
+                        "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
+                        "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
+                        "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
+                        "model": "" if asset_row is None else str(asset_row["model"] or ""),
+                        "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
+                        "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
+                        "from_location_type": "IN_CUSTODY",
+                        "to_location_type": "STORAGE",
+                        "from_holder_id": current_holder_id,
+                        "from_holder_snapshot": holder_snapshot,
+                        "to_holder_id": None,
+                        "from_building_room": "" if asset_row is None else str(asset_row["building_room"] or ""),
+                        "to_building_room": "" if asset_row is None else str(asset_row["building_room"] or ""),
+                        "home_slot": home_slot_snapshot,
+                    }
+                )
+
+            batch_holder_id = next(iter(batch_holder_ids)) if len(batch_holder_ids) == 1 else None
+            batch_holder_snapshot = _receipt_holder_snapshot(conn, batch_holder_id)
+            snapshot = {
+                "receipt_type": "RETURN",
+                "commit_at": now_iso,
+                "commit_operator_user_id": int(commit_operator_user_id),
+                "commit_operator": commit_operator_snapshot,
+                "holder_id": batch_holder_id,
+                "holder_snapshot": batch_holder_snapshot,
+                "organization_snapshot": None if batch_holder_snapshot is None else {
+                    "organization": str(batch_holder_snapshot.get("organization") or ""),
+                    "organization_id": batch_holder_snapshot.get("organization_id"),
+                },
+                "acknowledgment": dict(responsibility_ack),
+                "assets": asset_snapshots,
+                "source_event_ids": event_ids,
+            }
+            _insert_receipt_queue_row(
+                conn,
+                receipt_type="RETURN",
+                source_event_ids=event_ids,
+                snapshot=snapshot,
+                commit_at=now_iso,
+                commit_operator_user_id=commit_operator_user_id,
+                holder_id=batch_holder_id,
+            )
 
             return len(validated_rows)
     finally:
@@ -3166,9 +3409,28 @@ def preview_commit():
         return redirect(url_for("issue"))
 
     asset_tags = _queue_asset_tags()
+    user = current_user()
+    if user is None:
+        if wants_json():
+            return {"ok": False, "committed": 0, "error": "Authenticated operator not found."}, 400
+        flash("Authenticated operator not found.", "error")
+        return redirect(url_for("preview"))
+    responsibility_ack = {
+        "acknowledged": True,
+        "ack_holder_id": int(holder["id"]),
+        "ack_operator_user_id": int(user["id"]),
+        "ack_at": datetime.now(timezone.utc).isoformat(),
+        "ack_scope": "batch",
+    }
 
     try:
-        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form)
+        committed_count = _issue_batch(
+            asset_tags,
+            holder["id"],
+            issue_location_form,
+            responsibility_ack,
+            commit_operator_user_id=int(user["id"]),
+        )
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
@@ -3409,7 +3671,13 @@ def issue_commit():
     }
 
     try:
-        committed_count = _issue_batch(asset_tags, holder["id"], issue_location_form, responsibility_ack)
+        committed_count = _issue_batch(
+            asset_tags,
+            holder["id"],
+            issue_location_form,
+            responsibility_ack,
+            commit_operator_user_id=int(user["id"]),
+        )
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400
@@ -3550,7 +3818,11 @@ def return_commit():
     }
 
     try:
-        committed_count = _return_batch(asset_tags, responsibility_ack)
+        committed_count = _return_batch(
+            asset_tags,
+            responsibility_ack,
+            commit_operator_user_id=int(user["id"]),
+        )
     except ValueError as e:
         if wants_json():
             return {"ok": False, "committed": 0, "error": str(e)}, 400

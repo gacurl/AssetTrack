@@ -166,12 +166,20 @@ class ReturnBatchTests(unittest.TestCase):
 
         event_row = self.conn.execute(
             """
-            SELECT event_type, payload FROM asset_events
+            SELECT id, event_type, payload FROM asset_events
             WHERE asset_tag = ?
             ORDER BY id DESC
             LIMIT 1;
             """,
             ("TAG-OK",),
+        ).fetchone()
+        receipt_row = self.conn.execute(
+            """
+            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json
+            FROM receipt_queue
+            ORDER BY id DESC
+            LIMIT 1;
+            """
         ).fetchone()
         self.assertIsNotNone(event_row)
         self.assertEqual(event_row["event_type"], "RETURN")
@@ -184,6 +192,19 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertGreater(int(payload["responsibility_ack"]["ack_operator_user_id"]), 0)
         self.assertTrue(payload["responsibility_ack"]["ack_at"])
         self.assertEqual(payload["responsibility_ack"]["ack_scope"], "batch")
+        self.assertIsNotNone(receipt_row)
+        self.assertEqual(receipt_row["receipt_type"], "RETURN")
+        self.assertGreater(int(receipt_row["commit_operator_user_id"]), 0)
+        self.assertEqual(int(receipt_row["holder_id"]), 9)
+        self.assertEqual(json.loads(str(receipt_row["source_event_ids_json"])), [int(event_row["id"])])
+        receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
+        self.assertEqual(receipt_snapshot["receipt_type"], "RETURN")
+        self.assertEqual(receipt_snapshot["holder_id"], 9)
+        self.assertEqual(receipt_snapshot["source_event_ids"], [int(event_row["id"])])
+        self.assertEqual(len(receipt_snapshot["assets"]), 1)
+        self.assertEqual(receipt_snapshot["assets"][0]["asset_tag"], "TAG-OK")
+        self.assertEqual(receipt_snapshot["assets"][0]["from_location_type"], "IN_CUSTODY")
+        self.assertEqual(receipt_snapshot["assets"][0]["to_location_type"], "STORAGE")
 
     def test_return_commit_missing_ack_redirects_back_to_preview_with_message(self) -> None:
         self._insert_slot(21, "C", 3, None)
@@ -205,6 +226,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(follow.status_code, 200)
         self.assertIn(b"Confirm responsibility acknowledgment before returning assets.", follow.data)
         self.assertEqual(len(intake_app.SCAN_QUEUE), 1)
+        receipt_count = self.conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+        self.assertEqual(int(receipt_count["c"]), 0)
 
     def test_single_asset_return_success_message_shows_final_location(self) -> None:
         self._insert_slot(30, "CASE-13", 6, None)

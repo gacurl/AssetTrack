@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -193,12 +194,20 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     conn = db.get_connection()
     rows = conn.execute(
         """
-        SELECT asset_tag, event_type, holder_id
+        SELECT id, asset_tag, event_type, holder_id
         FROM asset_events
         WHERE event_type = 'ISSUE'
         ORDER BY asset_tag ASC;
         """
     ).fetchall()
+    receipt_row = conn.execute(
+        """
+        SELECT receipt_type, holder_id, source_event_ids_json, snapshot_json
+        FROM receipt_queue
+        ORDER BY id DESC
+        LIMIT 1;
+        """
+    ).fetchone()
     asset_rows = conn.execute(
         """
         SELECT asset_tag, location_type, current_holder_id
@@ -213,6 +222,14 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
         ("CI-400", "ISSUE", 1),
         ("CI-401", "ISSUE", 1),
     ]
+    assert receipt_row is not None
+    assert str(receipt_row["receipt_type"]) == "ISSUE"
+    assert int(receipt_row["holder_id"]) == 1
+    source_event_ids = json.loads(str(receipt_row["source_event_ids_json"]))
+    assert source_event_ids == [int(rows[0]["id"]), int(rows[1]["id"])]
+    receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
+    assert receipt_snapshot["source_event_ids"] == source_event_ids
+    assert len(receipt_snapshot["assets"]) == 2
     assert [(str(row["asset_tag"]), str(row["location_type"]), int(row["current_holder_id"])) for row in asset_rows] == [
         ("CI-400", "IN_CUSTODY", 1),
         ("CI-401", "IN_CUSTODY", 1),
