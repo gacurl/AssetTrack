@@ -237,7 +237,9 @@
                 <div class="receipt-meta mono">{{ receipt.receipt_key }}</div>
                 <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
-                <div class="receipt-status" data-state="{{ receipt.delivery_state }}">{{ receipt.delivery_state }}</div>
+                {% if receipt.delivery_state %}
+                  <div class="receipt-status" data-state="{{ receipt.delivery_state }}">{{ receipt.delivery_state }}</div>
+                {% endif %}
                 {% if receipt.matched_asset_tags %}
                   <div class="asset-tag-match match-label">Asset tag search match</div>
                 {% endif %}

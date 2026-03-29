@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import assettrack.db as db
+import json
 import pytest
 
 from assettrack.intake import app as intake_app
@@ -113,6 +114,46 @@ def test_receipts_list_shows_failed_delivery_state_from_persisted_queue_metadata
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
     assert b">failed<" in response.data
+
+
+def test_receipts_list_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot.pop("delivery", None)
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = NULL, last_attempt_at = NULL, last_error = NULL
+            WHERE id = ?;
+            """,
+            (
+                json.dumps(snapshot, sort_keys=True),
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/receipts")
+
+    assert response.status_code == 200
+    assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
+    assert b">pending<" not in response.data
+    assert b">sent<" not in response.data
+    assert b">failed<" not in response.data
 
 
 def test_receipts_list_renders_clear_search_link_when_filters_are_active(client_with_temp_db) -> None:

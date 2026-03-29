@@ -54,10 +54,12 @@
       <p><strong>Receipt ID:</strong> <span class="mono">{{ receipt.id }}</span></p>
       <p><strong>Receipt key:</strong> <span class="mono">{{ receipt.receipt_key }}</span></p>
       <p><strong>Receipt type:</strong> {{ receipt.receipt_type or "Unknown" }}</p>
-      <p>
-        <strong>Delivery state:</strong>
-        <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ receipt.delivery.state }}</span>
-      </p>
+      {% if receipt.delivery.state %}
+        <p>
+          <strong>Delivery state:</strong>
+          <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ receipt.delivery.state }}</span>
+        </p>
+      {% endif %}
       <p><strong>Committed at:</strong> {{ receipt.commit_at or "Unknown" }}</p>
       <p>
         <strong>Committed by:</strong>

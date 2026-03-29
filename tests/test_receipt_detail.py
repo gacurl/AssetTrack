@@ -352,6 +352,44 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert b"Delivered at:</strong> 2026-03-29T12:05:00+00:00" in sent_response.data
 
 
+def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot.pop("delivery", None)
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = NULL, last_attempt_at = NULL, last_error = NULL
+            WHERE id = ?;
+            """,
+            (
+                json.dumps(snapshot, sort_keys=True),
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+
+    assert response.status_code == 200
+    assert b"Delivery state:</strong>" not in response.data
+    assert b">pending<" not in response.data
+
+
 def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
     receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
 
