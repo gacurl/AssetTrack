@@ -2,9 +2,13 @@
 
 {% block title %}Receipt Detail{% endblock %}
 {% block page_heading %}Receipt {{ receipt.id }}{% endblock %}
+{% block page_class %} receipt-detail-page{% endblock %}
 
 {% block extra_head %}
   <style>
+    .page.receipt-detail-page {
+      max-width: 1320px;
+    }
     .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .receipt-summary {
@@ -68,7 +72,7 @@
       background: color-mix(in srgb, var(--color-danger) 14%, white);
       color: var(--color-danger);
     }
-    @media (max-width: 860px) {
+    @media (max-width: 960px) {
       .receipt-summary {
         grid-template-columns: 1fr;
       }
