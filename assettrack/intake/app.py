@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -4510,20 +4510,37 @@ def _receipt_acknowledgment_statement(receipt_type: str) -> str:
     return "Custody issue was reviewed and confirmed from the stored receipt record."
 
 
+def _receipt_pdf_location_type_label(value: object) -> str:
+    return str(value or "").strip().replace("_", " ")
+
+
 def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
     styles = getSampleStyleSheet()
     body = styles["BodyText"]
     heading = styles["Heading2"]
     title = styles["Title"]
+    table_body = ParagraphStyle(
+        "ReceiptPdfTableBody",
+        parent=body,
+        fontSize=8.5,
+        leading=10,
+        splitLongWords=False,
+        wordWrap="LTR",
+    )
+    table_header = ParagraphStyle(
+        "ReceiptPdfTableHeader",
+        parent=table_body,
+        fontName="Helvetica-Bold",
+    )
 
     def _text(value: object) -> str:
         return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    def _p(value: object) -> Paragraph:
-        return Paragraph(_text(value), body)
+    def _p(value: object, style: ParagraphStyle = table_body) -> Paragraph:
+        return Paragraph(_text(value), style)
 
     def _render_table(headers: list[str], rows: list[list[object]], column_widths: list[float]) -> Table:
-        data = [[Paragraph(f"<b>{_text(header)}</b>", body) for header in headers]]
+        data = [[Paragraph(_text(header), table_header) for header in headers]]
         for row in rows:
             data.append([_p(value) for value in row])
 
@@ -4576,8 +4593,8 @@ def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
                 str(asset.get("equipment_type") or "").strip(),
                 str(asset.get("serial_number") or "").strip(),
                 make_model,
-                str(asset.get("from_location_type") or "").strip(),
-                str(asset.get("to_location_type") or "").strip(),
+                _receipt_pdf_location_type_label(asset.get("from_location_type")),
+                _receipt_pdf_location_type_label(asset.get("to_location_type")),
             ]
         )
 
@@ -4612,7 +4629,7 @@ def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
         _render_table(
             ["Asset Tag", "Equipment", "Serial", "Make / Model", "From", "To"],
             asset_rows or [["No assets captured.", "", "", "", "", ""]],
-            [1.1 * inch, 1.0 * inch, 1.2 * inch, 2.0 * inch, 1.0 * inch, 1.0 * inch],
+            [1.15 * inch, 1.0 * inch, 1.25 * inch, 1.95 * inch, 0.95 * inch, 1.0 * inch],
         ),
     ]
 
