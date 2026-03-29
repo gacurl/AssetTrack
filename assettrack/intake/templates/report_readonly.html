@@ -2,9 +2,13 @@
 
 {% block title %}Current Status Report{% endblock %}
 {% block page_heading %}Current Status Report{% endblock %}
+{% block page_class %} report-page{% endblock %}
 
 {% block extra_head %}
   <style>
+    .page.report-page {
+      max-width: 1320px;
+    }
     .report-actions {
       display: flex;
       gap: 0.5rem;
