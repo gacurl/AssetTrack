@@ -50,6 +50,7 @@
 {% block content %}
   <div class="report-actions">
     <a class="chip" href="{{ url_for('admin_system') }}">&larr; Back to System Health</a>
+    <a class="chip" href="{{ url_for('admin_human_report_pdf') }}">Download PDF</a>
     <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
   </div>
 

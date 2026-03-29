@@ -135,6 +135,15 @@ def test_operator_is_forbidden_for_human_readable_report(client_with_temp_db) ->
     assert response.status_code == 403
 
 
+def test_operator_is_forbidden_for_human_readable_report_pdf(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-report-pdf", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.get("/admin/report/pdf")
+
+    assert response.status_code == 403
+
+
 def test_admin_can_download_database_export(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-export", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
@@ -310,6 +319,7 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert response.status_code == 200
     assert b"Admin: Human-Readable Report" in response.data
     assert b"This page is a read-only human-readable report" in response.data
+    assert b"Download PDF" in response.data
     assert b"Download Database Backup" in response.data
     assert b"showing recent active events only" in response.data
     assert b"Assets" in response.data
@@ -322,3 +332,131 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert b"Jane Operator" in response.data
     assert b"Report Ops" in response.data
     assert b"CASE-1" in response.data
+
+
+def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-report-pdf", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO organizations (name, created_at, updated_at)
+        VALUES ('PDF Ops', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO buildings (name, created_at, updated_at)
+        VALUES ('PDF HQ', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    organization_id = int(
+        conn.execute("SELECT id FROM organizations WHERE name = 'PDF Ops' LIMIT 1;").fetchone()[0]
+    )
+    building_id = int(
+        conn.execute("SELECT id FROM buildings WHERE name = 'PDF HQ' LIMIT 1;").fetchone()[0]
+    )
+    conn.execute(
+        """
+        INSERT INTO organization_buildings (organization_id, building_id, created_at)
+        VALUES (?, ?, '2026-01-01T00:00:00Z');
+        """,
+        (organization_id, building_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO holders (
+            id, holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
+        )
+        VALUES (
+            1, 'PERSON', 'PDF Operator', 'PDF Ops', ?, 'PDF-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+        );
+        """,
+        (organization_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES (12, 'CASE-PDF', 1, 'PDF-100');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES (
+            'PDF-100',
+            'SN-PDF',
+            'Dell',
+            'laptop',
+            'PDF HQ',
+            '200',
+            'Latitude',
+            'LAT',
+            NULL,
+            'PDF HQ/200',
+            'issued_to',
+            'accountable',
+            'serviceable',
+            '2026-01-01',
+            '2026-01-01T00:00:00Z',
+            'IN_CUSTODY',
+            1,
+            12
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT 12, id, '2026-01-01T00:00:00Z'
+        FROM assets
+        WHERE asset_tag = 'PDF-100';
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+        VALUES (
+            'PDF-100',
+            'ISSUE',
+            '2026-01-02T00:00:00Z',
+            'system',
+            NULL,
+            '{"to_location_type":"IN_CUSTODY"}',
+            1
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.get("/admin/report/pdf")
+
+    assert response.status_code == 200
+    disposition = response.headers.get("Content-Disposition") or ""
+    assert "attachment;" in disposition
+    assert "assettrack-human-report-" in disposition
+    assert ".pdf" in disposition
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
