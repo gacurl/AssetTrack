@@ -44,6 +44,7 @@
   {% set operator = receipt.commit_operator %}
   {% set holder = receipt.holder_snapshot %}
   {% set organization = receipt.organization_snapshot %}
+  {% set email_status_label = "Queued" if receipt.delivery.state == "pending" else receipt.delivery.state %}
   <nav class="actions" aria-label="Receipt navigation">
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
@@ -56,8 +57,8 @@
       <p><strong>Receipt type:</strong> {{ receipt.receipt_type or "Unknown" }}</p>
       {% if receipt.delivery.state %}
         <p>
-          <strong>Delivery state:</strong>
-          <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ receipt.delivery.state }}</span>
+          <strong>Receipt email status:</strong>
+          <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
         </p>
       {% endif %}
       <p><strong>Committed at:</strong> {{ receipt.commit_at or "Unknown" }}</p>
