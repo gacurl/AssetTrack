@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Receipts{% endblock %}
+{% block page_heading %}Receipts{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+    }
+    .filters .row {
+      margin: 0;
+    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .muted-cell { color: var(--color-text-muted); }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="actions" aria-label="Receipt navigation">
+    <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
+  </nav>
+
+  <section class="card">
+    <h2>Search Receipts</h2>
+    <form method="get" action="{{ url_for('receipts_list') }}">
+      <div class="filters">
+        <div class="row">
+          <label for="asset_tag">Asset Tag</label>
+          <input id="asset_tag" name="asset_tag" type="text" value="{{ filters.asset_tag }}" />
+        </div>
+        <div class="row">
+          <label for="holder_name">Holder Name</label>
+          <input id="holder_name" name="holder_name" type="text" value="{{ filters.holder_name }}" />
+        </div>
+        <div class="row">
+          <label for="building_room">Building / Room</label>
+          <input id="building_room" name="building_room" type="text" value="{{ filters.building_room }}" />
+        </div>
+        <div class="row">
+          <button type="submit">Search</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Receipt Results ({{ receipts|length }})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Receipt Key</th>
+          <th>Type</th>
+          <th>Committed At</th>
+          <th>Committed By</th>
+          <th>Holder</th>
+          <th>Organization</th>
+          <th>Location</th>
+          <th>Assets</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for receipt in receipts %}
+          <tr>
+            <td class="mono">{{ receipt.id }}</td>
+            <td class="mono">{{ receipt.receipt_key }}</td>
+            <td>{{ receipt.receipt_type }}</td>
+            <td>{{ receipt.commit_at or "Unknown" }}</td>
+            <td>{{ receipt.committed_by }}</td>
+            <td>{{ receipt.holder_summary }}</td>
+            <td>{{ receipt.organization_summary or "" }}</td>
+            <td class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Asset-specific return locations'] else '' }}">
+              {{ receipt.location_summary }}
+            </td>
+            <td>{{ receipt.asset_count }}</td>
+            <td><a href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Open</a></td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="10">No receipts matched the current search.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}
