@@ -16,7 +16,10 @@ import json
 import os
 import re
 import sqlite3
+import smtplib
 import time
+from email.message import EmailMessage
+from email.utils import getaddresses
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
@@ -2344,6 +2347,36 @@ def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) ->
     )
 
 
+def _receipt_row_snapshot(row: sqlite3.Row) -> dict[str, object]:
+    snapshot = json.loads(str(row["snapshot_json"] or "{}"))
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+    return snapshot
+
+
+def _receipt_queue_row_by_id(conn, receipt_id: int) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            id,
+            receipt_key,
+            receipt_type,
+            source_event_ids_json,
+            snapshot_json,
+            commit_at,
+            commit_operator_user_id,
+            holder_id,
+            sent_at,
+            last_attempt_at,
+            last_error
+        FROM receipt_queue
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (int(receipt_id),),
+    ).fetchone()
+
+
 def _receipt_asset_row_snapshot(conn, asset_tag: str) -> Optional[sqlite3.Row]:
     return conn.execute(
         """
@@ -4446,12 +4479,96 @@ def _receipt_display_title(receipt_type: str, holder_name: str, display_date: st
     return f"{_receipt_type_label(receipt_type)} — {holder_name or 'Unknown Holder'} — {display_date or 'Unknown Date'}"
 
 
+def _receipt_email_recipients(receipt: dict[str, object]) -> list[str]:
+    contact_values: list[str] = []
+
+    def _append_contact(snapshot: object) -> None:
+        if not isinstance(snapshot, dict):
+            return
+        contact_info = str(snapshot.get("contact_info") or "").strip()
+        if contact_info:
+            contact_values.append(contact_info)
+
+    _append_contact(receipt.get("holder_snapshot"))
+    for asset in receipt.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        _append_contact(asset.get("holder_snapshot"))
+        _append_contact(asset.get("from_holder_snapshot"))
+
+    recipients: list[str] = []
+    for _, email_address in getaddresses(contact_values):
+        normalized = str(email_address or "").strip()
+        if normalized and "@" in normalized and normalized not in recipients:
+            recipients.append(normalized)
+
+    return recipients
+
+
 def _receipt_pdf_download_name(receipt: dict[str, object]) -> str:
     title = str(receipt.get("display_title") or "").strip() or "Receipt"
     sanitized = title.replace(" — ", " - ")
     sanitized = re.sub(r'[<>:"/\\|?*]', " ", sanitized)
     sanitized = re.sub(r"\s+", " ", sanitized).strip().rstrip(". ")
     return f"{sanitized or 'Receipt'}.pdf"
+
+
+def _build_receipt_email_body(receipt: dict[str, object]) -> str:
+    asset_tags: list[str] = []
+    for asset in receipt.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        asset_tag = str(asset.get("asset_tag") or "").strip()
+        if asset_tag:
+            asset_tags.append(asset_tag)
+
+    asset_lines = "\n".join(f"- {asset_tag}" for asset_tag in asset_tags) or "- None recorded"
+    return (
+        f"{receipt.get('display_title')}\n\n"
+        f"Receipt key: {receipt.get('receipt_key')}\n"
+        f"Committed at: {receipt.get('commit_at')}\n"
+        f"Holder: {receipt.get('holder_display_name')}\n"
+        f"Assets:\n{asset_lines}\n"
+    )
+
+
+def _send_receipt_email(receipt: dict[str, object]) -> list[str]:
+    recipients = _receipt_email_recipients(receipt)
+    if not recipients:
+        raise ValueError("Receipt has no stored email recipient.")
+
+    smtp_host = str(os.getenv("ASSETTRACK_SMTP_HOST") or "").strip()
+    if not smtp_host:
+        raise ValueError("Receipt email delivery is not configured.")
+
+    smtp_port = int(str(os.getenv("ASSETTRACK_SMTP_PORT") or "25").strip() or "25")
+    smtp_username = str(os.getenv("ASSETTRACK_SMTP_USERNAME") or "").strip()
+    smtp_password = str(os.getenv("ASSETTRACK_SMTP_PASSWORD") or "")
+    smtp_starttls = str(os.getenv("ASSETTRACK_SMTP_STARTTLS") or "").strip().lower() in {"1", "true", "yes", "on"}
+    smtp_use_ssl = str(os.getenv("ASSETTRACK_SMTP_USE_SSL") or "").strip().lower() in {"1", "true", "yes", "on"}
+    from_address = str(os.getenv("ASSETTRACK_RECEIPT_FROM_EMAIL") or "assettrack@local").strip() or "assettrack@local"
+
+    message = EmailMessage()
+    message["Subject"] = str(receipt.get("display_title") or "AssetTrack Receipt")
+    message["From"] = from_address
+    message["To"] = ", ".join(recipients)
+    message.set_content(_build_receipt_email_body(receipt))
+    message.add_attachment(
+        _build_receipt_pdf(receipt),
+        maintype="application",
+        subtype="pdf",
+        filename=_receipt_pdf_download_name(receipt),
+    )
+
+    smtp_cls = smtplib.SMTP_SSL if smtp_use_ssl else smtplib.SMTP
+    with smtp_cls(smtp_host, smtp_port, timeout=10) as smtp:
+        if smtp_starttls and not smtp_use_ssl:
+            smtp.starttls()
+        if smtp_username:
+            smtp.login(smtp_username, smtp_password)
+        smtp.send_message(message)
+
+    return recipients
 
 
 def _receipt_pdf_ack_name(receipt: dict[str, object]) -> str:
@@ -4657,6 +4774,89 @@ def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
     )
 
 
+def _update_receipt_delivery_state(
+    conn,
+    *,
+    receipt_id: int,
+    snapshot: dict[str, object],
+    state: str,
+    last_attempt_at: Optional[str],
+    sent_at: Optional[str],
+    last_error: Optional[str],
+) -> None:
+    updated_snapshot = dict(snapshot)
+    updated_snapshot["delivery"] = _receipt_delivery_snapshot(
+        state=state,
+        sent_at=sent_at,
+        last_attempt_at=last_attempt_at,
+        last_error=last_error,
+    )
+    conn.execute(
+        """
+        UPDATE receipt_queue
+        SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = ?
+        WHERE id = ?;
+        """,
+        (
+            json.dumps(updated_snapshot, sort_keys=True),
+            sent_at,
+            last_attempt_at,
+            last_error,
+            int(receipt_id),
+        ),
+    )
+
+
+def _send_queued_receipt(receipt_id: int) -> dict[str, object]:
+    conn = get_connection()
+    try:
+        row = _receipt_queue_row_by_id(conn, receipt_id)
+        if row is None:
+            raise ValueError("Receipt not found.")
+
+        snapshot = _receipt_row_snapshot(row)
+        delivery = _receipt_delivery_from_row(row, snapshot)
+        if delivery.get("state") != "pending":
+            raise ValueError("Receipt is not queued for email.")
+
+        receipt = _receipt_from_queue_row(row)
+        attempt_at = datetime.now(timezone.utc).isoformat()
+
+        try:
+            recipients = _send_receipt_email(receipt)
+        except Exception as exc:
+            with conn:
+                _update_receipt_delivery_state(
+                    conn,
+                    receipt_id=int(row["id"]),
+                    snapshot=snapshot,
+                    state="failed",
+                    last_attempt_at=attempt_at,
+                    sent_at=None,
+                    last_error=str(exc),
+                )
+            raise
+
+        with conn:
+            _update_receipt_delivery_state(
+                conn,
+                receipt_id=int(row["id"]),
+                snapshot=snapshot,
+                state="sent",
+                last_attempt_at=attempt_at,
+                sent_at=attempt_at,
+                last_error=None,
+            )
+
+        return {
+            "receipt_id": int(row["id"]),
+            "recipients": recipients,
+            "sent_at": attempt_at,
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/receipts")
 @require_login
 def receipts_list():
@@ -4763,6 +4963,41 @@ def receipts_list():
             "building_room": building_room,
         },
     )
+
+
+@app.post("/receipts/<int:receipt_id>/send")
+@require_login
+def receipt_send(receipt_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    try:
+        result = _send_queued_receipt(receipt_id)
+    except ValueError as exc:
+        if wants_json():
+            return {"ok": False, "error": str(exc)}, 400
+        flash(str(exc), "error")
+        return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+    except Exception as exc:
+        if wants_json():
+            return {"ok": False, "error": str(exc)}, 500
+        flash(f"Receipt email failed: {exc}", "error")
+        return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+
+    if wants_json():
+        return {
+            "ok": True,
+            "receipt_id": result["receipt_id"],
+            "recipients": result["recipients"],
+            "sent_at": result["sent_at"],
+        }
+
+    flash(f"Receipt email sent to {', '.join(result['recipients'])}.", "success")
+    return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
 
 @app.get("/receipts/<int:receipt_id>/pdf")
