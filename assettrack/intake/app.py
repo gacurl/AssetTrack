@@ -2269,12 +2269,21 @@ def _receipt_delivery_snapshot(
 
 def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) -> dict[str, Optional[str]]:
     snapshot_delivery = snapshot.get("delivery")
-    if not isinstance(snapshot_delivery, dict):
+    has_snapshot_delivery = isinstance(snapshot_delivery, dict)
+    if not has_snapshot_delivery:
         snapshot_delivery = {}
 
     sent_at = str(row["sent_at"] or snapshot_delivery.get("sent_at") or "").strip() or None
     last_attempt_at = str(row["last_attempt_at"] or snapshot_delivery.get("last_attempt_at") or "").strip() or None
     last_error = str(row["last_error"] or snapshot_delivery.get("last_error") or "").strip() or None
+
+    if not has_snapshot_delivery and not sent_at and not last_attempt_at and not last_error:
+        return {
+            "state": None,
+            "sent_at": None,
+            "last_attempt_at": None,
+            "last_error": None,
+        }
 
     if sent_at:
         state = "sent"
@@ -4282,7 +4291,7 @@ def _receipt_summary_from_row(
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
-        "delivery_state": str(delivery.get("state") or "pending"),
+        "delivery_state": delivery.get("state"),
         "commit_at": commit_at,
         "commit_at_display": commit_at_display,
         "committed_by": committed_by,
