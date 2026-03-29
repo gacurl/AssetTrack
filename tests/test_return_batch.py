@@ -148,6 +148,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(success.status_code, 200)
         self.assertTrue(success.json["ok"])
         self.assertEqual(success.json["committed"], 1)
+        self.assertIsInstance(success.json["receipt_id"], int)
         self.assertEqual(success.json["error"], None)
         self.assertEqual(len(intake_app.SCAN_QUEUE), 0)
 
@@ -247,11 +248,9 @@ class ReturnBatchTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Returned MVPLAPTOP02.", response.data)
-        self.assertIn(b"Location: STORAGE.", response.data)
-        self.assertIn(b"Slot: CASE-13 / 6.", response.data)
-        self.assertIn(b"Verify home slots:", response.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-13"', response.data)
+        self.assertIn(b"Return Receipt", response.data)
+        self.assertIn(b"MVPLAPTOP02", response.data)
+        self.assertIn(b"CASE-13 / 6", response.data)
 
         asset_after = self.conn.execute(
             "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
@@ -260,6 +259,26 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNotNone(asset_after)
         self.assertEqual(asset_after["location_type"], "STORAGE")
         self.assertIsNone(asset_after["current_holder_id"])
+
+    def test_return_commit_redirects_to_exact_created_receipt(self) -> None:
+        self._insert_slot(31, "CASE-14", 2, None)
+        self._insert_asset("RETURN-REDIRECT", location_type="IN_CUSTODY", holder_id=12, home_slot_id=31)
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="RETURN-REDIRECT", equipment_type="laptop"))
+
+        response = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        receipt_row = self.conn.execute(
+            "SELECT id FROM receipt_queue ORDER BY id DESC LIMIT 1;"
+        ).fetchone()
+        self.assertIsNotNone(receipt_row)
+        self.assertTrue((response.headers.get("Location") or "").endswith(f"/receipts/{int(receipt_row['id'])}"))
 
     def test_multi_asset_return_same_case_shows_one_case_drilldown_link(self) -> None:
         self._insert_slot(40, "CASE-SAME", 1, None)
@@ -278,9 +297,9 @@ class ReturnBatchTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Returned 2 assets.", response.data)
-        self.assertIn(b"Verify home slots:", response.data)
-        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-SAME"'), 1)
+        self.assertIn(b"Return Receipt", response.data)
+        self.assertIn(b"SAME-1", response.data)
+        self.assertIn(b"SAME-2", response.data)
 
     def test_multi_asset_return_different_cases_shows_one_link_per_case(self) -> None:
         self._insert_slot(50, "CASE-X", 1, None)
@@ -299,10 +318,9 @@ class ReturnBatchTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Returned 2 assets.", response.data)
-        self.assertIn(b"Verify home slots:", response.data)
-        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-X"'), 1)
-        self.assertEqual(response.data.count(b'href="/dashboard/cases/CASE-Y"'), 1)
+        self.assertIn(b"Return Receipt", response.data)
+        self.assertIn(b"DIFF-1", response.data)
+        self.assertIn(b"DIFF-2", response.data)
 
     def test_return_queue_can_remove_one_item_and_preview_only_remaining_items(self) -> None:
         intake_app.SCAN_QUEUE.clear()

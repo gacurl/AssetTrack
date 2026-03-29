@@ -188,8 +188,6 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     )
 
     assert commit_response.status_code == 302
-    assert (commit_response.headers.get("Location") or "").endswith("/issue?issued=2")
-    assert len(intake_app.SCAN_QUEUE) == 0
 
     conn = db.get_connection()
     rows = conn.execute(
@@ -202,7 +200,7 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     ).fetchall()
     receipt_row = conn.execute(
         """
-        SELECT receipt_type, holder_id, source_event_ids_json, snapshot_json, sent_at, last_attempt_at, last_error
+        SELECT id, receipt_type, holder_id, source_event_ids_json, snapshot_json, sent_at, last_attempt_at, last_error
         FROM receipt_queue
         ORDER BY id DESC
         LIMIT 1;
@@ -218,11 +216,13 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     ).fetchall()
     conn.close()
 
+    assert receipt_row is not None
+    assert (commit_response.headers.get("Location") or "").endswith(f"/receipts/{int(receipt_row['id'])}")
+    assert len(intake_app.SCAN_QUEUE) == 0
     assert [(str(row["asset_tag"]), str(row["event_type"]), int(row["holder_id"])) for row in rows] == [
         ("CI-400", "ISSUE", 1),
         ("CI-401", "ISSUE", 1),
     ]
-    assert receipt_row is not None
     assert str(receipt_row["receipt_type"]) == "ISSUE"
     assert int(receipt_row["holder_id"]) == 1
     source_event_ids = json.loads(str(receipt_row["source_event_ids_json"]))
