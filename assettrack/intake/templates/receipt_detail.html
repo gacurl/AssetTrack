@@ -7,13 +7,44 @@
   <style>
     .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .meta-grid {
+    .receipt-summary {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 0.75rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
     }
-    .meta-grid p {
+    .summary-group {
+      display: grid;
+      gap: 0.55rem;
+      padding: 0.95rem 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      background: var(--color-surface-bg);
+    }
+    .summary-group p {
       margin: 0;
+    }
+    .summary-group-title {
+      margin: 0;
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .summary-value {
+      display: grid;
+      gap: 0.18rem;
+    }
+    .summary-label {
+      color: var(--color-text-muted);
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
+    .summary-copy {
+      line-height: 1.4;
+    }
+    .summary-status {
+      align-content: start;
     }
     .status-chip {
       display: inline-flex;
@@ -37,6 +68,11 @@
       background: color-mix(in srgb, var(--color-danger) 14%, white);
       color: var(--color-danger);
     }
+    @media (max-width: 860px) {
+      .receipt-summary {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 {% endblock %}
 
@@ -51,52 +87,96 @@
   </nav>
 
   <section class="card">
-    <div class="meta-grid">
-      <p><strong>Receipt ID:</strong> <span class="mono">{{ receipt.id }}</span></p>
-      <p><strong>Receipt key:</strong> <span class="mono">{{ receipt.receipt_key }}</span></p>
-      <p><strong>Receipt type:</strong> {{ receipt.receipt_type or "Unknown" }}</p>
-      {% if receipt.delivery.state %}
-        <p>
-          <strong>Receipt email status:</strong>
-          <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
-        </p>
-      {% endif %}
-      <p><strong>Committed at:</strong> {{ receipt.commit_at or "Unknown" }}</p>
-      <p>
-        <strong>Committed by:</strong>
-        {% if operator and operator.username %}
-          {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %} [user_id {{ operator.id }}]
-        {% else %}
-          user_id {{ receipt.commit_operator_user_id }}
+    <div class="receipt-summary">
+      <section class="summary-group">
+        <h2 class="summary-group-title">Identity</h2>
+        <div class="summary-value">
+          <div class="summary-label">Receipt ID</div>
+          <div class="summary-copy mono">{{ receipt.id }}</div>
+        </div>
+        <div class="summary-value">
+          <div class="summary-label">Receipt type</div>
+          <div class="summary-copy">{{ receipt.receipt_type or "Unknown" }}</div>
+        </div>
+        <div class="summary-value">
+          <div class="summary-label">Receipt key</div>
+          <div class="summary-copy mono">{{ receipt.receipt_key }}</div>
+        </div>
+      </section>
+
+      <section class="summary-group summary-status">
+        <h2 class="summary-group-title">Email</h2>
+        {% if receipt.delivery.state %}
+          <div class="summary-value">
+            <div class="summary-label">Receipt email status</div>
+            <div class="summary-copy">
+              <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
+            </div>
+          </div>
         {% endif %}
-      </p>
-      {% if holder or receipt.holder_id is not none %}
-        <p>
-          <strong>Receipt holder:</strong>
-          {% if holder and holder.name %}
-            {{ holder.name }}
-            {% if holder.identifier %}(ID {{ holder.identifier }}){% endif %}
-          {% else %}
-            holder_id {{ receipt.holder_id }}
-          {% endif %}
-        </p>
-      {% endif %}
-      {% if organization %}
-        <p>
-          <strong>Organization:</strong>
-          {{ organization.organization or "Unknown" }}
-          {% if organization.organization_id is not none %}(org_id {{ organization.organization_id }}){% endif %}
-        </p>
-      {% endif %}
-      {% if receipt.delivery.last_attempt_at %}
-        <p><strong>Last delivery attempt:</strong> {{ receipt.delivery.last_attempt_at }}</p>
-      {% endif %}
-      {% if receipt.delivery.sent_at %}
-        <p><strong>Delivered at:</strong> {{ receipt.delivery.sent_at }}</p>
-      {% endif %}
-      {% if receipt.delivery.last_error %}
-        <p><strong>Last delivery error:</strong> {{ receipt.delivery.last_error }}</p>
-      {% endif %}
+        {% if receipt.delivery.last_attempt_at %}
+          <div class="summary-value">
+            <div class="summary-label">Last delivery attempt</div>
+            <div class="summary-copy">{{ receipt.delivery.last_attempt_at }}</div>
+          </div>
+        {% endif %}
+        {% if receipt.delivery.sent_at %}
+          <div class="summary-value">
+            <div class="summary-label">Delivered at</div>
+            <div class="summary-copy">{{ receipt.delivery.sent_at }}</div>
+          </div>
+        {% endif %}
+        {% if receipt.delivery.last_error %}
+          <div class="summary-value">
+            <div class="summary-label">Last delivery error</div>
+            <div class="summary-copy">{{ receipt.delivery.last_error }}</div>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="summary-group">
+        <h2 class="summary-group-title">Actor</h2>
+        <div class="summary-value">
+          <div class="summary-label">Committed by</div>
+          <div class="summary-copy">
+            {% if operator and operator.username %}
+              {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %} [user_id {{ operator.id }}]
+            {% else %}
+              user_id {{ receipt.commit_operator_user_id }}
+            {% endif %}
+          </div>
+        </div>
+        {% if holder or receipt.holder_id is not none %}
+          <div class="summary-value">
+            <div class="summary-label">Receipt holder</div>
+            <div class="summary-copy">
+              {% if holder and holder.name %}
+                {{ holder.name }}
+                {% if holder.identifier %}(ID {{ holder.identifier }}){% endif %}
+              {% else %}
+                holder_id {{ receipt.holder_id }}
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="summary-group">
+        <h2 class="summary-group-title">Context</h2>
+        <div class="summary-value">
+          <div class="summary-label">Committed at</div>
+          <div class="summary-copy">{{ receipt.commit_at or "Unknown" }}</div>
+        </div>
+        {% if organization %}
+          <div class="summary-value">
+            <div class="summary-label">Organization</div>
+            <div class="summary-copy">
+              {{ organization.organization or "Unknown" }}
+              {% if organization.organization_id is not none %}(org_id {{ organization.organization_id }}){% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </section>
     </div>
   </section>
 

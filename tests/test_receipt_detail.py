@@ -249,12 +249,13 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
     assert response.status_code == 200
     assert b"Receipt Detail" in response.data
     assert f"Receipt {receipt_id}".encode("utf-8") in response.data
-    assert b"Receipt key:" in response.data
+    assert b"Receipt key" in response.data
     assert b"ISSUE:" in response.data
-    assert b"Receipt type:</strong> ISSUE" in response.data
-    assert b"Committed by:</strong>" in response.data
+    assert b"Receipt type" in response.data
+    assert b"ISSUE" in response.data
+    assert b"Committed by" in response.data
     assert b"issue-operator" in response.data
-    assert b"Receipt holder:</strong>" in response.data
+    assert b"Receipt holder" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Location" in response.data
     assert b"HQ North" in response.data
@@ -273,7 +274,8 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt type:</strong> RETURN" in response.data
+    assert b"Receipt type" in response.data
+    assert b"RETURN" in response.data
     assert b"RETURN:" in response.data
     assert b"Return Holder One" in response.data
     assert b"RETURN-200" in response.data
@@ -323,10 +325,12 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
 
     failed_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert failed_response.status_code == 200
-    assert b"Receipt email status:</strong>" in failed_response.data
+    assert b"Receipt email status" in failed_response.data
     assert b">failed<" in failed_response.data
-    assert b"Last delivery attempt:</strong> 2026-03-29T12:00:00+00:00" in failed_response.data
-    assert b"Last delivery error:</strong> smtp offline" in failed_response.data
+    assert b"Last delivery attempt" in failed_response.data
+    assert b"2026-03-29T12:00:00+00:00" in failed_response.data
+    assert b"Last delivery error" in failed_response.data
+    assert b"smtp offline" in failed_response.data
 
     conn = db.get_connection()
     try:
@@ -349,7 +353,8 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     sent_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert sent_response.status_code == 200
     assert b">sent<" in sent_response.data
-    assert b"Delivered at:</strong> 2026-03-29T12:05:00+00:00" in sent_response.data
+    assert b"Delivered at" in sent_response.data
+    assert b"2026-03-29T12:05:00+00:00" in sent_response.data
 
 
 def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
@@ -386,7 +391,7 @@ def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(cl
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt email status:</strong>" not in response.data
+    assert b"Receipt email status" not in response.data
     assert b">pending<" not in response.data
 
 
@@ -396,8 +401,9 @@ def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt type:</strong> RETURN" in response.data
-    assert b"Receipt holder:" not in response.data
+    assert b"Receipt type" in response.data
+    assert b"RETURN" in response.data
+    assert b"Receipt holder" not in response.data
     assert b"Return Holder One" in response.data
     assert b"Return Holder Two" in response.data
     assert b"RETURN-200" in response.data
