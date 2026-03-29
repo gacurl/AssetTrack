@@ -69,6 +69,29 @@
     .asset-tag-match {
       font-size: 0.95rem;
     }
+    .receipt-status {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 0.18rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-transform: capitalize;
+      background: var(--color-surface-soft);
+    }
+    .receipt-status[data-state="pending"] {
+      background: var(--color-warning-soft);
+      color: var(--color-primary);
+    }
+    .receipt-status[data-state="sent"] {
+      background: color-mix(in srgb, var(--color-success) 16%, white);
+      color: var(--color-success);
+    }
+    .receipt-status[data-state="failed"] {
+      background: color-mix(in srgb, var(--color-danger) 14%, white);
+      color: var(--color-danger);
+    }
     .match-values {
       display: flex;
       flex-wrap: wrap;
@@ -214,6 +237,7 @@
                 <div class="receipt-meta mono">{{ receipt.receipt_key }}</div>
                 <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
+                <div class="receipt-status" data-state="{{ receipt.delivery_state }}">{{ receipt.delivery_state }}</div>
                 {% if receipt.matched_asset_tags %}
                   <div class="asset-tag-match match-label">Asset tag search match</div>
                 {% endif %}

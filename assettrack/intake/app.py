@@ -2249,6 +2249,244 @@ def _receipt_slot_snapshot(conn, slot_id: Optional[int]) -> Optional[dict]:
     }
 
 
+def _receipt_delivery_snapshot(
+    *,
+    state: str = "pending",
+    sent_at: Optional[str] = None,
+    last_attempt_at: Optional[str] = None,
+    last_error: Optional[str] = None,
+) -> dict[str, Optional[str]]:
+    normalized_state = str(state or "").strip().lower()
+    if normalized_state not in {"pending", "sent", "failed"}:
+        normalized_state = "pending"
+    return {
+        "state": normalized_state,
+        "sent_at": sent_at,
+        "last_attempt_at": last_attempt_at,
+        "last_error": last_error,
+    }
+
+
+def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) -> dict[str, Optional[str]]:
+    snapshot_delivery = snapshot.get("delivery")
+    if not isinstance(snapshot_delivery, dict):
+        snapshot_delivery = {}
+
+    sent_at = str(row["sent_at"] or snapshot_delivery.get("sent_at") or "").strip() or None
+    last_attempt_at = str(row["last_attempt_at"] or snapshot_delivery.get("last_attempt_at") or "").strip() or None
+    last_error = str(row["last_error"] or snapshot_delivery.get("last_error") or "").strip() or None
+
+    if sent_at:
+        state = "sent"
+    elif last_error:
+        state = "failed"
+    else:
+        state = str(snapshot_delivery.get("state") or "pending").strip().lower() or "pending"
+
+    return _receipt_delivery_snapshot(
+        state=state,
+        sent_at=sent_at,
+        last_attempt_at=last_attempt_at,
+        last_error=last_error,
+    )
+
+
+def _receipt_asset_row_snapshot(conn, asset_tag: str) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT id, asset_tag, serial_number, equipment_type, manufacturer, model, model_code, notes, building_room
+        FROM assets
+        WHERE UPPER(asset_tag) = UPPER(?)
+           OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag, asset_tag),
+    ).fetchone()
+
+
+def _receipt_event_rows(conn, source_event_ids: list[int]) -> list[sqlite3.Row]:
+    if not source_event_ids:
+        raise ValueError("Receipt queue rows require at least one source event.")
+
+    placeholders = ", ".join("?" for _ in source_event_ids)
+    rows = conn.execute(
+        f"""
+        SELECT id, asset_tag, payload, holder_id
+        FROM asset_events
+        WHERE id IN ({placeholders});
+        """,
+        tuple(int(event_id) for event_id in source_event_ids),
+    ).fetchall()
+    rows_by_id = {int(row["id"]): row for row in rows}
+    ordered_rows = [rows_by_id[int(event_id)] for event_id in source_event_ids if int(event_id) in rows_by_id]
+    if len(ordered_rows) != len(source_event_ids):
+        raise ValueError("Receipt queue rows must be derived from stored event history.")
+    return ordered_rows
+
+
+def _receipt_location_context_from_building_room(building_room: str) -> dict[str, str]:
+    normalized = str(building_room or "").strip()
+    if not normalized:
+        return {"building": "", "room": "", "building_room": ""}
+    building, separator, room = normalized.partition("/")
+    return {
+        "building": building,
+        "room": room if separator else "",
+        "building_room": normalized,
+    }
+
+
+def _build_receipt_snapshot_from_stored_facts(
+    conn,
+    *,
+    receipt_type: str,
+    source_event_ids: list[int],
+    commit_at: str,
+    commit_operator_user_id: int,
+) -> dict[str, object]:
+    event_rows = _receipt_event_rows(conn, source_event_ids)
+    commit_operator_snapshot = _receipt_operator_snapshot(conn, commit_operator_user_id)
+    asset_snapshots: list[dict[str, object]] = []
+
+    if receipt_type == "ISSUE":
+        holder_ids = {
+            int(row["holder_id"])
+            for row in event_rows
+            if row["holder_id"] is not None
+        }
+        batch_holder_id = next(iter(holder_ids)) if len(holder_ids) == 1 else None
+        batch_holder_snapshot = _receipt_holder_snapshot(conn, batch_holder_id)
+        first_payload: dict[str, object] = {}
+
+        for event_row in event_rows:
+            payload = json.loads(str(event_row["payload"] or "{}"))
+            if not isinstance(payload, dict):
+                payload = {}
+            if not first_payload:
+                first_payload = payload
+
+            asset_tag = str(event_row["asset_tag"] or "").strip()
+            asset_row = _receipt_asset_row_snapshot(conn, asset_tag)
+            holder_id = None if event_row["holder_id"] is None else int(event_row["holder_id"])
+            home_slot_id = payload.get("home_slot_id")
+            asset_snapshots.append(
+                {
+                    "asset_id": None if asset_row is None else int(asset_row["id"]),
+                    "asset_tag": str(asset_row["asset_tag"] if asset_row is not None else asset_tag),
+                    "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
+                    "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
+                    "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
+                    "model": "" if asset_row is None else str(asset_row["model"] or ""),
+                    "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
+                    "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
+                    "from_location_type": str(payload.get("from_location_type") or ""),
+                    "to_location_type": str(payload.get("to_location_type") or ""),
+                    "from_building_room": str(payload.get("from_building_room") or ""),
+                    "to_building_room": str(payload.get("to_building_room") or ""),
+                    "holder_id": holder_id,
+                    "holder_snapshot": _receipt_holder_snapshot(conn, holder_id),
+                    "home_slot": _receipt_slot_snapshot(
+                        conn,
+                        int(home_slot_id) if home_slot_id is not None else None,
+                    ),
+                }
+            )
+
+        location_context = _receipt_location_context_from_building_room(str(first_payload.get("to_building_room") or ""))
+        return {
+            "receipt_type": "ISSUE",
+            "commit_at": commit_at,
+            "commit_operator_user_id": int(commit_operator_user_id),
+            "commit_operator": commit_operator_snapshot,
+            "holder_id": batch_holder_id,
+            "holder_snapshot": batch_holder_snapshot,
+            "organization_snapshot": None if batch_holder_snapshot is None else {
+                "organization": str(batch_holder_snapshot.get("organization") or ""),
+                "organization_id": batch_holder_snapshot.get("organization_id"),
+            },
+            "acknowledgment": (
+                dict(first_payload.get("responsibility_ack"))
+                if isinstance(first_payload.get("responsibility_ack"), dict)
+                else None
+            ),
+            "location_context": location_context,
+            "assets": asset_snapshots,
+            "source_event_ids": list(source_event_ids),
+            "delivery": _receipt_delivery_snapshot(),
+        }
+
+    if receipt_type != "RETURN":
+        raise ValueError(f"Unsupported receipt type: {receipt_type}")
+
+    holder_ids: set[int] = set()
+    top_level_ack: Optional[dict[str, object]] = None
+
+    for event_row in event_rows:
+        payload = json.loads(str(event_row["payload"] or "{}"))
+        if not isinstance(payload, dict):
+            payload = {}
+        responsibility_ack = payload.get("responsibility_ack")
+        if not isinstance(responsibility_ack, dict):
+            responsibility_ack = {}
+        if top_level_ack is None:
+            top_level_ack = dict(responsibility_ack)
+
+        from_holder_id = responsibility_ack.get("ack_holder_id")
+        normalized_holder_id = int(from_holder_id) if from_holder_id is not None else None
+        if normalized_holder_id is not None:
+            holder_ids.add(normalized_holder_id)
+
+        asset_tag = str(event_row["asset_tag"] or "").strip()
+        asset_row = _receipt_asset_row_snapshot(conn, asset_tag)
+        home_slot_id = payload.get("home_slot_id")
+        building_room = "" if asset_row is None else str(asset_row["building_room"] or "")
+        asset_snapshots.append(
+            {
+                "asset_id": None if asset_row is None else int(asset_row["id"]),
+                "asset_tag": str(asset_row["asset_tag"] if asset_row is not None else asset_tag),
+                "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
+                "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
+                "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
+                "model": "" if asset_row is None else str(asset_row["model"] or ""),
+                "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
+                "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
+                "from_location_type": str(payload.get("from_location_type") or ""),
+                "to_location_type": str(payload.get("to_location_type") or ""),
+                "from_holder_id": normalized_holder_id,
+                "from_holder_snapshot": _receipt_holder_snapshot(conn, normalized_holder_id),
+                "to_holder_id": None,
+                "from_building_room": building_room,
+                "to_building_room": building_room,
+                "home_slot": _receipt_slot_snapshot(
+                    conn,
+                    int(home_slot_id) if home_slot_id is not None else None,
+                ),
+            }
+        )
+
+    batch_holder_id = next(iter(holder_ids)) if len(holder_ids) == 1 else None
+    batch_holder_snapshot = _receipt_holder_snapshot(conn, batch_holder_id)
+    if top_level_ack is not None and len(holder_ids) != 1:
+        top_level_ack.pop("ack_holder_id", None)
+
+    return {
+        "receipt_type": "RETURN",
+        "commit_at": commit_at,
+        "commit_operator_user_id": int(commit_operator_user_id),
+        "commit_operator": commit_operator_snapshot,
+        "holder_id": batch_holder_id,
+        "holder_snapshot": batch_holder_snapshot,
+        "organization_snapshot": None if batch_holder_snapshot is None else {
+            "organization": str(batch_holder_snapshot.get("organization") or ""),
+            "organization_id": batch_holder_snapshot.get("organization_id"),
+        },
+        "acknowledgment": top_level_ack,
+        "assets": asset_snapshots,
+        "source_event_ids": list(source_event_ids),
+        "delivery": _receipt_delivery_snapshot(),
+    }
+
+
 def _insert_receipt_queue_row(
     conn,
     *,
@@ -2279,7 +2517,7 @@ def _insert_receipt_queue_row(
             _receipt_key(receipt_type, source_event_ids),
             receipt_type,
             json.dumps(source_event_ids),
-            json.dumps(snapshot),
+            json.dumps(snapshot, sort_keys=True),
             commit_at,
             int(commit_operator_user_id),
             None if holder_id is None else int(holder_id),
@@ -2387,9 +2625,6 @@ def _issue_batch(
 
             now_iso = datetime.now(timezone.utc).isoformat()
             event_ids: list[int] = []
-            asset_snapshots: list[dict[str, object]] = []
-            holder_snapshot = _receipt_holder_snapshot(conn, holder_id)
-            commit_operator_snapshot = _receipt_operator_snapshot(conn, commit_operator_user_id)
 
             for asset_id, canon_tag, home_slot_id in canon_assets:
                 asset_row = conn.execute(
@@ -2480,46 +2715,13 @@ def _issue_batch(
                     ),
                 )
                 event_ids.append(int(event_cursor.lastrowid))
-                asset_snapshots.append(
-                    {
-                        "asset_id": asset_id,
-                        "asset_tag": canon_tag,
-                        "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
-                        "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
-                        "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
-                        "model": "" if asset_row is None else str(asset_row["model"] or ""),
-                        "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
-                        "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
-                        "from_location_type": "STORAGE",
-                        "to_location_type": "IN_CUSTODY",
-                        "from_building_room": previous_building_room,
-                        "to_building_room": building_room,
-                        "holder_id": int(holder_id),
-                        "holder_snapshot": holder_snapshot,
-                        "home_slot": home_slot_snapshot,
-                    }
-                )
-
-            snapshot = {
-                "receipt_type": "ISSUE",
-                "commit_at": now_iso,
-                "commit_operator_user_id": int(commit_operator_user_id),
-                "commit_operator": commit_operator_snapshot,
-                "holder_id": int(holder_id),
-                "holder_snapshot": holder_snapshot,
-                "organization_snapshot": None if holder_snapshot is None else {
-                    "organization": str(holder_snapshot.get("organization") or ""),
-                    "organization_id": holder_snapshot.get("organization_id"),
-                },
-                "acknowledgment": dict(responsibility_ack),
-                "location_context": {
-                    "building": building,
-                    "room": room,
-                    "building_room": building_room,
-                },
-                "assets": asset_snapshots,
-                "source_event_ids": event_ids,
-            }
+            snapshot = _build_receipt_snapshot_from_stored_facts(
+                conn,
+                receipt_type="ISSUE",
+                source_event_ids=event_ids,
+                commit_at=now_iso,
+                commit_operator_user_id=commit_operator_user_id,
+            )
             _insert_receipt_queue_row(
                 conn,
                 receipt_type="ISSUE",
@@ -2642,28 +2844,11 @@ def _return_batch(
 
             now_iso = datetime.now(timezone.utc).isoformat()
             event_ids: list[int] = []
-            asset_snapshots: list[dict[str, object]] = []
-            batch_holder_ids: set[int] = set()
-            commit_operator_snapshot = _receipt_operator_snapshot(conn, commit_operator_user_id)
 
             for row in validated_rows:
                 canon_tag = row["asset_tag"]
                 home_slot_id = row["home_slot_id"]
                 current_holder_id = row["current_holder_id"]
-                if current_holder_id is not None:
-                    batch_holder_ids.add(int(current_holder_id))
-                asset_row = conn.execute(
-                    """
-                    SELECT id, serial_number, equipment_type, manufacturer, model, model_code, notes, building_room
-                    FROM assets
-                    WHERE UPPER(asset_tag) = UPPER(?)
-                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
-                    LIMIT 1;
-                    """,
-                    (canon_tag, canon_tag),
-                ).fetchone()
-                holder_snapshot = _receipt_holder_snapshot(conn, current_holder_id)
-                home_slot_snapshot = _receipt_slot_snapshot(conn, home_slot_id)
 
                 conn.execute(
                     """
@@ -2720,44 +2905,13 @@ def _return_batch(
                     ),
                 )
                 event_ids.append(int(event_cursor.lastrowid))
-                asset_snapshots.append(
-                    {
-                        "asset_id": None if asset_row is None else int(asset_row["id"]),
-                        "asset_tag": canon_tag,
-                        "serial_number": "" if asset_row is None else str(asset_row["serial_number"] or ""),
-                        "equipment_type": "" if asset_row is None else str(asset_row["equipment_type"] or ""),
-                        "manufacturer": "" if asset_row is None else str(asset_row["manufacturer"] or ""),
-                        "model": "" if asset_row is None else str(asset_row["model"] or ""),
-                        "model_code": "" if asset_row is None else str(asset_row["model_code"] or ""),
-                        "notes": "" if asset_row is None else str(asset_row["notes"] or ""),
-                        "from_location_type": "IN_CUSTODY",
-                        "to_location_type": "STORAGE",
-                        "from_holder_id": current_holder_id,
-                        "from_holder_snapshot": holder_snapshot,
-                        "to_holder_id": None,
-                        "from_building_room": "" if asset_row is None else str(asset_row["building_room"] or ""),
-                        "to_building_room": "" if asset_row is None else str(asset_row["building_room"] or ""),
-                        "home_slot": home_slot_snapshot,
-                    }
-                )
-
-            batch_holder_id = next(iter(batch_holder_ids)) if len(batch_holder_ids) == 1 else None
-            batch_holder_snapshot = _receipt_holder_snapshot(conn, batch_holder_id)
-            snapshot = {
-                "receipt_type": "RETURN",
-                "commit_at": now_iso,
-                "commit_operator_user_id": int(commit_operator_user_id),
-                "commit_operator": commit_operator_snapshot,
-                "holder_id": batch_holder_id,
-                "holder_snapshot": batch_holder_snapshot,
-                "organization_snapshot": None if batch_holder_snapshot is None else {
-                    "organization": str(batch_holder_snapshot.get("organization") or ""),
-                    "organization_id": batch_holder_snapshot.get("organization_id"),
-                },
-                "acknowledgment": dict(responsibility_ack),
-                "assets": asset_snapshots,
-                "source_event_ids": event_ids,
-            }
+            snapshot = _build_receipt_snapshot_from_stored_facts(
+                conn,
+                receipt_type="RETURN",
+                source_event_ids=event_ids,
+                commit_at=now_iso,
+                commit_operator_user_id=commit_operator_user_id,
+            )
             _insert_receipt_queue_row(
                 conn,
                 receipt_type="RETURN",
@@ -2765,7 +2919,7 @@ def _return_batch(
                 snapshot=snapshot,
                 commit_at=now_iso,
                 commit_operator_user_id=commit_operator_user_id,
-                holder_id=batch_holder_id,
+                holder_id=snapshot.get("holder_id"),
             )
 
             return len(validated_rows)
@@ -3937,7 +4091,10 @@ def receipt_detail(receipt_id: int):
                 snapshot_json,
                 commit_at,
                 commit_operator_user_id,
-                holder_id
+                holder_id,
+                sent_at,
+                last_attempt_at,
+                last_error
             FROM receipt_queue
             WHERE id = ?
             LIMIT 1;
@@ -3973,6 +4130,7 @@ def receipt_detail(receipt_id: int):
 
     snapshot_commit_at = str(snapshot.get("commit_at") or "").strip()
     commit_at = snapshot_commit_at or str(row["commit_at"] or "")
+    delivery = _receipt_delivery_from_row(row, snapshot)
 
     snapshot_operator_id = snapshot.get("commit_operator_user_id")
     commit_operator_user_id = (
@@ -3993,6 +4151,7 @@ def receipt_detail(receipt_id: int):
         "organization_snapshot": (
             snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
         ),
+        "delivery": delivery,
         "acknowledgment": acknowledgment,
         "location_context": location_context,
         "assets": assets,
@@ -4027,6 +4186,7 @@ def _receipt_summary_from_row(
     receipt_type = str(snapshot.get("receipt_type") or row["receipt_type"] or "").strip().upper()
     commit_at = str(snapshot.get("commit_at") or row["commit_at"] or "")
     holder_id = snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"]
+    delivery = _receipt_delivery_from_row(row, snapshot)
 
     if holder_snapshot and str(holder_snapshot.get("name") or "").strip():
         holder_summary = str(holder_snapshot.get("name") or "").strip()
@@ -4122,6 +4282,7 @@ def _receipt_summary_from_row(
         "id": int(row["id"]),
         "receipt_key": str(row["receipt_key"] or ""),
         "receipt_type": receipt_type,
+        "delivery_state": str(delivery.get("state") or "pending"),
         "commit_at": commit_at,
         "commit_at_display": commit_at_display,
         "committed_by": committed_by,
@@ -4211,7 +4372,10 @@ def receipts_list():
                 snapshot_json,
                 commit_at,
                 commit_operator_user_id,
-                holder_id
+                holder_id,
+                sent_at,
+                last_attempt_at,
+                last_error
             FROM receipt_queue
             {where_sql}
             ORDER BY commit_at DESC, id DESC;

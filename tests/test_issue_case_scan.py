@@ -202,7 +202,7 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     ).fetchall()
     receipt_row = conn.execute(
         """
-        SELECT receipt_type, holder_id, source_event_ids_json, snapshot_json
+        SELECT receipt_type, holder_id, source_event_ids_json, snapshot_json, sent_at, last_attempt_at, last_error
         FROM receipt_queue
         ORDER BY id DESC
         LIMIT 1;
@@ -229,7 +229,11 @@ def test_issue_commit_after_case_scan_writes_one_event_per_asset(client_with_tem
     assert source_event_ids == [int(rows[0]["id"]), int(rows[1]["id"])]
     receipt_snapshot = json.loads(str(receipt_row["snapshot_json"]))
     assert receipt_snapshot["source_event_ids"] == source_event_ids
+    assert receipt_snapshot["delivery"]["state"] == "pending"
     assert len(receipt_snapshot["assets"]) == 2
+    assert receipt_row["sent_at"] is None
+    assert receipt_row["last_attempt_at"] is None
+    assert receipt_row["last_error"] is None
     assert [(str(row["asset_tag"]), str(row["location_type"]), int(row["current_holder_id"])) for row in asset_rows] == [
         ("CI-400", "IN_CUSTODY", 1),
         ("CI-401", "IN_CUSTODY", 1),

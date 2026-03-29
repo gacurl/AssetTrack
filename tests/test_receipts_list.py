@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import assettrack.db as db
 import pytest
 
 from assettrack.intake import app as intake_app
@@ -83,6 +84,35 @@ def test_receipts_list_shows_asset_tag_in_default_results(client_with_temp_db) -
     assert response.status_code == 200
     assert b"Asset Tag" in response.data
     assert b"ISSUE-100" in response.data
+    assert b">pending<" in response.data
+
+
+def test_receipts_list_shows_failed_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET last_attempt_at = ?, last_error = ?
+            WHERE id = ?;
+            """,
+            (
+                "2026-03-29T12:00:00+00:00",
+                "smtp offline",
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/receipts")
+
+    assert response.status_code == 200
+    assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
+    assert b">failed<" in response.data
 
 
 def test_receipts_list_renders_clear_search_link_when_filters_are_active(client_with_temp_db) -> None:

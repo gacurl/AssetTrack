@@ -220,7 +220,7 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
         ).fetchone()
         receipt_row = conn.execute(
             """
-            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json
+            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json, sent_at, last_attempt_at, last_error
             FROM receipt_queue
             ORDER BY id DESC
             LIMIT 1;
@@ -267,10 +267,17 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert receipt_snapshot["location_context"]["room"] == "210"
     assert receipt_snapshot["location_context"]["building_room"] == "HQ North/210"
     assert receipt_snapshot["acknowledgment"]["ack_scope"] == "batch"
+    assert receipt_snapshot["delivery"]["state"] == "pending"
+    assert receipt_snapshot["delivery"]["sent_at"] is None
+    assert receipt_snapshot["delivery"]["last_attempt_at"] is None
+    assert receipt_snapshot["delivery"]["last_error"] is None
     assert len(receipt_snapshot["assets"]) == 1
     assert receipt_snapshot["assets"][0]["asset_tag"] == "ISSUE-100"
     assert receipt_snapshot["assets"][0]["from_location_type"] == "STORAGE"
     assert receipt_snapshot["assets"][0]["to_location_type"] == "IN_CUSTODY"
+    assert receipt_row["sent_at"] is None
+    assert receipt_row["last_attempt_at"] is None
+    assert receipt_row["last_error"] is None
 
 
 def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db) -> None:

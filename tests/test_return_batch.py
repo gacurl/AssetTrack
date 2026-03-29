@@ -175,7 +175,7 @@ class ReturnBatchTests(unittest.TestCase):
         ).fetchone()
         receipt_row = self.conn.execute(
             """
-            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json
+            SELECT receipt_type, commit_operator_user_id, holder_id, source_event_ids_json, snapshot_json, sent_at, last_attempt_at, last_error
             FROM receipt_queue
             ORDER BY id DESC
             LIMIT 1;
@@ -201,10 +201,14 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(receipt_snapshot["receipt_type"], "RETURN")
         self.assertEqual(receipt_snapshot["holder_id"], 9)
         self.assertEqual(receipt_snapshot["source_event_ids"], [int(event_row["id"])])
+        self.assertEqual(receipt_snapshot["delivery"]["state"], "pending")
         self.assertEqual(len(receipt_snapshot["assets"]), 1)
         self.assertEqual(receipt_snapshot["assets"][0]["asset_tag"], "TAG-OK")
         self.assertEqual(receipt_snapshot["assets"][0]["from_location_type"], "IN_CUSTODY")
         self.assertEqual(receipt_snapshot["assets"][0]["to_location_type"], "STORAGE")
+        self.assertIsNone(receipt_row["sent_at"])
+        self.assertIsNone(receipt_row["last_attempt_at"])
+        self.assertIsNone(receipt_row["last_error"])
 
     def test_return_commit_missing_ack_redirects_back_to_preview_with_message(self) -> None:
         self._insert_slot(21, "C", 3, None)
