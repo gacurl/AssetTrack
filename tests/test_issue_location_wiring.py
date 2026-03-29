@@ -196,7 +196,15 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     )
 
     assert commit.status_code == 302
-    assert (commit.headers.get("Location") or "").endswith("/issue?issued=1")
+    conn = db.get_connection()
+    try:
+        receipt_row = conn.execute(
+            "SELECT id FROM receipt_queue ORDER BY id DESC LIMIT 1;"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert receipt_row is not None
+    assert (commit.headers.get("Location") or "").endswith(f"/receipts/{int(receipt_row['id'])}")
     assert len(intake_app.SCAN_QUEUE) == 0
 
     conn = db.get_connection()
@@ -313,6 +321,41 @@ def test_issue_commit_requires_responsibility_acknowledgment(client_with_temp_db
     assert int(event_count["c"]) == 0
     assert receipt_count is not None
     assert int(receipt_count["c"]) == 0
+
+
+def test_issue_commit_json_returns_exact_created_receipt_id(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+    with client_with_temp_db.session_transaction() as sess:
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
+
+    scan_response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+    assert scan_response.status_code == 200
+
+    commit = client_with_temp_db.post(
+        "/issue/commit?json=1",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+    )
+
+    assert commit.status_code == 200
+    assert commit.json["ok"] is True
+    assert commit.json["committed"] == 1
+    assert isinstance(commit.json["receipt_id"], int)
+
+    conn = db.get_connection()
+    try:
+        receipt_row = conn.execute(
+            "SELECT id FROM receipt_queue ORDER BY id DESC LIMIT 1;"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert receipt_row is not None
+    assert int(receipt_row["id"]) == int(commit.json["receipt_id"])
 
 
 def test_issue_commit_missing_ack_shows_visible_message_on_issue_preview(client_with_temp_db) -> None:

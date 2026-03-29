@@ -2549,9 +2549,9 @@ def _insert_receipt_queue_row(
     commit_at: str,
     commit_operator_user_id: int,
     holder_id: Optional[int],
-) -> None:
+) -> int:
     now_iso = datetime.now(timezone.utc).isoformat()
-    conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO receipt_queue (
             receipt_key,
@@ -2578,6 +2578,7 @@ def _insert_receipt_queue_row(
             now_iso,
         ),
     )
+    return int(cursor.lastrowid)
 
 
 def _issue_batch(
@@ -2587,7 +2588,7 @@ def _issue_batch(
     responsibility_ack: dict[str, object],
     *,
     commit_operator_user_id: int,
-) -> int:
+) -> tuple[int, int]:
     if not asset_tags:
         raise ValueError("No assets in the queue to issue.")
 
@@ -2775,7 +2776,7 @@ def _issue_batch(
                 commit_at=now_iso,
                 commit_operator_user_id=commit_operator_user_id,
             )
-            _insert_receipt_queue_row(
+            receipt_id = _insert_receipt_queue_row(
                 conn,
                 receipt_type="ISSUE",
                 source_event_ids=event_ids,
@@ -2785,7 +2786,7 @@ def _issue_batch(
                 holder_id=holder_id,
             )
 
-            return len(canon_assets)
+            return len(canon_assets), receipt_id
     finally:
         conn.close()
 
@@ -2795,7 +2796,7 @@ def _return_batch(
     responsibility_ack: dict[str, object],
     *,
     commit_operator_user_id: int,
-) -> int:
+) -> tuple[int, int]:
     if not asset_tags:
         raise ValueError("No assets in the queue to return")
 
@@ -2965,7 +2966,7 @@ def _return_batch(
                 commit_at=now_iso,
                 commit_operator_user_id=commit_operator_user_id,
             )
-            _insert_receipt_queue_row(
+            receipt_id = _insert_receipt_queue_row(
                 conn,
                 receipt_type="RETURN",
                 source_event_ids=event_ids,
@@ -2975,7 +2976,7 @@ def _return_batch(
                 holder_id=snapshot.get("holder_id"),
             )
 
-            return len(validated_rows)
+            return len(validated_rows), receipt_id
     finally:
         conn.close()
 
@@ -3631,7 +3632,7 @@ def preview_commit():
     }
 
     try:
-        committed_count = _issue_batch(
+        committed_count, receipt_id = _issue_batch(
             asset_tags,
             holder["id"],
             issue_location_form,
@@ -3878,7 +3879,7 @@ def issue_commit():
     }
 
     try:
-        committed_count = _issue_batch(
+        committed_count, receipt_id = _issue_batch(
             asset_tags,
             holder["id"],
             issue_location_form,
@@ -3895,10 +3896,10 @@ def issue_commit():
     touch_session()
 
     if wants_json():
-        return {"ok": True, "committed": committed_count, "error": None}
+        return {"ok": True, "committed": committed_count, "receipt_id": receipt_id, "error": None}
 
     flash(f"Issued {committed_count} assets.", "success")
-    return redirect(url_for("issue", issued=committed_count))
+    return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
 
 @app.get("/return")
@@ -4025,7 +4026,7 @@ def return_commit():
     }
 
     try:
-        committed_count = _return_batch(
+        committed_count, receipt_id = _return_batch(
             asset_tags,
             responsibility_ack,
             commit_operator_user_id=int(user["id"]),
@@ -4046,7 +4047,7 @@ def return_commit():
     session["recent_return_cases"] = returned_cases
 
     if wants_json():
-        return {"ok": True, "committed": committed_count, "error": None}
+        return {"ok": True, "committed": committed_count, "receipt_id": receipt_id, "error": None}
 
     if committed_count == 1 and len(state["assets"]) == 1:
         returned_asset = state["assets"][0]
@@ -4059,7 +4060,7 @@ def return_commit():
         )
     else:
         flash(f"Returned {committed_count} assets.", "success")
-    return redirect(url_for("return_queue"))
+    return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
 @app.get("/lock")
 @require_login

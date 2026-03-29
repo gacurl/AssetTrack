@@ -74,10 +74,11 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
         data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
     )
     assert commit.status_code == 302
-    assert (commit.headers.get("Location") or "").endswith("/issue?issued=1")
-
     conn = db.get_connection()
     try:
+        receipt_row = conn.execute(
+            "SELECT id FROM receipt_queue ORDER BY id DESC LIMIT 1;"
+        ).fetchone()
         occupancy = conn.execute(
             "SELECT 1 FROM slot_occupancy WHERE asset_id = 501 LIMIT 1;"
         ).fetchone()
@@ -86,6 +87,8 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
         ).fetchone()
     finally:
         conn.close()
+    assert receipt_row is not None
+    assert (commit.headers.get("Location") or "").endswith(f"/receipts/{int(receipt_row['id'])}")
 
     assert occupancy is None
     assert asset is not None
@@ -112,8 +115,7 @@ def test_issue_commit_redirect_shows_success_without_holder_warning(client_with_
     )
 
     assert commit_response.status_code == 200
-    assert b"Issued 1 assets." in commit_response.data
     assert b"Select a holder before issuing assets." not in commit_response.data
-    assert b"Status:</strong> Issued 1 asset successfully." in commit_response.data
-    assert b"Queued:</strong> 0 assets" not in commit_response.data
+    assert b"Issue Receipt" in commit_response.data
+    assert b"Internal receipt ID" in commit_response.data
     assert len(intake_app.SCAN_QUEUE) == 0
