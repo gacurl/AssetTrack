@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -280,6 +281,75 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     assert b"iPad" in response.data
     assert b"CASE-20 / 1" in response.data
     assert b"Source Events" in response.data
+
+
+def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "pending",
+            "sent_at": None,
+            "last_attempt_at": "2026-03-29T12:00:00+00:00",
+            "last_error": "smtp offline",
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = NULL, last_attempt_at = ?, last_error = ?
+            WHERE id = ?;
+            """,
+            (
+                json.dumps(snapshot, sort_keys=True),
+                "2026-03-29T12:00:00+00:00",
+                "smtp offline",
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    failed_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert failed_response.status_code == 200
+    assert b"Delivery state:</strong>" in failed_response.data
+    assert b">failed<" in failed_response.data
+    assert b"Last delivery attempt:</strong> 2026-03-29T12:00:00+00:00" in failed_response.data
+    assert b"Last delivery error:</strong> smtp offline" in failed_response.data
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (
+                "2026-03-29T12:05:00+00:00",
+                "2026-03-29T12:04:00+00:00",
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    sent_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert sent_response.status_code == 200
+    assert b">sent<" in sent_response.data
+    assert b"Delivered at:</strong> 2026-03-29T12:05:00+00:00" in sent_response.data
 
 
 def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
