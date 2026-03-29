@@ -85,7 +85,7 @@ def test_receipts_list_shows_asset_tag_in_default_results(client_with_temp_db) -
     assert response.status_code == 200
     assert b"Asset Tag" in response.data
     assert b"ISSUE-100" in response.data
-    assert b">pending<" in response.data
+    assert b">Queued<" in response.data
 
 
 def test_receipts_list_shows_failed_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:
