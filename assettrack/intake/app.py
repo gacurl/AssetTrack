@@ -4005,6 +4005,160 @@ def receipt_detail(receipt_id: int):
     )
 
 
+def _receipt_summary_from_row(row: sqlite3.Row) -> dict[str, object]:
+    snapshot = json.loads(str(row["snapshot_json"] or "{}"))
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    assets = snapshot.get("assets")
+    asset_list = assets if isinstance(assets, list) else []
+    operator = snapshot.get("commit_operator") if isinstance(snapshot.get("commit_operator"), dict) else None
+    holder_snapshot = snapshot.get("holder_snapshot") if isinstance(snapshot.get("holder_snapshot"), dict) else None
+    organization_snapshot = (
+        snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
+    )
+    location_context = snapshot.get("location_context") if isinstance(snapshot.get("location_context"), dict) else None
+
+    receipt_type = str(snapshot.get("receipt_type") or row["receipt_type"] or "").strip().upper()
+    commit_at = str(snapshot.get("commit_at") or row["commit_at"] or "")
+    holder_id = snapshot.get("holder_id") if snapshot.get("holder_id") is not None else row["holder_id"]
+
+    if holder_snapshot and str(holder_snapshot.get("name") or "").strip():
+        holder_summary = str(holder_snapshot.get("name") or "").strip()
+    elif holder_id is not None:
+        holder_summary = f"holder_id {holder_id}"
+    elif receipt_type == "RETURN" and len(asset_list) > 1:
+        holder_summary = "Multiple holders"
+    else:
+        holder_summary = "Unknown"
+
+    if organization_snapshot and str(organization_snapshot.get("organization") or "").strip():
+        organization_summary = str(organization_snapshot.get("organization") or "").strip()
+    else:
+        organization_summary = ""
+
+    if location_context and str(location_context.get("building_room") or "").strip():
+        location_summary = str(location_context.get("building_room") or "").strip()
+    elif receipt_type == "RETURN":
+        location_summary = "Asset-specific return locations"
+    else:
+        location_summary = "Unknown"
+
+    if operator and str(operator.get("username") or "").strip():
+        committed_by = str(operator.get("username") or "").strip()
+    else:
+        committed_by = f"user_id {int(row['commit_operator_user_id'])}"
+
+    return {
+        "id": int(row["id"]),
+        "receipt_key": str(row["receipt_key"] or ""),
+        "receipt_type": receipt_type,
+        "commit_at": commit_at,
+        "committed_by": committed_by,
+        "holder_summary": holder_summary,
+        "organization_summary": organization_summary,
+        "location_summary": location_summary,
+        "asset_count": len(asset_list),
+    }
+
+
+@app.get("/receipts")
+@require_login
+def receipts_list():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    asset_tag = (request.args.get("asset_tag") or "").strip()
+    holder_name = (request.args.get("holder_name") or "").strip()
+    building_room = (request.args.get("building_room") or "").strip()
+
+    clauses: list[str] = []
+    params: list[object] = []
+
+    if asset_tag:
+        clauses.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM json_each(receipt_queue.snapshot_json, '$.assets') AS asset
+                WHERE UPPER(COALESCE(json_extract(asset.value, '$.asset_tag'), '')) LIKE UPPER(?)
+            )
+            """
+        )
+        params.append(f"%{asset_tag}%")
+
+    if holder_name:
+        clauses.append(
+            """
+            (
+                UPPER(COALESCE(json_extract(receipt_queue.snapshot_json, '$.holder_snapshot.name'), '')) LIKE UPPER(?)
+                OR EXISTS (
+                    SELECT 1
+                    FROM json_each(receipt_queue.snapshot_json, '$.assets') AS asset
+                    WHERE UPPER(COALESCE(json_extract(asset.value, '$.holder_snapshot.name'), '')) LIKE UPPER(?)
+                       OR UPPER(COALESCE(json_extract(asset.value, '$.from_holder_snapshot.name'), '')) LIKE UPPER(?)
+                )
+            )
+            """
+        )
+        like_value = f"%{holder_name}%"
+        params.extend([like_value, like_value, like_value])
+
+    if building_room:
+        clauses.append(
+            """
+            (
+                UPPER(COALESCE(json_extract(receipt_queue.snapshot_json, '$.location_context.building_room'), '')) LIKE UPPER(?)
+                OR EXISTS (
+                    SELECT 1
+                    FROM json_each(receipt_queue.snapshot_json, '$.assets') AS asset
+                    WHERE UPPER(COALESCE(json_extract(asset.value, '$.from_building_room'), '')) LIKE UPPER(?)
+                       OR UPPER(COALESCE(json_extract(asset.value, '$.to_building_room'), '')) LIKE UPPER(?)
+                )
+            )
+            """
+        )
+        like_value = f"%{building_room}%"
+        params.extend([like_value, like_value, like_value])
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT
+                id,
+                receipt_key,
+                receipt_type,
+                snapshot_json,
+                commit_at,
+                commit_operator_user_id,
+                holder_id
+            FROM receipt_queue
+            {where_sql}
+            ORDER BY commit_at DESC, id DESC;
+            """,
+            tuple(params),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    receipts = [_receipt_summary_from_row(row) for row in rows]
+
+    return render_template(
+        "receipts_list.html",
+        receipts=receipts,
+        filters={
+            "asset_tag": asset_tag,
+            "holder_name": holder_name,
+            "building_room": building_room,
+        },
+    )
+
+
 @app.get("/holders/new")
 @require_login
 def holders_new():
