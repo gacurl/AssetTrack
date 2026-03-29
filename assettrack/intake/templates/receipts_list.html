@@ -69,6 +69,11 @@
     .asset-tag-match {
       font-size: 0.95rem;
     }
+    .match-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
     .asset-tag-extra {
       color: var(--color-text-muted);
     }
@@ -93,6 +98,9 @@
       color: var(--color-primary);
       font-weight: 700;
       letter-spacing: 0.01em;
+    }
+    .match-label {
+      margin-top: 0.15rem;
     }
     .commit-cell {
       white-space: nowrap;
@@ -207,21 +215,23 @@
                 <div><a class="receipt-link mono" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">Receipt ID {{ receipt.id }}</a></div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
                 {% if receipt.matched_asset_tags %}
-                  <div class="asset-tag-match">Asset tag search match</div>
+                  <div class="asset-tag-match match-label">Asset tag search match</div>
                 {% endif %}
               </div>
             </td>
             <td data-label="Asset Tag">
               <div class="receipt-primary">
                 {% if receipt.visible_asset_tags %}
-                  {% for asset_tag in receipt.visible_asset_tags %}
-                    <div class="asset-tag-line mono{% if receipt.matched_asset_tags and asset_tag in receipt.matched_asset_tags %} matched-tag{% endif %}">{{ asset_tag }}</div>
-                  {% endfor %}
+                  <div class="match-values">
+                    {% for asset_tag in receipt.visible_asset_tags %}
+                      <div class="asset-tag-line mono{% if receipt.matched_asset_tags and asset_tag in receipt.matched_asset_tags %} matched-tag{% endif %}">{{ asset_tag }}</div>
+                    {% endfor %}
+                  </div>
                 {% else %}
                   <div class="asset-tag-line muted-cell">No asset tag</div>
                 {% endif %}
                 {% if receipt.matched_asset_tags %}
-                  <div class="asset-tag-match">Matched asset tag</div>
+                  <div class="asset-tag-match match-label">Matched asset tag</div>
                 {% elif receipt.additional_asset_tag_count > 0 %}
                   <div class="asset-tag-extra">+{{ receipt.additional_asset_tag_count }} more asset{% if receipt.additional_asset_tag_count != 1 %}s{% endif %}</div>
                 {% endif %}
@@ -234,17 +244,37 @@
             </td>
             <td data-label="Holder">
               <div class="receipt-primary">
-                <div>{{ receipt.holder_summary }}</div>
+                <div{% if receipt.matched_holder_names and receipt.holder_summary in receipt.matched_holder_names %} class="matched-tag"{% endif %}>{{ receipt.holder_summary }}</div>
                 {% if receipt.organization_summary %}
                   <div class="receipt-meta">{{ receipt.organization_summary }}</div>
+                {% endif %}
+                {% if receipt.matched_holder_names %}
+                  <div class="asset-tag-match match-label">Holder search match</div>
+                  <div class="match-values">
+                    {% for holder_name in receipt.matched_holder_names %}
+                      {% if holder_name != receipt.holder_summary %}
+                        <div class="matched-tag">{{ holder_name }}</div>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
                 {% endif %}
               </div>
             </td>
             <td data-label="Location" class="{{ 'muted-cell' if receipt.location_summary in ['Unknown', 'Return location varies by asset'] else '' }}">
               <div class="receipt-primary">
-                <div>{{ receipt.location_summary }}</div>
+                <div{% if receipt.matched_locations and receipt.location_summary in receipt.matched_locations %} class="matched-tag"{% endif %}>{{ receipt.location_summary }}</div>
                 {% if receipt.location_summary == "Return location varies by asset" %}
                   <div class="location-note">See the receipt details for each asset's return location.</div>
+                {% endif %}
+                {% if receipt.matched_locations %}
+                  <div class="asset-tag-match match-label">Location search match</div>
+                  <div class="match-values">
+                    {% for location in receipt.matched_locations %}
+                      {% if location != receipt.location_summary %}
+                        <div class="matched-tag">{{ location }}</div>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
                 {% endif %}
               </div>
             </td>

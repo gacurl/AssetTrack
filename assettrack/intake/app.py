@@ -4005,7 +4005,12 @@ def receipt_detail(receipt_id: int):
     )
 
 
-def _receipt_summary_from_row(row: sqlite3.Row, asset_tag_filter: str = "") -> dict[str, object]:
+def _receipt_summary_from_row(
+    row: sqlite3.Row,
+    asset_tag_filter: str = "",
+    holder_name_filter: str = "",
+    building_room_filter: str = "",
+) -> dict[str, object]:
     snapshot = json.loads(str(row["snapshot_json"] or "{}"))
     if not isinstance(snapshot, dict):
         snapshot = {}
@@ -4054,22 +4059,61 @@ def _receipt_summary_from_row(row: sqlite3.Row, asset_tag_filter: str = "") -> d
     except ValueError:
         commit_at_display = commit_at or "Unknown"
 
+    def _append_unique(values: list[str], value: object) -> None:
+        text = str(value or "").strip()
+        if text and text not in values:
+            values.append(text)
+
     normalized_asset_tag_filter = asset_tag_filter.strip().upper()
+    normalized_holder_name_filter = holder_name_filter.strip().upper()
+    normalized_building_room_filter = building_room_filter.strip().upper()
     matched_asset_tags: list[str] = []
     asset_tags: list[str] = []
+    matched_holder_names: list[str] = []
+    matched_locations: list[str] = []
     if normalized_asset_tag_filter:
         for asset in asset_list:
             if not isinstance(asset, dict):
                 continue
             asset_tag = str(asset.get("asset_tag") or "").strip()
             if asset_tag and normalized_asset_tag_filter in asset_tag.upper():
-                matched_asset_tags.append(asset_tag)
+                _append_unique(matched_asset_tags, asset_tag)
+
+    if normalized_holder_name_filter:
+        if holder_summary != "Unknown" and normalized_holder_name_filter in holder_summary.upper():
+            _append_unique(matched_holder_names, holder_summary)
+        for asset in asset_list:
+            if not isinstance(asset, dict):
+                continue
+            _append_unique(
+                matched_holder_names,
+                asset.get("holder_snapshot", {}).get("name") if isinstance(asset.get("holder_snapshot"), dict) else "",
+            )
+            _append_unique(
+                matched_holder_names,
+                asset.get("from_holder_snapshot", {}).get("name")
+                if isinstance(asset.get("from_holder_snapshot"), dict)
+                else "",
+            )
+        matched_holder_names = [
+            value for value in matched_holder_names if normalized_holder_name_filter in value.upper()
+        ]
+
+    if normalized_building_room_filter:
+        _append_unique(matched_locations, location_summary if location_summary != "Unknown" else "")
+        for asset in asset_list:
+            if not isinstance(asset, dict):
+                continue
+            _append_unique(matched_locations, asset.get("from_building_room"))
+            _append_unique(matched_locations, asset.get("to_building_room"))
+        matched_locations = [value for value in matched_locations if normalized_building_room_filter in value.upper()]
+
     for asset in asset_list:
         if not isinstance(asset, dict):
             continue
         asset_tag = str(asset.get("asset_tag") or "").strip()
         if asset_tag:
-            asset_tags.append(asset_tag)
+            _append_unique(asset_tags, asset_tag)
 
     visible_asset_tags = matched_asset_tags or asset_tags[:1]
     additional_asset_tag_count = max(len(asset_tags) - len(visible_asset_tags), 0)
@@ -4088,6 +4132,8 @@ def _receipt_summary_from_row(row: sqlite3.Row, asset_tag_filter: str = "") -> d
         "visible_asset_tags": visible_asset_tags,
         "additional_asset_tag_count": additional_asset_tag_count,
         "matched_asset_tags": matched_asset_tags,
+        "matched_holder_names": matched_holder_names,
+        "matched_locations": matched_locations,
     }
 
 
@@ -4175,7 +4221,15 @@ def receipts_list():
     finally:
         conn.close()
 
-    receipts = [_receipt_summary_from_row(row, asset_tag_filter=asset_tag) for row in rows]
+    receipts = [
+        _receipt_summary_from_row(
+            row,
+            asset_tag_filter=asset_tag,
+            holder_name_filter=holder_name,
+            building_room_filter=building_room,
+        )
+        for row in rows
+    ]
 
     return render_template(
         "receipts_list.html",
