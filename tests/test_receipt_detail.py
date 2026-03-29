@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
@@ -158,6 +160,11 @@ def _latest_receipt_id() -> int:
         conn.close()
     assert row is not None
     return int(row["id"])
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    reader = PdfReader(BytesIO(pdf_bytes))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
 def _create_issue_receipt(client) -> int:
@@ -501,3 +508,97 @@ def test_receipt_detail_uses_snapshot_truth_not_live_tables(client_with_temp_db)
     assert b"Changed Maker" not in response.data
     assert b"Changed Model" not in response.data
     assert b"mutated-operator" not in response.data
+
+
+def test_receipt_detail_links_to_receipt_pdf(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+
+    assert response.status_code == 200
+    assert f'href="/receipts/{receipt_id}/pdf"'.encode("utf-8") in response.data
+    assert b"Download Receipt PDF" in response.data
+
+
+def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    disposition = response.headers.get("Content-Disposition") or ""
+    assert "attachment;" in disposition
+    assert f"receipt-{receipt_id}-issue.pdf" in disposition
+
+    pdf_text = _extract_pdf_text(response.data)
+    assert "Custody Acknowledgment Receipt" in pdf_text
+    assert f"Receipt ID: {receipt_id}" in pdf_text
+    assert "Receipt type: ISSUE" in pdf_text
+    assert "Holder: Issue Holder" in pdf_text
+    assert "Organization: Operations" in pdf_text
+    assert "Location: HQ North/210" in pdf_text
+    assert "Typed name: Issue Holder" in pdf_text
+    assert "Initials: IH" in pdf_text
+    assert "ISSUE-100" in pdf_text
+    assert "Dell / Latitude (LAT-14)" in pdf_text
+
+
+def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    first = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+    second = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.data == second.data
+
+
+def test_receipt_pdf_uses_snapshot_truth_not_live_tables(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE holders
+            SET name = ?, identifier = ?
+            WHERE id = 1;
+            """,
+            ("Mutated Holder", "IH-CHANGED"),
+        )
+        conn.execute(
+            """
+            UPDATE assets
+            SET manufacturer = ?, model = ?, model_code = ?
+            WHERE id = 100;
+            """,
+            ("Changed Maker", "Changed Model", "NEW-CODE"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+
+    assert response.status_code == 200
+    pdf_text = _extract_pdf_text(response.data)
+    assert "Issue Holder" in pdf_text
+    assert "Dell / Latitude (LAT-14)" in pdf_text
+    assert "Mutated Holder" not in pdf_text
+    assert "Changed Maker" not in pdf_text
+
+
+def test_return_receipt_pdf_lists_multiple_holders_when_batch_is_mixed(client_with_temp_db) -> None:
+    receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
+
+    assert response.status_code == 200
+    pdf_text = _extract_pdf_text(response.data)
+    assert "Receipt type: RETURN" in pdf_text
+    assert "Holder: Return Holder One, Return Holder Two" in pdf_text
+    assert "Location: HQ North/210, HQ North/211" in pdf_text
+    assert "RETURN-200" in pdf_text
+    assert "RETURN-201" in pdf_text
