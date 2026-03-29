@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REQUIRED_TABLES = {"assets", "holders", "organizations", "buildings", "organization_buildings"}
+REQUIRED_TABLES = {"assets", "holders", "organizations", "buildings", "organization_buildings", "receipt_queue"}
 EVENT_TABLE_ALIASES = ("events", "asset_events")
 DEFAULT_AD_HOC_ORGANIZATION = "Ad Hoc"
 
@@ -423,6 +423,40 @@ def _create_schema(conn: sqlite3.Connection):
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS receipt_queue (
+            id INTEGER PRIMARY KEY,
+            receipt_key TEXT NOT NULL UNIQUE,
+            receipt_type TEXT NOT NULL CHECK(receipt_type IN ('ISSUE', 'RETURN')),
+            source_event_ids_json TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL,
+            commit_at TEXT NOT NULL,
+            commit_operator_user_id INTEGER NOT NULL,
+            holder_id INTEGER NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sent_at TEXT NULL,
+            last_attempt_at TEXT NULL,
+            last_error TEXT NULL
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_receipt_queue_commit_at
+            ON receipt_queue(commit_at);
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_receipt_queue_holder_id
+            ON receipt_queue(holder_id);
         """
     )
 
