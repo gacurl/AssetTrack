@@ -82,6 +82,7 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset Search", response.data)
         self.assertIn(b"Search by asset tag or serial number", response.data)
+        self.assertNotIn(b">Clear<", response.data)
 
     def test_search_finds_asset_by_asset_tag(self) -> None:
         self._insert_holder(1, "Alex Holder", "Field Ops")
@@ -148,6 +149,32 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset not found.", response.data)
         self.assertNotIn(b"Asset Found", response.data)
+        self.assertIn(b'href="/assets/search"', response.data)
+        self.assertIn(b">Clear<", response.data)
+
+    def test_search_page_renders_clear_link_when_any_field_is_filled(self) -> None:
+        response = self.client.get("/assets/search?asset_tag=AT-100&serial_number=SER-100")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'value="AT-100"', response.data)
+        self.assertIn(b'value="SER-100"', response.data)
+        self.assertIn(b'href="/assets/search"', response.data)
+        self.assertIn(b">Clear<", response.data)
+
+    def test_clean_search_route_resets_both_fields_and_results(self) -> None:
+        self._insert_asset("AT-300", serial_number="SER-300", location_type="STORAGE", home_slot_id=None)
+
+        searched = self.client.get("/assets/search?asset_tag=AT-300&serial_number=SER-300")
+        self.assertEqual(searched.status_code, 200)
+        self.assertIn(b"Asset Found", searched.data)
+        self.assertIn(b'value="AT-300"', searched.data)
+        self.assertIn(b'value="SER-300"', searched.data)
+
+        cleared = self.client.get("/assets/search")
+        self.assertEqual(cleared.status_code, 200)
+        self.assertNotIn(b"Asset Found", cleared.data)
+        self.assertIn(b'value=""', cleared.data)
+        self.assertNotIn(b">Clear<", cleared.data)
 
 
 if __name__ == "__main__":
