@@ -2107,7 +2107,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type, current_holder_id, home_slot_id
+            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -2851,7 +2851,7 @@ def _return_batch(
 
         rows = conn.execute(
             """
-            SELECT asset_tag, location_type, current_holder_id, home_slot_id
+            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE UPPER(asset_tag) = UPPER(?)
                OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
@@ -2920,6 +2920,7 @@ def _return_batch(
 
                 validated_rows.append(
                     {
+                        "asset_id": int(asset_row["id"]),
                         "asset_tag": canon_tag,
                         "home_slot_id": int(slot["id"]),
                         "current_holder_id": None if asset_row["current_holder_id"] is None else int(asset_row["current_holder_id"]),
@@ -2944,6 +2945,7 @@ def _return_batch(
             event_ids: list[int] = []
 
             for row in validated_rows:
+                asset_id = row["asset_id"]
                 canon_tag = row["asset_tag"]
                 home_slot_id = row["home_slot_id"]
                 current_holder_id = row["current_holder_id"]
@@ -2956,6 +2958,14 @@ def _return_batch(
                        OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
                     """,
                     ("STORAGE", canon_tag, canon_tag),
+                )
+
+                conn.execute(
+                    """
+                    INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                    VALUES (?, ?, ?);
+                    """,
+                    (home_slot_id, asset_id, now_iso),
                 )
 
                 cursor = conn.execute(
