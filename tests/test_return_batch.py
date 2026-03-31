@@ -173,6 +173,18 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(asset_after["location_type"], "STORAGE")
         self.assertIsNone(asset_after["current_holder_id"])
 
+        occupancy_after = self.conn.execute(
+            """
+            SELECT slot_id
+            FROM slot_occupancy
+            WHERE asset_id = (SELECT id FROM assets WHERE asset_tag = ?)
+            LIMIT 1;
+            """,
+            ("TAG-OK",),
+        ).fetchone()
+        self.assertIsNotNone(occupancy_after)
+        self.assertEqual(int(occupancy_after["slot_id"]), 20)
+
         slot_after = self.conn.execute(
             "SELECT current_asset_tag FROM slots WHERE id = ?;",
             (20,),
@@ -227,6 +239,49 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNone(receipt_row["sent_at"])
         self.assertIsNone(receipt_row["last_attempt_at"])
         self.assertIsNone(receipt_row["last_error"])
+
+    def test_return_commit_restores_slot_occupancy_after_issue_path_removal(self) -> None:
+        self._insert_holder(5, "Return Holder Five")
+        self._insert_slot(55, "CASE-55", 5, None)
+        self._insert_asset("TAG-RESTORE", location_type="IN_CUSTODY", holder_id=5, home_slot_id=55)
+
+        asset_id = int(
+            self.conn.execute(
+                "SELECT id FROM assets WHERE asset_tag = ? LIMIT 1;",
+                ("TAG-RESTORE",),
+            ).fetchone()[0]
+        )
+
+        self.assertIsNone(
+            self.conn.execute(
+                "SELECT 1 FROM slot_occupancy WHERE asset_id = ? LIMIT 1;",
+                (asset_id,),
+            ).fetchone()
+        )
+
+        intake_app.SCAN_QUEUE.clear()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TAG-RESTORE", equipment_type="laptop"))
+
+        success = self.client.post(
+            "/return/commit?json=1",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        )
+
+        self.assertEqual(success.status_code, 200)
+        self.assertTrue(success.json["ok"])
+
+        occupancy_after = self.conn.execute(
+            "SELECT slot_id FROM slot_occupancy WHERE asset_id = ? LIMIT 1;",
+            (asset_id,),
+        ).fetchone()
+        self.assertIsNotNone(occupancy_after)
+        self.assertEqual(int(occupancy_after["slot_id"]), 55)
+
+        slot_after = self.conn.execute(
+            "SELECT current_asset_tag FROM slots WHERE id = 55 LIMIT 1;"
+        ).fetchone()
+        self.assertIsNotNone(slot_after)
+        self.assertEqual(str(slot_after["current_asset_tag"]), "TAG-RESTORE")
 
     def test_return_commit_with_mixed_holders_keeps_snapshot_email_blank(self) -> None:
         self._insert_holder(5, "Return Holder Five", email="five@example.org")
