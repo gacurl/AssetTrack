@@ -83,6 +83,23 @@ This means:
 - `docker compose up -d --build` starts the app again using the same database file
 - SQLite persistence survives normal container restarts
 
+## Standard inventory import path
+
+If you need to load the approved `.xlsx` inventory workbook, run the import inside the existing `assettrack` container:
+
+```bash
+docker compose up -d --build
+./scripts/import_inventory_docker.sh
+```
+
+Equivalent direct command:
+
+```bash
+docker compose exec -T assettrack python -m scripts.import_inventory
+```
+
+This keeps the import runtime aligned with the Docker image, avoids host Python package drift, and writes into the same mounted `/app/data/assettrack.db` database used by the app.
+
 ## Basic deployment verification
 
 After startup:

@@ -95,6 +95,23 @@ If this is a fresh database with no users yet, bootstrap the first admin at:
 
 `http://localhost:8000/bootstrap/admin`
 
+## Standard Inventory Import Workflow
+
+Run inventory import inside the running Docker container so it uses the image's installed dependencies and the mounted persistent SQLite database:
+
+```bash
+docker compose up -d --build
+./scripts/import_inventory_docker.sh
+```
+
+Equivalent direct command:
+
+```bash
+docker compose exec -T assettrack python -m scripts.import_inventory
+```
+
+This is the supported import path for `.xlsx` inventory loads. Do not rely on host-installed `pandas` or `openpyxl`.
+
 ## Release Documentation
 
 AssetTrack includes a full release documentation package.
