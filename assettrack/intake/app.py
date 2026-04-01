@@ -36,7 +36,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 import assettrack.db as db_module
 from assettrack.assets import get_asset_table_columns
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
-from assettrack.db import assert_schema_present, get_connection, initialize_schema
+from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
     get_case_slot_detail,
     get_holder_custody_detail,
@@ -76,8 +76,7 @@ from assettrack.users import (
 app = Flask(__name__)
 app.secret_key = os.getenv("ASSETTRACK_SECRET_KEY", "dev-not-secret")
 
-initialize_schema(db_module.DB_PATH)
-assert_schema_present(db_module.DB_PATH)
+bootstrap_db(db_module.DB_PATH)
 
 # In-memory only: wiped on restart
 SCAN_QUEUE: list[Scan] = []
