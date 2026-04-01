@@ -10,7 +10,7 @@ import pandas as pd
 from assettrack.db import assert_schema_present
 
 DB_PATH = Path("data/assettrack.db")
-EXCEL_PATH = Path("data/import/BQ26 ETP.xlsx")
+EXCEL_PATH = Path("data/import/BQ26_ETP.xlsx")
 SHEET_NAME = "BQ26 main inventory data"
 
 REQUIRED_COLUMNS = {
