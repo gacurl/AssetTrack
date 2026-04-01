@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+from assettrack.db import assert_schema_present
 
 DB_PATH = Path("data/assettrack.db")
 EXCEL_PATH = Path("data/import/BQ26 ETP.xlsx")
@@ -156,6 +157,8 @@ def run_import(rows: list[ImportRow]) -> tuple[int, int, int]:
     inserted_slots = 0
     inserted_assets = 0
     inserted_occupancy = 0
+
+    assert_schema_present(DB_PATH)
 
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row

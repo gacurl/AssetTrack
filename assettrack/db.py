@@ -166,6 +166,16 @@ def initialize_if_missing_or_empty(db_path: Path) -> bool:
     return True
 
 
+def bootstrap_db(db_path: Path) -> bool:
+    """
+    Ensure the approved schema is present before any query path runs.
+    Returns True when first-run bootstrap was performed.
+    """
+    initialized = initialize_if_missing_or_empty(db_path)
+    assert_schema_present(db_path)
+    return initialized
+
+
 def assert_schema_present(db_path: Path) -> None:
     """
     Validate that a DB file contains the required AssetTrack tables.
@@ -203,7 +213,7 @@ def get_connection():
     Returns a SQLite connection to the AssetTrack database.
     Ensures the database and schema exist.
     """
-    initialize_schema(DB_PATH)
+    bootstrap_db(DB_PATH)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
 

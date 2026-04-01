@@ -45,6 +45,30 @@ def test_initialize_if_missing_or_empty_preserves_existing_db(tmp_path: Path) ->
     db.assert_schema_present(db_path)
 
 
+def test_bootstrap_db_bootstraps_missing_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+
+    initialized = db.bootstrap_db(db_path)
+
+    assert initialized is True
+    db.assert_schema_present(db_path)
+
+
+def test_get_connection_bootstraps_missing_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    monkeypatch.setattr(db, "DB_PATH", db_path)
+
+    conn = db.get_connection()
+    try:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table';").fetchall()}
+    finally:
+        conn.close()
+
+    assert "assets" in tables
+    assert "asset_events" in tables
+    assert "receipt_queue" in tables
+
+
 def test_initialize_schema_adds_holders_organization_column(tmp_path: Path) -> None:
     db_path = tmp_path / "assettrack.db"
     db.initialize_schema(db_path)
