@@ -8,7 +8,7 @@ This guide covers common issues operators and administrators may see during star
 
 Symptom:
 
-- `docker compose up -d --build` fails to start correctly
+- `./scripts/bootstrap_docker.sh` fails to start correctly
 - Port `8000` is already in use
 
 What to do:
@@ -16,7 +16,7 @@ What to do:
 1. Close any other local process already using port `8000`.
 2. Stop any old AssetTrack container that may still be running.
 3. Run `docker compose down`.
-4. Run `docker compose up -d --build` again.
+4. Run `./scripts/bootstrap_docker.sh` again.
 
 ## Docker not running
 
@@ -29,7 +29,7 @@ What to do:
 
 1. Start Docker Desktop or the local Docker service.
 2. Wait until Docker reports that it is ready.
-3. Re-run `docker compose up -d --build`.
+3. Re-run `./scripts/bootstrap_docker.sh`.
 
 ## Login failure
 
@@ -71,10 +71,10 @@ Symptom:
 
 What to check:
 
-1. Start the app with `docker compose up -d --build`.
+1. Start the app with `./scripts/bootstrap_docker.sh`.
 2. Log in and create a simple record such as a test holder.
 3. Stop the app with `docker compose down`.
-4. Start it again with `docker compose up -d --build`.
+4. Start it again with `./scripts/bootstrap_docker.sh`.
 5. Confirm the record still exists.
 
 Why this works:
