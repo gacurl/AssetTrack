@@ -31,7 +31,7 @@ Current architecture includes:
 * SQLite storage
 * Deterministic event logging
 * Dockerized runtime
-* Named-volume persistence
+* Bind-mounted host-directory persistence
 * Clean container security baseline (Trivy: 0 vulnerabilities)
 
 Root (`/`) routes to login.
@@ -49,7 +49,7 @@ AssetTrack currently provides:
 * Atomic SQLite commits
 * Deterministic clearing of the preview queue on success
 * Persistent event logging
-* Docker-based deployment with named volume durability
+* Docker-based deployment with bind-mounted host-directory durability
 
 Not included:
 
@@ -82,8 +82,10 @@ Clone the repository and start the system:
 ```bash
 git clone https://github.com/gacurl/AssetTrack.git
 cd AssetTrack
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ```
+
+The bootstrap script creates the host `./data` directory if it is missing, applies first-run write permissions for the non-root container user, and then runs `docker compose up -d --build`.
 
 On a first run with no database file, AssetTrack initializes the approved SQLite schema automatically in the mounted `/app/data/assettrack.db` path before the web app starts.
 
@@ -100,7 +102,7 @@ If this is a fresh database with no users yet, bootstrap the first admin at:
 Run inventory import inside the running Docker container so it uses the image's installed dependencies and the mounted persistent SQLite database:
 
 ```bash
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ./scripts/import_inventory_docker.sh
 ```
 
@@ -127,29 +129,17 @@ AssetTrack includes a full release documentation package.
 
 ## Persistence Model (Important)
 
-AssetTrack uses a named Docker volume mounted to:
+AssetTrack uses a host bind mount for persistent Docker data:
 
 ```
-/app/data
+./data:/app/data
 ```
 
 This means:
 
 * Database survives container restarts
 * Database survives `docker compose down`
-* Data resets only if the Docker volume is explicitly removed
-
-To inspect volumes:
-
-```
-docker volume ls
-```
-
-To remove the AssetTrack volume (destructive):
-
-```
-docker volume rm assettrack_data
-```
+* Data remains in the repo-local `./data` directory unless you remove it yourself
 
 The database path inside the container is controlled by:
 
@@ -172,7 +162,7 @@ Use this manual check to prove holder data survives container restarts.
 1. Start the app:
 
 ```
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ```
 
 2. In the UI (`http://localhost:8000`), create a holder from:
@@ -217,7 +207,7 @@ PY
 
 Expected: the holder row is present both before and after `down/up`.
 `docker compose down` preserves data in the mounted `/app/data/assettrack.db`.
-Data is wiped only if you explicitly remove volumes (for example `docker compose down -v`).
+Data is wiped only if you explicitly remove the repo-local `./data` contents.
 
 ---
 
@@ -249,7 +239,7 @@ Keep the repository inside the Linux filesystem (`~`).
 ### Start the Application
 
 ```
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ```
 
 Then open:

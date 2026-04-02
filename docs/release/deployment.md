@@ -28,15 +28,17 @@ cd AssetTrack
 From the repository root, run:
 
 ```bash
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ```
 
 What this does:
 
 1. Builds the AssetTrack Docker image.
-2. Starts the AssetTrack container in the background.
-3. Exposes the application on port `8000`.
-4. On first run, initializes the approved SQLite schema in `/app/data/assettrack.db` if the database file is missing or empty.
+2. Ensures the host `./data` bind-mount directory exists.
+3. Applies first-run write permissions so the non-root container can create SQLite files.
+4. Starts the AssetTrack container in the background.
+5. Exposes the application on port `8000`.
+6. On first run, initializes the approved SQLite schema in `/app/data/assettrack.db` if the database file is missing or empty.
 
 After startup, open:
 
@@ -80,7 +82,7 @@ AssetTrack persists SQLite data across restarts by keeping the database in the m
 This means:
 
 - `docker compose down` does not erase the database
-- `docker compose up -d --build` starts the app again using the same database file
+- `./scripts/bootstrap_docker.sh` starts the app again using the same database file
 - SQLite persistence survives normal container restarts
 
 ## Standard inventory import path
@@ -88,7 +90,7 @@ This means:
 If you need to load the approved `.xlsx` inventory workbook, run the import inside the existing `assettrack` container:
 
 ```bash
-docker compose up -d --build
+./scripts/bootstrap_docker.sh
 ./scripts/import_inventory_docker.sh
 ```
 
@@ -113,7 +115,7 @@ After startup:
 
 For normal field use:
 
-1. Start the app with `docker compose up -d --build`.
+1. Start the app with `./scripts/bootstrap_docker.sh`.
 2. Perform the required operator workflows.
 3. Stop the app with `docker compose down` when finished.
 

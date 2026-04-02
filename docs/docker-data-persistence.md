@@ -51,6 +51,14 @@ AssetTrack must always be run with the host data directory mounted into the cont
 
 This ensures the application and the host are reading and writing the same database file.
 
+Use the repo-managed bootstrap from the repository root:
+
+```bash
+./scripts/bootstrap_docker.sh
+```
+
+That script creates `./data` if it is missing, applies first-run write permissions, and then starts Docker Compose with the existing `./data:/app/data` bind mount.
+
 ## How to verify it’s working
 
 After starting the container with the volume mount:
