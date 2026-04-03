@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}AssetTrack Demo{% endblock %}
+{% block page_heading %}AssetTrack Demo{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .demo-hero {
+      display: grid;
+      gap: 1rem;
+      padding: 1.25rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 55%),
+        linear-gradient(180deg, var(--color-surface-bg), color-mix(in srgb, var(--color-primary-soft) 30%, var(--color-surface-bg)));
+    }
+    .demo-hero-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .demo-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .demo-metric {
+      padding: 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      background: var(--color-surface-bg);
+    }
+    .demo-metric strong {
+      display: block;
+      font-size: 1.55rem;
+      margin-top: 0.25rem;
+    }
+    .demo-list {
+      margin: 0;
+      padding-left: 1.15rem;
+      display: grid;
+      gap: 0.5rem;
+    }
+    .demo-note {
+      margin-top: 1rem;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(244, 162, 97, 0.34);
+      background: var(--color-warning-soft);
+    }
+    @media (max-width: 820px) {
+      .demo-grid,
+      .demo-metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="demo-hero">
+    <div>
+      <p class="chip">Read-Only Demo</p>
+      <h2>Offline asset custody with a clear operator workflow</h2>
+      <p>
+        This demo uses curated sample data only. It is separate from operational use and does not read or write the live system of record.
+      </p>
+    </div>
+    <div class="demo-hero-actions">
+      <a class="chip" href="{{ url_for('intake') }}">Operator Login</a>
+      <a class="chip" href="#workflow">See Workflow</a>
+      <a class="chip" href="#audit">See Audit Concept</a>
+    </div>
+  </div>
+
+  <div class="demo-metrics" aria-label="Demo summary">
+    <div class="demo-metric"><span>Assets in custody</span><strong>{{ summary.assets_in_custody }}</strong></div>
+    <div class="demo-metric"><span>Active holders</span><strong>{{ summary.holders }}</strong></div>
+    <div class="demo-metric"><span>Pending receipts</span><strong>{{ summary.pending_receipts }}</strong></div>
+    <div class="demo-metric"><span>Tracked cases</span><strong>{{ summary.cases }}</strong></div>
+  </div>
+
+  <div class="demo-grid">
+    <div class="card">
+      <h2>Dashboard Value</h2>
+      <p>Supervisors can see who currently has assets, what still needs receipt follow-up, and where bottlenecks are forming.</p>
+      <table>
+        <thead>
+          <tr><th>Holder</th><th>Organization</th><th>Email</th><th>Assets</th></tr>
+        </thead>
+        <tbody>
+          {% for holder in holders %}
+            <tr>
+              <td>{{ holder.name }}</td>
+              <td>{{ holder.organization }}</td>
+              <td>{{ holder.email }}</td>
+              <td>{{ holder.asset_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" id="workflow">
+      <h2>Issue / Return Workflow</h2>
+      <p>AssetTrack keeps the operator seam explicit so review happens before any write is committed.</p>
+      <ol class="demo-list">
+        {% for step in workflow_steps %}
+          <li>{{ step }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Receipts Concept</h2>
+      <p>Receipts capture the handoff snapshot and track whether the follow-up message is queued or sent.</p>
+      <table>
+        <thead>
+          <tr><th>Receipt</th><th>Status</th><th>Recipient</th><th>Key</th></tr>
+        </thead>
+        <tbody>
+          {% for receipt in receipts %}
+            <tr>
+              <td>{{ receipt.title }}</td>
+              <td>{{ receipt.status }}</td>
+              <td>{{ receipt.recipient_email }}</td>
+              <td><code>{{ receipt.receipt_key }}</code></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" id="audit">
+      <h2>Audit Concept</h2>
+      <p>The event log remains the source of truth. State and receipts are downstream views of that history.</p>
+      <table>
+        <thead>
+          <tr><th>When</th><th>Event</th><th>Asset</th><th>Actor</th></tr>
+        </thead>
+        <tbody>
+          {% for row in audit_rows %}
+            <tr>
+              <td>{{ row.event_date }}</td>
+              <td>{{ row.event_type }}</td>
+              <td>{{ row.asset_tag }}</td>
+              <td>{{ row.actor }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="demo-note">
+    <strong>Safety note:</strong> this demo does not expose operational holder, receipt, or event records and does not submit changes into the custody system.
+  </div>
+{% endblock %}
