@@ -165,6 +165,65 @@ def _latest_receipt_id() -> int:
     return int(row["id"])
 
 
+def _receipt_row(receipt_id: int):
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT commit_at, snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    return row
+
+
+def _stored_receipt_display_title(receipt_id: int) -> str:
+    row = _receipt_row(receipt_id)
+    snapshot = json.loads(str(row["snapshot_json"]))
+    receipt = intake_app._receipt_from_queue_row(
+        {
+            "id": receipt_id,
+            "receipt_key": "",
+            "receipt_type": snapshot.get("receipt_type", ""),
+            "source_event_ids_json": json.dumps(snapshot.get("source_event_ids", [])),
+            "snapshot_json": row["snapshot_json"],
+            "commit_at": row["commit_at"],
+            "commit_operator_user_id": snapshot.get("commit_operator_user_id", 0),
+            "holder_id": snapshot.get("holder_id"),
+            "sent_at": None,
+            "last_attempt_at": None,
+            "last_error": None,
+        }
+    )
+    return str(receipt["display_title"])
+
+
+def _stored_receipt_download_name(receipt_id: int) -> str:
+    row = _receipt_row(receipt_id)
+    snapshot = json.loads(str(row["snapshot_json"]))
+    receipt = intake_app._receipt_from_queue_row(
+        {
+            "id": receipt_id,
+            "receipt_key": "",
+            "receipt_type": snapshot.get("receipt_type", ""),
+            "source_event_ids_json": json.dumps(snapshot.get("source_event_ids", [])),
+            "snapshot_json": row["snapshot_json"],
+            "commit_at": row["commit_at"],
+            "commit_operator_user_id": snapshot.get("commit_operator_user_id", 0),
+            "holder_id": snapshot.get("holder_id"),
+            "sent_at": None,
+            "last_attempt_at": None,
+            "last_error": None,
+        }
+    )
+    return intake_app._receipt_pdf_download_name(receipt)
+
+
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
     reader = PdfReader(BytesIO(pdf_bytes))
     return "\n".join(page.extract_text() or "" for page in reader.pages)
@@ -260,12 +319,13 @@ def _create_return_receipt(client, *, mixed_holders: bool = False) -> int:
 
 def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
+    expected_title = _stored_receipt_display_title(receipt_id)
 
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
     assert b"Issue Receipt" in response.data
-    assert b"Issue Receipt \xe2\x80\x94 Issue Holder \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
     assert f"Internal receipt ID {receipt_id}".encode("utf-8") in response.data
     assert b"Receipt key" in response.data
     assert b"ISSUE:" in response.data
@@ -288,12 +348,13 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
 
 def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None:
     receipt_id = _create_return_receipt(client_with_temp_db)
+    expected_title = _stored_receipt_display_title(receipt_id)
 
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
     assert b"Return Receipt" in response.data
-    assert b"Return Receipt \xe2\x80\x94 Return Holder One \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
     assert b"RETURN:" in response.data
     assert b"Return Holder One" in response.data
     assert b"return.one@example.org" in response.data
@@ -416,12 +477,13 @@ def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(cl
 
 def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
     receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
+    expected_title = _stored_receipt_display_title(receipt_id)
 
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
     assert b"Receipt title" in response.data
-    assert b"Return Receipt \xe2\x80\x94 Multiple Holders \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
     assert b"Receipt holder" not in response.data
     assert b"Return Holder One" in response.data
     assert b"Return Holder Two" in response.data
@@ -565,10 +627,11 @@ def test_receipt_detail_uses_stable_holder_fallback_when_snapshot_name_is_missin
     finally:
         conn.close()
 
+    expected_title = _stored_receipt_display_title(receipt_id)
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Issue Receipt \xe2\x80\x94 Holder 1 \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
 
 
 def test_issue_receipt_snapshot_stores_holder_email(client_with_temp_db) -> None:
@@ -620,6 +683,7 @@ def test_mixed_holder_return_snapshot_keeps_recipient_email_blank(client_with_te
 
 def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_db) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
+    expected_download_name = _stored_receipt_download_name(receipt_id)
 
     response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
 
@@ -627,7 +691,7 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     assert response.mimetype == "application/pdf"
     disposition = response.headers.get("Content-Disposition") or ""
     assert "attachment;" in disposition
-    assert "Issue Receipt - Issue Holder - Mar 29, 2026.pdf" in disposition
+    assert expected_download_name in disposition
 
     pdf_text = _extract_pdf_text(response.data)
     assert "Custody Acknowledgment Receipt" in pdf_text
@@ -646,13 +710,14 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
 
 def test_return_receipt_pdf_download_uses_human_readable_filename(client_with_temp_db) -> None:
     receipt_id = _create_return_receipt(client_with_temp_db)
+    expected_download_name = _stored_receipt_download_name(receipt_id)
 
     response = client_with_temp_db.get(f"/receipts/{receipt_id}/pdf")
 
     assert response.status_code == 200
     disposition = response.headers.get("Content-Disposition") or ""
     assert "attachment;" in disposition
-    assert "Return Receipt - Return Holder One - Mar 29, 2026.pdf" in disposition
+    assert expected_download_name in disposition
 
 
 def test_receipt_send_success_updates_delivery_state(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:

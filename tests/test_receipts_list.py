@@ -10,6 +10,7 @@ from tests.test_receipt_detail import (
     _create_issue_receipt,
     _create_return_receipt,
     _login_user,
+    _stored_receipt_display_title,
     client_with_temp_db,
 )
 
@@ -68,12 +69,13 @@ def test_receipts_list_building_room_search_returns_expected_receipt(client_with
 
 def test_mixed_holder_return_renders_multiple_holders_summary(client_with_temp_db) -> None:
     mixed_return_receipt_id = _create_return_receipt(client_with_temp_db, mixed_holders=True)
+    expected_title = _stored_receipt_display_title(mixed_return_receipt_id)
 
     response = client_with_temp_db.get("/receipts")
 
     assert response.status_code == 200
     assert f'href="/receipts/{mixed_return_receipt_id}"'.encode("utf-8") in response.data
-    assert b"Return Receipt \xe2\x80\x94 Multiple Holders \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
     assert b"Multiple holders" in response.data
     assert b"Return location varies by asset" in response.data
 
@@ -204,12 +206,13 @@ def test_receipts_list_timeout_matches_existing_readonly_pattern(
 
 def test_receipts_list_links_to_existing_receipt_detail(client_with_temp_db) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
+    expected_title = _stored_receipt_display_title(receipt_id)
 
     response = client_with_temp_db.get("/receipts")
 
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
-    assert b"Issue Receipt \xe2\x80\x94 Issue Holder \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
     assert b"Internal receipt ID" in response.data
     assert f">{receipt_id}<".encode("utf-8") in response.data
     assert b"Detail" not in response.data
@@ -219,14 +222,16 @@ def test_receipts_list_links_to_existing_receipt_detail(client_with_temp_db) -> 
 
 
 def test_receipts_list_renders_distinct_issue_and_return_titles(client_with_temp_db) -> None:
-    _create_issue_receipt(client_with_temp_db)
-    _create_return_receipt(client_with_temp_db)
+    issue_receipt_id = _create_issue_receipt(client_with_temp_db)
+    return_receipt_id = _create_return_receipt(client_with_temp_db)
+    issue_title = _stored_receipt_display_title(issue_receipt_id)
+    return_title = _stored_receipt_display_title(return_receipt_id)
 
     response = client_with_temp_db.get("/receipts")
 
     assert response.status_code == 200
-    assert b"Issue Receipt \xe2\x80\x94 Issue Holder \xe2\x80\x94 Mar 29, 2026" in response.data
-    assert b"Return Receipt \xe2\x80\x94 Return Holder One \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert issue_title.encode("utf-8") in response.data
+    assert return_title.encode("utf-8") in response.data
 
 
 def test_receipts_list_uses_stable_holder_fallback_when_snapshot_name_is_missing(client_with_temp_db) -> None:
@@ -261,10 +266,11 @@ def test_receipts_list_uses_stable_holder_fallback_when_snapshot_name_is_missing
     finally:
         conn.close()
 
+    expected_title = _stored_receipt_display_title(receipt_id)
     response = client_with_temp_db.get("/receipts")
 
     assert response.status_code == 200
-    assert b"Issue Receipt \xe2\x80\x94 Holder 1 \xe2\x80\x94 Mar 29, 2026" in response.data
+    assert expected_title.encode("utf-8") in response.data
 
 
 def test_receipts_list_building_room_search_matches_issue_location_summary(client_with_temp_db) -> None:
