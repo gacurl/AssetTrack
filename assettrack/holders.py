@@ -19,6 +19,34 @@ def _normalize_email(email: str | None) -> str | None:
     return normalized
 
 
+def _ensure_unique_holder_email(
+    conn,
+    normalized_email: str | None,
+    *,
+    current_holder_id: int | None = None,
+) -> None:
+    if not normalized_email:
+        return
+
+    row = conn.execute(
+        """
+        SELECT id
+        FROM holders
+        WHERE LOWER(TRIM(COALESCE(email, ''))) = ?
+        LIMIT 1;
+        """,
+        (normalized_email,),
+    ).fetchone()
+    if row is None:
+        return
+
+    existing_holder_id = int(row["id"])
+    if current_holder_id is not None and existing_holder_id == int(current_holder_id):
+        return
+
+    raise ValueError("email already exists")
+
+
 def search_holders(query: str, limit: int = 20) -> list[dict]:
     q = (query or "").strip()
     if not q:
@@ -124,6 +152,7 @@ def create_holder(
     now_iso = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
+        _ensure_unique_holder_email(conn, normalized_email)
         cursor = conn.execute(
             """
             INSERT INTO holders (
@@ -188,6 +217,7 @@ def update_holder(
 
     conn = get_connection()
     try:
+        _ensure_unique_holder_email(conn, normalized_email, current_holder_id=normalized_id)
         cursor = conn.execute(
             """
             UPDATE holders
