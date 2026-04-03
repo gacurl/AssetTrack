@@ -106,6 +106,32 @@ def test_demo_route_does_not_unlock_protected_operational_pages(client_with_temp
     assert receipts_response.status_code == 403
 
 
+def test_demo_route_and_unauthed_protected_routes_do_not_require_db_access(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _fail_get_connection():
+        raise AssertionError("unexpected DB access")
+
+    monkeypatch.setattr(intake_app, "get_connection", _fail_get_connection)
+    monkeypatch.setattr("assettrack.users.get_connection", _fail_get_connection)
+
+    demo_response = client_with_temp_db.get("/demo")
+    dashboard_response = client_with_temp_db.get("/dashboard")
+    holders_response = client_with_temp_db.get("/holders")
+    receipts_response = client_with_temp_db.get("/receipts")
+
+    assert demo_response.status_code == 200
+    assert b"AssetTrack Demo" in demo_response.data
+    assert b"Safety note:" in demo_response.data
+
+    assert dashboard_response.status_code == 403
+    assert dashboard_response.json == {"ok": False, "error": "Forbidden"}
+    assert holders_response.status_code == 403
+    assert holders_response.json == {"ok": False, "error": "Forbidden"}
+    assert receipts_response.status_code == 403
+    assert receipts_response.json == {"ok": False, "error": "Forbidden"}
+
+
 def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_temp_db) -> None:
     create_user("operator", "op-pass", "operator", True)
     _login(client_with_temp_db, "operator", "op-pass")
