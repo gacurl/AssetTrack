@@ -86,6 +86,36 @@ TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 ASSET_EQUIPMENT_TYPE_OPTIONS = ("laptop", "tablet")
+DEMO_SUMMARY = {
+    "assets_in_custody": 18,
+    "pending_receipts": 2,
+    "holders": 7,
+    "cases": 4,
+}
+DEMO_HOLDERS = [
+    {"name": "Signal Platoon", "organization": "Operations", "email": "signal.platoon@example.demo", "asset_count": 6},
+    {"name": "Maintenance Shop", "organization": "Support", "email": "maintenance.shop@example.demo", "asset_count": 4},
+    {"name": "Forward Team Alpha", "organization": "Field Team", "email": "fta@example.demo", "asset_count": 3},
+]
+DEMO_RECEIPTS = [
+    {
+        "title": "Issue Receipt - Signal Platoon - Apr 3, 2026",
+        "status": "Queued",
+        "recipient_email": "signal.platoon@example.demo",
+        "receipt_key": "ISSUE-2026-0042",
+    },
+    {
+        "title": "Return Receipt - Maintenance Shop - Apr 2, 2026",
+        "status": "Sent",
+        "recipient_email": "maintenance.shop@example.demo",
+        "receipt_key": "RETURN-2026-0017",
+    },
+]
+DEMO_AUDIT = [
+    {"event_date": "2026-04-03T09:14:00Z", "event_type": "ISSUE", "asset_tag": "LT-4421", "actor": "operator-demo"},
+    {"event_date": "2026-04-03T09:18:00Z", "event_type": "ISSUE", "asset_tag": "TB-1188", "actor": "operator-demo"},
+    {"event_date": "2026-04-02T16:42:00Z", "event_type": "RETURN", "asset_tag": "LT-3010", "actor": "operator-demo"},
+]
 
 
 @app.after_request
@@ -131,6 +161,21 @@ def _should_refresh_session_activity() -> bool:
 def sanitize_scan(raw: str) -> str:
     """Keep only letters and numbers; drop tabs/newlines/suffix junk."""
     return "".join(ch for ch in raw if ch.isalnum()).upper()
+
+
+def _demo_page_context() -> dict[str, object]:
+    return {
+        "summary": DEMO_SUMMARY,
+        "holders": DEMO_HOLDERS,
+        "receipts": DEMO_RECEIPTS,
+        "audit_rows": DEMO_AUDIT,
+        "workflow_steps": [
+            "Select the holder and confirm prerequisites.",
+            "Scan assets into the queue without committing immediately.",
+            "Preview the batch before commit so operators can catch mistakes.",
+            "Commit once and let receipts track follow-up notification state.",
+        ],
+    }
 
 
 def _queue_contains_asset_tag(asset_tag: str) -> bool:
@@ -3283,6 +3328,11 @@ def add_assets():
         slot_options=slot_options,
         case_options=case_options,
     )
+
+
+@app.get("/demo")
+def demo():
+    return render_template("demo.html", **_demo_page_context())
 
 
 @app.post("/add-assets/review")

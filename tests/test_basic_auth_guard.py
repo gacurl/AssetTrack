@@ -57,6 +57,55 @@ def test_login_screen_renders_theme_toggle_without_persistence_storage(client_wi
     assert b"sessionStorage" not in response.data
 
 
+def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> None:
+    conn = db.get_connection()
+    try:
+        before = {
+            "holders": int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0]),
+            "receipts": int(conn.execute("SELECT COUNT(*) FROM receipt_queue;").fetchone()[0]),
+            "events": int(conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0]),
+        }
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/demo")
+
+    assert response.status_code == 200
+    assert b"AssetTrack Demo" in response.data
+    assert b"Read-Only Demo" in response.data
+    assert b"curated sample data only" in response.data
+    assert b"does not read or write the live system of record" in response.data
+    assert b"Dashboard Value" in response.data
+    assert b"Issue / Return Workflow" in response.data
+    assert b"Receipts Concept" in response.data
+    assert b"Audit Concept" in response.data
+
+    conn = db.get_connection()
+    try:
+        after = {
+            "holders": int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0]),
+            "receipts": int(conn.execute("SELECT COUNT(*) FROM receipt_queue;").fetchone()[0]),
+            "events": int(conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0]),
+        }
+    finally:
+        conn.close()
+
+    assert after == before
+
+
+def test_demo_route_does_not_unlock_protected_operational_pages(client_with_temp_db) -> None:
+    demo_response = client_with_temp_db.get("/demo")
+    assert demo_response.status_code == 200
+
+    dashboard_response = client_with_temp_db.get("/dashboard")
+    holders_response = client_with_temp_db.get("/holders")
+    receipts_response = client_with_temp_db.get("/receipts")
+
+    assert dashboard_response.status_code == 403
+    assert holders_response.status_code == 403
+    assert receipts_response.status_code == 403
+
+
 def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_temp_db) -> None:
     create_user("operator", "op-pass", "operator", True)
     _login(client_with_temp_db, "operator", "op-pass")
