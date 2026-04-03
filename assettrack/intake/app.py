@@ -637,8 +637,10 @@ def _holder_form_error_message(exc: ValueError) -> str:
         return "Choose an organization for this holder."
     if message == "name is required":
         return "Enter a person or group name when using Ad Hoc."
+    if message == "email is required":
+        return "Enter an email address so this holder can receive receipts."
     if message == "email is invalid":
-        return "Enter a valid email address or leave it blank."
+        return "Enter a valid email address so this holder can receive receipts."
     return message
 
 
@@ -5104,6 +5106,13 @@ def holders_create():
     email = (request.form.get("email") or "").strip()
     form = {"name": name, "organization_id": organization_id_raw, "email": email}
 
+    if not email:
+        session["holder_new_form"] = form
+        flash(_holder_form_error_message(ValueError("email is required")), "error")
+        if return_to is not None:
+            return redirect(url_for("holders_new", return_to=return_to))
+        return redirect(url_for("holders_new"))
+
     try:
         created = create_holder(
             name,
@@ -5171,6 +5180,13 @@ def holders_edit_submit(holder_id: int):
     holder = get_holder(holder_id)
     if holder is None:
         abort(404)
+
+    if not form["email"]:
+        session[f"holder_edit_form:{holder_id}"] = form
+        flash(_holder_form_error_message(ValueError("email is required")), "error")
+        if return_to is not None:
+            return redirect(url_for("holders_edit", holder_id=holder_id, return_to=return_to))
+        return redirect(url_for("holders_edit", holder_id=holder_id))
 
     try:
         updated = update_holder(
