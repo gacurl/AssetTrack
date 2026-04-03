@@ -158,6 +158,23 @@ def _should_refresh_session_activity() -> bool:
     return True
 
 
+def _prefers_json_error_response() -> bool:
+    if request.is_json:
+        return True
+
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    return best == "application/json" and (
+        request.accept_mimetypes["application/json"] >= request.accept_mimetypes["text/html"]
+    )
+
+
+@app.errorhandler(404)
+def not_found_page(_error):
+    if _prefers_json_error_response():
+        return {"ok": False, "error": "Not Found"}, 404
+    return render_template("404.html"), 404
+
+
 def sanitize_scan(raw: str) -> str:
     """Keep only letters and numbers; drop tabs/newlines/suffix junk."""
     return "".join(ch for ch in raw if ch.isalnum()).upper()

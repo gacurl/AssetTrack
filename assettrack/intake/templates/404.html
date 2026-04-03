@@ -1,0 +1,13 @@
+<!-- file: assettrack/intake/templates/404.html -->
+{% extends "base.html" %}
+
+{% block title %}AssetTrack Page Not Found{% endblock %}
+{% block page_heading %}Page Not Found{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <p>The page you requested does not exist in this AssetTrack session.</p>
+    <p class="muted">Safe next steps: check the address, return to the dashboard, or use the main navigation to continue.</p>
+    <p><a href="{{ url_for('dashboard') if authenticated_user else url_for('add_assets') }}">Return to a safe page</a></p>
+  </div>
+{% endblock %}

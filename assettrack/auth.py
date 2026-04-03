@@ -3,15 +3,25 @@ from __future__ import annotations
 
 from functools import wraps
 
-from flask import g, jsonify, request, session
+from flask import g, render_template, request, session
 
 from assettrack.users import ALLOWED_ROLES, get_user_by_id
 
 
+def _prefers_json_response() -> bool:
+    if request.is_json:
+        return True
+
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    return best == "application/json" and (
+        request.accept_mimetypes["application/json"] >= request.accept_mimetypes["text/html"]
+    )
+
+
 def _forbidden_response():
-    if request.path.startswith("/admin/") or request.is_json:
+    if _prefers_json_response():
         return {"ok": False, "error": "Forbidden"}, 403
-    return jsonify({"ok": False, "error": "Forbidden"}), 403
+    return render_template("403.html"), 403
 
 
 def current_user() -> dict | None:

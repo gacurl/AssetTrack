@@ -519,7 +519,7 @@ def test_receipt_detail_requires_login(client_with_temp_db) -> None:
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 403
-    assert response.json == {"ok": False, "error": "Forbidden"}
+    assert b"Access Not Allowed" in response.data
 
 
 def test_receipt_detail_timeout_matches_existing_readonly_pattern(
