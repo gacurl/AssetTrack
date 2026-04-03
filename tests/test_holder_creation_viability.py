@@ -43,6 +43,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.get("/holders/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Create Holder", response.data)
+        self.assertIn(b"required for receipts", response.data)
         self.assertIn(b"box-sizing: border-box;", response.data)
         self.assertIn(b"novalidate", response.data)
         self.assertNotIn(b'name="organization_id" required', response.data)
@@ -74,7 +75,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
     def test_post_holders_new_rejects_missing_organization(self) -> None:
         response = self.client.post(
             "/holders/new",
-            data={"name": "Named Holder", "organization_id": ""},
+            data={"name": "Named Holder", "organization_id": "", "email": "named@example.org"},
             follow_redirects=False,
         )
         self.assertEqual(response.status_code, 302)
@@ -92,7 +93,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         organization_id = self._create_org("Maintenance Shop")
         response = self.client.post(
             "/holders/new",
-            data={"name": "", "organization_id": str(organization_id)},
+            data={"name": "", "organization_id": str(organization_id), "email": "shop@example.org"},
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
@@ -112,7 +113,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         response = self.client.post(
             "/holders/new",
-            data={"name": "", "organization_id": str(organization_id)},
+            data={"name": "", "organization_id": str(organization_id), "email": "adhoc@example.org"},
             follow_redirects=False,
         )
 
@@ -129,7 +130,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         create_response = self.client.post(
             "/holders/new",
-            data={"name": holder_name, "organization_id": str(organization_id)},
+            data={"name": holder_name, "organization_id": str(organization_id), "email": "zz-holder@example.org"},
         )
         self.assertEqual(create_response.status_code, 302)
         self.assertTrue(create_response.headers["Location"].endswith("/holders"))
@@ -161,7 +162,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
         org_one_id = self._create_org("Org One")
         org_two_id = self._create_org("Org Two")
 
-        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_one_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Editable Holder", "organization_id": str(org_one_id), "email": "editable@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Editable Holder",),
@@ -193,7 +197,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_edit_holder_rejects_missing_organization(self) -> None:
         org_id = self._create_org("Org One")
-        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Editable Holder", "organization_id": str(org_id), "email": "editable@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Editable Holder",),
@@ -202,7 +209,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         edit_post = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
-            data={"name": "Editable Holder", "organization_id": ""},
+            data={"name": "Editable Holder", "organization_id": "", "email": "editable@example.org"},
             follow_redirects=False,
         )
 
@@ -219,7 +226,12 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         response = self.client.post(
             "/holders/new",
-            data={"name": "Workflow Holder", "organization_id": str(organization_id), "return_to": "/issue"},
+            data={
+                "name": "Workflow Holder",
+                "organization_id": str(organization_id),
+                "email": "workflow@example.org",
+                "return_to": "/issue",
+            },
             follow_redirects=False,
         )
 
@@ -229,7 +241,12 @@ class HolderCreationViabilityTests(unittest.TestCase):
     def test_create_holder_preserves_return_to_on_validation_redirect(self) -> None:
         response = self.client.post(
             "/holders/new",
-            data={"name": "Workflow Holder", "organization_id": "", "return_to": "/issue"},
+            data={
+                "name": "Workflow Holder",
+                "organization_id": "",
+                "email": "workflow@example.org",
+                "return_to": "/issue",
+            },
             follow_redirects=False,
         )
 
@@ -243,7 +260,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_edit_holder_respects_return_to_after_success(self) -> None:
         organization_id = self._create_org("Issue Org")
-        self.client.post("/holders/new", data={"name": "Workflow Holder", "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Workflow Holder", "organization_id": str(organization_id), "email": "workflow@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Workflow Holder",),
@@ -252,7 +272,12 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         response = self.client.post(
             f"/holders/edit/{int(holder_row['id'])}",
-            data={"name": "Workflow Holder", "organization_id": str(organization_id), "return_to": "/issue"},
+            data={
+                "name": "Workflow Holder",
+                "organization_id": str(organization_id),
+                "email": "workflow@example.org",
+                "return_to": "/issue",
+            },
             follow_redirects=False,
         )
 
@@ -262,7 +287,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
     def test_holders_list_shows_holders_and_asset_count(self) -> None:
         holder_name = "Holder List Person"
         organization_id = self._create_org("Ad Hoc")
-        self.client.post("/holders/new", data={"name": holder_name, "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": holder_name, "organization_id": str(organization_id), "email": "holder-search@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             (holder_name,),
@@ -284,8 +312,14 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_holders_directory_loads_by_default_without_search(self) -> None:
         organization_id = self._create_org("Ad Hoc")
-        self.client.post("/holders/new", data={"name": "Alpha Holder", "organization_id": str(organization_id)})
-        self.client.post("/holders/new", data={"name": "Bravo Holder", "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Alpha Holder", "organization_id": str(organization_id), "email": "alpha@example.org"},
+        )
+        self.client.post(
+            "/holders/new",
+            data={"name": "Bravo Holder", "organization_id": str(organization_id), "email": "bravo@example.org"},
+        )
 
         response = self.client.get("/holders")
 
@@ -297,7 +331,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
         organization_id = self._create_org("Org Detail")
-        self.client.post("/holders/new", data={"name": "Detail Holder", "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Detail Holder", "organization_id": str(organization_id), "email": "detail@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Detail Holder",),
@@ -338,12 +375,32 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         follow_up = self.client.get("/holders/new")
         self.assertEqual(follow_up.status_code, 200)
-        self.assertIn(b"Enter a valid email address or leave it blank.", follow_up.data)
+        self.assertIn(b"Enter a valid email address so this holder can receive receipts.", follow_up.data)
         self.assertIn(b'value="bad-email"', follow_up.data)
+
+    def test_post_holders_new_rejects_missing_email_with_clear_feedback(self) -> None:
+        org_id = self._create_org("Alpha Org")
+
+        response = self.client.post(
+            "/holders/new",
+            data={"name": "Missing Email Holder", "organization_id": str(org_id), "email": ""},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders/new"))
+
+        follow_up = self.client.get("/holders/new")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Enter an email address so this holder can receive receipts.", follow_up.data)
+        self.assertIn(b'value="Missing Email Holder"', follow_up.data)
 
     def test_edit_holder_rejects_invalid_email_with_clear_feedback(self) -> None:
         org_id = self._create_org("Alpha Org")
-        self.client.post("/holders/new", data={"name": "Editable Holder", "organization_id": str(org_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Editable Holder", "organization_id": str(org_id), "email": "editable@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Editable Holder",),
@@ -361,12 +418,41 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         follow_up = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
         self.assertEqual(follow_up.status_code, 200)
-        self.assertIn(b"Enter a valid email address or leave it blank.", follow_up.data)
+        self.assertIn(b"Enter a valid email address so this holder can receive receipts.", follow_up.data)
         self.assertIn(b'value="bad-email"', follow_up.data)
+
+    def test_edit_holder_rejects_missing_email_with_clear_feedback(self) -> None:
+        org_id = self._create_org("Alpha Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Editable Holder", "organization_id": str(org_id), "email": "editable@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Editable Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.post(
+            f"/holders/edit/{int(holder_row['id'])}",
+            data={"name": "Editable Holder", "organization_id": str(org_id), "email": ""},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith(f"/holders/edit/{int(holder_row['id'])}"))
+
+        follow_up = self.client.get(f"/holders/edit/{int(holder_row['id'])}")
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Enter an email address so this holder can receive receipts.", follow_up.data)
+        self.assertIn(b'value="Editable Holder"', follow_up.data)
 
     def test_holder_detail_shows_zero_assets_state(self) -> None:
         organization_id = self._create_org("Ad Hoc")
-        self.client.post("/holders/new", data={"name": "Empty Holder", "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "Empty Holder", "organization_id": str(organization_id), "email": "empty@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Empty Holder",),
@@ -381,7 +467,10 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
     def test_holder_detail_displays_group_holder_cleanly(self) -> None:
         organization_id = self._create_org("Ops Section")
-        self.client.post("/holders/new", data={"name": "", "organization_id": str(organization_id)})
+        self.client.post(
+            "/holders/new",
+            data={"name": "", "organization_id": str(organization_id), "email": "ops-section@example.org"},
+        )
         holder_row = self.conn.execute(
             "SELECT id FROM holders WHERE name = ?;",
             ("Ops Section",),
