@@ -1,5 +1,5 @@
 # Dockerfile
-FROM python:3.12-alpine
+FROM python:3.12.13-alpine3.23
 
 RUN python -m pip install --upgrade "pip==26.0"
 
@@ -14,7 +14,8 @@ RUN apk update && apk upgrade --no-cache
 RUN addgroup -S assettrack && adduser -S -G assettrack -h /app assettrack
 
 # System deps for common scientific + imaging stacks
-RUN apk add --no-cache \
+RUN apk add --no-cache --upgrade \
+        libpng \
         libjpeg-turbo \
         freetype \
         lcms2 \
