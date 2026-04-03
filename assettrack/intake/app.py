@@ -639,6 +639,8 @@ def _holder_form_error_message(exc: ValueError) -> str:
         return "Enter a person or group name when using Ad Hoc."
     if message == "email is required":
         return "Enter an email address so this holder can receive receipts."
+    if message == "email already exists":
+        return "A holder with that email already exists."
     if message == "email is invalid":
         return "Enter a valid email address so this holder can receive receipts."
     return message

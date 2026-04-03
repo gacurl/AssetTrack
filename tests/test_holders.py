@@ -172,3 +172,40 @@ class HoldersTests(unittest.TestCase):
         updated = update_holder(int(created["id"]), name="Email Holder", organization_id=organization_id, email="")
 
         self.assertIsNone(updated["email"])
+
+    def test_create_holder_rejects_duplicate_email(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+        create_holder("First Holder", organization_id=organization_id, email="holder@example.org")
+
+        with self.assertRaisesRegex(ValueError, "email already exists"):
+            create_holder("Second Holder", organization_id=organization_id, email="holder@example.org")
+
+    def test_update_holder_rejects_duplicate_email_on_different_holder(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+        first = create_holder("First Holder", organization_id=organization_id, email="first@example.org")
+        second = create_holder("Second Holder", organization_id=organization_id, email="second@example.org")
+
+        with self.assertRaisesRegex(ValueError, "email already exists"):
+            update_holder(
+                int(second["id"]),
+                name="Second Holder",
+                organization_id=organization_id,
+                email="first@example.org",
+            )
+
+        fetched = get_holder(int(second["id"]))
+        self.assertIsNotNone(fetched)
+        self.assertEqual(fetched["email"], "second@example.org")
+
+    def test_update_holder_allows_unchanged_email_on_same_holder(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+        created = create_holder("Stable Holder", organization_id=organization_id, email="stable@example.org")
+
+        updated = update_holder(
+            int(created["id"]),
+            name="Stable Holder",
+            organization_id=organization_id,
+            email="stable@example.org",
+        )
+
+        self.assertEqual(updated["email"], "stable@example.org")
