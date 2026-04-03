@@ -125,11 +125,34 @@ def test_demo_route_and_unauthed_protected_routes_do_not_require_db_access(
     assert b"Safety note:" in demo_response.data
 
     assert dashboard_response.status_code == 403
-    assert dashboard_response.json == {"ok": False, "error": "Forbidden"}
+    assert b"Access Not Allowed" in dashboard_response.data
+    assert b"This page is not available with your current access." in dashboard_response.data
     assert holders_response.status_code == 403
-    assert holders_response.json == {"ok": False, "error": "Forbidden"}
+    assert b"Access Not Allowed" in holders_response.data
     assert receipts_response.status_code == 403
-    assert receipts_response.json == {"ok": False, "error": "Forbidden"}
+    assert b"Access Not Allowed" in receipts_response.data
+
+
+def test_protected_route_can_still_return_json_forbidden_when_json_is_requested(client_with_temp_db) -> None:
+    response = client_with_temp_db.get("/dashboard", headers={"Accept": "application/json"})
+
+    assert response.status_code == 403
+    assert response.json == {"ok": False, "error": "Forbidden"}
+
+
+def test_unknown_route_renders_friendly_404_page(client_with_temp_db) -> None:
+    response = client_with_temp_db.get("/missing-page")
+
+    assert response.status_code == 404
+    assert b"Page Not Found" in response.data
+    assert b"The page you requested does not exist in this AssetTrack session." in response.data
+
+
+def test_unknown_route_can_still_return_json_not_found_when_json_is_requested(client_with_temp_db) -> None:
+    response = client_with_temp_db.get("/missing-page", headers={"Accept": "application/json"})
+
+    assert response.status_code == 404
+    assert response.json == {"ok": False, "error": "Not Found"}
 
 
 def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_temp_db) -> None:
