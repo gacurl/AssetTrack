@@ -1,0 +1,84 @@
+name: Weekly Security Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 1"
+      timezone: "America/New_York"
+
+permissions:
+  contents: read
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
+
+      - name: Create report directory
+        run: mkdir -p trivy-reports
+
+      - name: Trivy repository report
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --format table \
+            --output trivy-reports/repository-scan.txt \
+            .
+
+      - name: Trivy repository report JSON
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --format json \
+            --output trivy-reports/repository-scan.json \
+            .
+
+      - name: Build Docker image
+        run: docker build -t assettrack-security-scan:latest .
+
+      - name: Trivy image report
+        run: |
+          trivy image \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --format table \
+            --output trivy-reports/image-scan.txt \
+            assettrack-security-scan:latest
+
+      - name: Trivy image report JSON
+        run: |
+          trivy image \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --format json \
+            --output trivy-reports/image-scan.json \
+            assettrack-security-scan:latest
+
+      - name: Fail on HIGH or CRITICAL repository findings
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            .
+
+      - name: Fail on HIGH or CRITICAL image findings
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            assettrack-security-scan:latest
+
+      - name: Upload security scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-security-scan-artifacts
+          path: trivy-reports/
+          if-no-files-found: error
