@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
 
@@ -842,6 +843,90 @@ def test_receipt_send_fails_clearly_when_snapshot_email_is_missing(client_with_t
 
     assert response.status_code == 400
     assert response.json == {"ok": False, "error": "Receipt has no stored email recipient."}
+
+
+def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = {
+        "id": 7,
+        "receipt_key": "R-7",
+        "display_title": "Issue Receipt",
+        "commit_at": "2026-01-01T00:00:00Z",
+        "holder_display_name": "Issue Holder",
+        "recipient_email": "issue@example.org",
+        "assets": [{"asset_tag": "ISSUE-100"}],
+    }
+
+    captured: dict[str, object] = {}
+
+    class _FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            captured["host"] = host
+            captured["port"] = port
+            captured["timeout"] = timeout
+
+        def __enter__(self) -> "_FakeSMTP":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send_message(self, message: EmailMessage) -> None:
+            captured["message"] = message
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_FROM_EMAIL", "assettrack@example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "  Oversight@example.org  ")
+    monkeypatch.setattr(intake_app.smtplib, "SMTP", _FakeSMTP)
+
+    recipients = intake_app._send_receipt_email(receipt)
+
+    assert recipients == ["issue@example.org"]
+    message = captured["message"]
+    assert isinstance(message, EmailMessage)
+    assert message["To"] == "issue@example.org"
+    assert message["Cc"] == "oversight@example.org"
+
+
+def test_send_receipt_email_omits_cc_when_config_is_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = {
+        "id": 8,
+        "receipt_key": "R-8",
+        "display_title": "Issue Receipt",
+        "commit_at": "2026-01-01T00:00:00Z",
+        "holder_display_name": "Issue Holder",
+        "recipient_email": "issue@example.org",
+        "assets": [{"asset_tag": "ISSUE-101"}],
+    }
+
+    captured: dict[str, object] = {}
+
+    class _FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            captured["host"] = host
+            captured["port"] = port
+            captured["timeout"] = timeout
+
+        def __enter__(self) -> "_FakeSMTP":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send_message(self, message: EmailMessage) -> None:
+            captured["message"] = message
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_FROM_EMAIL", "assettrack@example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "   ")
+    monkeypatch.setattr(intake_app.smtplib, "SMTP", _FakeSMTP)
+
+    recipients = intake_app._send_receipt_email(receipt)
+
+    assert recipients == ["issue@example.org"]
+    message = captured["message"]
+    assert isinstance(message, EmailMessage)
+    assert message["To"] == "issue@example.org"
+    assert message["Cc"] is None
 
 
 def test_receipt_pdf_is_deterministic_for_same_snapshot(client_with_temp_db) -> None:
