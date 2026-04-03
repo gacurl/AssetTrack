@@ -4502,11 +4502,20 @@ def _receipt_display_title(receipt_type: str, holder_name: str, display_date: st
 
 def _receipt_email_recipients(receipt: dict[str, object]) -> list[str]:
     recipient_email = str(receipt.get("recipient_email") or "").strip().lower()
-    if not recipient_email:
+    return _normalized_email_addresses(recipient_email)
+
+
+def _receipt_cc_recipients() -> list[str]:
+    configured_cc = str(os.getenv("ASSETTRACK_RECEIPT_CC_EMAIL") or "").strip().lower()
+    return _normalized_email_addresses(configured_cc)
+
+
+def _normalized_email_addresses(raw_addresses: str) -> list[str]:
+    if not raw_addresses:
         return []
 
     recipients: list[str] = []
-    for _, email_address in getaddresses([recipient_email]):
+    for _, email_address in getaddresses([raw_addresses]):
         normalized = str(email_address or "").strip().lower()
         if normalized and normalized not in recipients:
             recipients.append(normalized)
@@ -4545,6 +4554,7 @@ def _send_receipt_email(receipt: dict[str, object]) -> list[str]:
     recipients = _receipt_email_recipients(receipt)
     if not recipients:
         raise ValueError("Receipt has no stored email recipient.")
+    cc_recipients = _receipt_cc_recipients()
 
     smtp_host = str(os.getenv("ASSETTRACK_SMTP_HOST") or "").strip()
     if not smtp_host:
@@ -4561,6 +4571,8 @@ def _send_receipt_email(receipt: dict[str, object]) -> list[str]:
     message["Subject"] = str(receipt.get("display_title") or "AssetTrack Receipt")
     message["From"] = from_address
     message["To"] = ", ".join(recipients)
+    if cc_recipients:
+        message["Cc"] = ", ".join(cc_recipients)
     message.set_content(_build_receipt_email_body(receipt))
     message.add_attachment(
         _build_receipt_pdf(receipt),
