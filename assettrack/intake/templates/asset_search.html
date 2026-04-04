@@ -6,9 +6,20 @@
 
 {% block extra_head %}
   <style>
-    .search-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1rem; }
-    .asset-search-page .search-grid .row { min-width: 0; }
-    .asset-search-page input[type="text"] {
+    .asset-search-page .asset-search-form {
+      width: 100%;
+    }
+    .asset-search-page .search-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem 1rem;
+      width: 100%;
+    }
+    .asset-search-page .search-field {
+      min-width: 0;
+    }
+    .asset-search-page .search-field input[type="text"] {
+      display: block;
       width: 100%;
       max-width: none;
       min-width: 0;
@@ -47,13 +58,13 @@
   <div class="card">
     <h2>Find Asset</h2>
     <p class="muted">Search by asset tag or serial number. If both are entered, asset tag is used first.</p>
-    <form method="get" action="{{ url_for('asset_search') }}">
+    <form class="asset-search-form" method="get" action="{{ url_for('asset_search') }}">
       <div class="search-grid">
-        <div class="row">
+        <div class="row search-field">
           <label for="asset_tag"><strong>Asset tag</strong></label><br />
           <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" autofocus />
         </div>
-        <div class="row">
+        <div class="row search-field">
           <label for="serial_number"><strong>Serial number</strong></label><br />
           <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" />
         </div>
