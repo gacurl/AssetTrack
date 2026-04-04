@@ -79,9 +79,7 @@
             <th style="width: 120px;">Type</th>
             <th style="width: 220px;">Name</th>
             <th style="width: 200px;">Organization</th>
-            <th style="width: 180px;">Identifier</th>
             <th style="width: 220px;">Email</th>
-            <th>Contact</th>
             <th style="width: 100px;">Assets</th>
             <th style="width: 120px;">Edit</th>
             <th style="width: 120px;">Select</th>
@@ -99,9 +97,7 @@
                 {% endif %}
               </td>
               <td>{{ h["organization"] or "" }}</td>
-              <td><code>{{ h["identifier"] or "" }}</code></td>
               <td>{{ h["email"] or "" }}</td>
-              <td>{{ h["contact_info"] or "" }}</td>
               <td>{{ h.get("asset_count", "") }}</td>
               <td>
                 {% if return_to %}
