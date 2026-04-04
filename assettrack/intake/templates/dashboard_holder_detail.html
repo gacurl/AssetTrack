@@ -4,13 +4,6 @@
 {% block title %}Holder Detail{% endblock %}
 {% block page_heading %}Outstanding Assets: {{ holder.holder_name }}{% endblock %}
 
-{% block extra_head %}
-  <style>
-    .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  </style>
-{% endblock %}
-
 {% block content %}
   <nav class="actions" aria-label="Contextual navigation">
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>

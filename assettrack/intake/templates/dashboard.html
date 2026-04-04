@@ -11,18 +11,11 @@
       font-size: 1.08rem;
       line-height: 1.3;
     }
-    .muted { color: var(--color-text-muted); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
     .topbar { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
     .subtitle { margin: 0; }
 
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin: 0.75rem 0 1rem 0;
-    }
+    .actions { margin: 0.75rem 0 1rem 0; }
     .chip.secondary { background: var(--color-panel-bg); }
 
     .grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1rem; }
@@ -69,21 +62,6 @@
     .summary-hint { font-weight: 500; font-size: 0.9rem; color: var(--color-text-muted); }
     .collapsible-body { padding: 0.9rem 1rem 1rem 1rem; }
     .collapsible-body .table-wrap { margin-top: 0.25rem; }
-    .status-cell { white-space: nowrap; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-weight: 700;
-    }
-    .status-dot {
-      width: 0.7rem;
-      height: 0.7rem;
-      border-radius: 999px;
-      display: inline-block;
-      border: 1px solid rgba(18, 32, 47, 0.18);
-      flex: 0 0 auto;
-    }
     .status-dot.full { background: var(--color-primary); }
     .status-dot.low { background: var(--color-surface); }
     .status-dot.open { background: var(--color-accent); }

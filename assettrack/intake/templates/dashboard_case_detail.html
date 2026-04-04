@@ -6,23 +6,7 @@
 
 {% block extra_head %}
   <style>
-    .actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .status-card { margin-bottom: 1rem; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-weight: 700;
-    }
-    .status-dot {
-      width: 0.7rem;
-      height: 0.7rem;
-      border-radius: 999px;
-      display: inline-block;
-      border: 1px solid rgba(18, 32, 47, 0.18);
-      flex: 0 0 auto;
-    }
     .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
     .status-dot.open { background: #b42318; }

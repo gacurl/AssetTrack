@@ -4,14 +4,6 @@
 {% block title %}Holder Detail{% endblock %}
 {% block page_heading %}Holder: {{ holder_display_name(holder) }}{% endblock %}
 
-{% block extra_head %}
-  <style>
-    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .actions form { margin: 0; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  </style>
-{% endblock %}
-
 {% block content %}
   <nav class="actions" aria-label="Holder navigation">
     <a class="chip" href="{{ url_for('holders_search', return_to=return_to) }}">Back to Holders</a>

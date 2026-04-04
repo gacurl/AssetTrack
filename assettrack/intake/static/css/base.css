@@ -1,0 +1,87 @@
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.actions form {
+  margin: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+.pill.bad {
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+}
+
+.workflow-card h2 {
+  margin: 0 0 0.55rem 0;
+}
+
+.workflow-summary {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.workflow-table td strong {
+  color: var(--color-primary);
+}
+
+.workflow-table code {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.15rem 0;
+}
+
+.state-block + .state-block {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--color-surface);
+}
+
+.review-signal {
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.review-signal.blocked {
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.status-cell {
+  white-space: nowrap;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  display: inline-block;
+  border: 1px solid rgba(18, 32, 47, 0.18);
+  flex: 0 0 auto;
+}
