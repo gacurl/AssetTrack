@@ -13,6 +13,25 @@
   margin: 0;
 }
 
+.form-group {
+  margin: 0.75rem 0;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  max-width: 520px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.6rem;
+  font-size: 1rem;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
