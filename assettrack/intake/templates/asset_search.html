@@ -18,14 +18,9 @@
     .asset-search-page .search-field {
       min-width: 0;
     }
-    .asset-search-page .search-field input[type="text"] {
+    .asset-search-page .search-field .form-input {
       display: block;
-      width: 100%;
       max-width: none;
-      min-width: 0;
-      box-sizing: border-box;
-      padding: 0.6rem;
-      font-size: 1rem;
     }
     .search-actions {
       display: flex;
@@ -60,13 +55,13 @@
     <p class="muted">Search by asset tag or serial number. If both are entered, asset tag is used first.</p>
     <form class="asset-search-form" method="get" action="{{ url_for('asset_search') }}">
       <div class="search-grid">
-        <div class="row search-field">
-          <label for="asset_tag"><strong>Asset tag</strong></label><br />
-          <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" autofocus />
+        <div class="row form-group search-field">
+          <label class="form-label" for="asset_tag"><strong>Asset tag</strong></label>
+          <input class="form-input" type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" autofocus />
         </div>
-        <div class="row search-field">
-          <label for="serial_number"><strong>Serial number</strong></label><br />
-          <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" />
+        <div class="row form-group search-field">
+          <label class="form-label" for="serial_number"><strong>Serial number</strong></label>
+          <input class="form-input" type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" />
         </div>
       </div>
       <div class="search-actions">

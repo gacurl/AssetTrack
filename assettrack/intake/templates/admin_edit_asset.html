@@ -7,7 +7,6 @@
 {% block extra_head %}
   <style>
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    input[type="text"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
   </style>
 {% endblock %}
 
@@ -33,9 +32,10 @@
     <h2>Lookup Asset</h2>
     <form method="post" action="{{ url_for('admin_edit_asset') }}">
       <input type="hidden" name="action" value="lookup" />
-      <div class="row">
-        <label for="lookup_asset_tag"><strong>asset_tag</strong></label><br />
+      <div class="row form-group">
+        <label class="form-label" for="lookup_asset_tag"><strong>asset_tag</strong></label>
         <input
+          class="form-input"
           type="text"
           id="lookup_asset_tag"
           name="lookup_asset_tag"
@@ -56,58 +56,58 @@
         <input type="hidden" name="action" value="update" />
         <input type="hidden" name="lookup_asset_tag" value="{{ form.lookup_asset_tag or asset.asset_tag }}" />
         <div class="grid">
-          <div class="row">
-            <label for="asset_tag"><strong>asset_tag</strong></label><br />
-            <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" readonly />
+          <div class="row form-group">
+            <label class="form-label" for="asset_tag"><strong>asset_tag</strong></label>
+            <input class="form-input" type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" readonly />
           </div>
-          <div class="row">
-            <label><strong>location_type</strong></label><br />
-            <input type="text" value="{{ asset.location_type }}" readonly />
+          <div class="row form-group">
+            <label class="form-label"><strong>location_type</strong></label>
+            <input class="form-input" type="text" value="{{ asset.location_type }}" readonly />
           </div>
-          <div class="row">
-            <label for="serial_number"><strong>serial_number</strong> (required)</label><br />
-            <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
+          <div class="row form-group">
+            <label class="form-label" for="serial_number"><strong>serial_number</strong> (required)</label>
+            <input class="form-input" type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
           </div>
-          <div class="row">
-            <label for="manufacturer"><strong>manufacturer</strong> (required)</label><br />
-            <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
+          <div class="row form-group">
+            <label class="form-label" for="manufacturer"><strong>manufacturer</strong> (required)</label>
+            <input class="form-input" type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
           </div>
-          <div class="row">
-            <label for="equipment_type"><strong>equipment_type</strong> (required)</label><br />
-            <input type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or '' }}" required />
+          <div class="row form-group">
+            <label class="form-label" for="equipment_type"><strong>equipment_type</strong> (required)</label>
+            <input class="form-input" type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or '' }}" required />
           </div>
-          <div class="row">
-            <label for="building"><strong>building</strong> (required)</label><br />
-            <input type="text" id="building" name="building" value="{{ form.building or '' }}" required />
+          <div class="row form-group">
+            <label class="form-label" for="building"><strong>building</strong> (required)</label>
+            <input class="form-input" type="text" id="building" name="building" value="{{ form.building or '' }}" required />
           </div>
-          <div class="row">
-            <label for="room"><strong>room</strong> (required)</label><br />
-            <input type="text" id="room" name="room" value="{{ form.room or '' }}" required />
+          <div class="row form-group">
+            <label class="form-label" for="room"><strong>room</strong> (required)</label>
+            <input class="form-input" type="text" id="room" name="room" value="{{ form.room or '' }}" required />
           </div>
-          <div class="row">
-            <label for="model"><strong>model</strong> (optional)</label><br />
-            <input type="text" id="model" name="model" value="{{ form.model or '' }}" />
+          <div class="row form-group">
+            <label class="form-label" for="model"><strong>model</strong> (optional)</label>
+            <input class="form-input" type="text" id="model" name="model" value="{{ form.model or '' }}" />
           </div>
-          <div class="row">
-            <label for="model_code"><strong>model_code</strong> (optional)</label><br />
-            <input type="text" id="model_code" name="model_code" value="{{ form.model_code or '' }}" />
+          <div class="row form-group">
+            <label class="form-label" for="model_code"><strong>model_code</strong> (optional)</label>
+            <input class="form-input" type="text" id="model_code" name="model_code" value="{{ form.model_code or '' }}" />
           </div>
-          <div class="row">
-            <label for="notes"><strong>notes</strong> (optional)</label><br />
-            <input type="text" id="notes" name="notes" value="{{ form.notes or '' }}" />
+          <div class="row form-group">
+            <label class="form-label" for="notes"><strong>notes</strong> (optional)</label>
+            <input class="form-input" type="text" id="notes" name="notes" value="{{ form.notes or '' }}" />
           </div>
-          <div class="row">
-            <label for="case_name"><strong>case</strong></label><br />
-            <select id="case_name" name="case_name">
+          <div class="row form-group">
+            <label class="form-label" for="case_name"><strong>case</strong></label>
+            <select class="form-select" id="case_name" name="case_name">
               <option value="">Unassigned</option>
               {% for case_name in case_options %}
                 <option value="{{ case_name }}" {% if form.case_name == case_name %}selected{% endif %}>{{ case_name }}</option>
               {% endfor %}
             </select>
           </div>
-          <div class="row">
-            <label for="slot_id"><strong>slot</strong></label><br />
-            <select id="slot_id" name="slot_id">
+          <div class="row form-group">
+            <label class="form-label" for="slot_id"><strong>slot</strong></label>
+            <select class="form-select" id="slot_id" name="slot_id">
               <option value="">Unassigned</option>
               {% for slot in slot_options %}
                 <option
