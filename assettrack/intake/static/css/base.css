@@ -108,3 +108,26 @@
   border: 1px solid rgba(18, 32, 47, 0.18);
   flex: 0 0 auto;
 }
+
+.hero-support-image-wrap {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.hero-support-image {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+@media (max-width: 900px) {
+  .hero-support-image-wrap {
+    justify-content: center;
+  }
+
+  .hero-support-image {
+    max-width: 240px;
+  }
+}
