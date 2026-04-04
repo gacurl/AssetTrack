@@ -73,12 +73,12 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
     assert response.status_code == 200
     assert b"AssetTrack Demo" in response.data
     assert b"Read-Only Demo" in response.data
-    assert b"curated sample data only" in response.data
-    assert b"does not read or write the live system of record" in response.data
-    assert b"Dashboard Value" in response.data
-    assert b"Issue / Return Workflow" in response.data
-    assert b"Receipts Concept" in response.data
-    assert b"Audit Concept" in response.data
+    assert b"This page uses sample data." in response.data
+    assert b"It does not touch live records or the system of record." in response.data
+    assert b"Who Has What" in response.data
+    assert b"How the Workflow Stays Safe" in response.data
+    assert b"Receipts, At a Glance" in response.data
+    assert b"Why the Audit Trail Matters" in response.data
 
     conn = db.get_connection()
     try:
