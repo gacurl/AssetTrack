@@ -51,6 +51,8 @@ def test_login_screen_renders_theme_toggle_without_persistence_storage(client_wi
     assert b'id="theme-toggle"' in response.data
     assert b"assettrack_theme" in response.data
     assert b"theme-toggle-icon" in response.data
+    assert b'img/curltech-badge-512.png' in response.data
+    assert b"AssetTrack by CurlTech LLC" in response.data
     assert "🌙".encode("utf-8") in response.data
     assert b"Dark mode" in response.data
     assert b"localStorage" not in response.data
