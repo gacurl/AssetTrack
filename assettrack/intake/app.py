@@ -4908,7 +4908,8 @@ def _send_queued_receipt(receipt_id: int) -> dict[str, object]:
 
         snapshot = _receipt_row_snapshot(row)
         delivery = _receipt_delivery_from_row(row, snapshot)
-        if delivery.get("state") != "pending":
+        delivery_state = str(delivery.get("state") or "").strip().lower()
+        if delivery_state not in {"pending", "failed"}:
             raise ValueError("Receipt is not queued for email.")
 
         receipt = _receipt_from_queue_row(row)

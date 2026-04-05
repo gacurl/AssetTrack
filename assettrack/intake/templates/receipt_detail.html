@@ -87,9 +87,9 @@
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
-    {% if receipt.delivery.state == "pending" %}
+    {% if receipt.delivery.state in ["pending", "failed"] %}
       <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
-        <button type="submit">Send Receipt Email</button>
+        <button type="submit">{{ "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" }}</button>
       </form>
     {% endif %}
   </nav>
