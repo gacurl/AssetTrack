@@ -407,6 +407,8 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert failed_response.status_code == 200
     assert b"Receipt email status" in failed_response.data
     assert b">failed<" in failed_response.data
+    assert b"Retry Send" in failed_response.data
+    assert b"Send Receipt Email" not in failed_response.data
     assert b"Last delivery attempt" in failed_response.data
     assert b"2026-03-29T12:00:00+00:00" in failed_response.data
     assert b"Last delivery error" in failed_response.data
@@ -433,6 +435,8 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     sent_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert sent_response.status_code == 200
     assert b">sent<" in sent_response.data
+    assert b"Retry Send" not in sent_response.data
+    assert b"Send Receipt Email" not in sent_response.data
     assert b"Delivered at" in sent_response.data
     assert b"2026-03-29T12:05:00+00:00" in sent_response.data
 
@@ -472,6 +476,8 @@ def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(cl
 
     assert response.status_code == 200
     assert b"Receipt email status" not in response.data
+    assert b"Retry Send" not in response.data
+    assert b"Send Receipt Email" not in response.data
     assert b">pending<" not in response.data
 
 
@@ -806,6 +812,127 @@ def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkey
 
     assert response.status_code == 500
     assert response.json == {"ok": False, "error": "smtp offline"}
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["sent_at"] is None
+    assert row["last_attempt_at"] is not None
+    assert row["last_error"] == "smtp offline"
+
+
+def test_receipt_send_retry_after_failure_uses_existing_send_route(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        email="issue@example.org",
+    )
+    _insert_slot(10, "CASE-10", 1)
+    _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
+    _occupy_slot(10, 100)
+    _login_issue_operator(client_with_temp_db)
+    intake_app.SCAN_QUEUE.clear()
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="ISSUE-100", equipment_type="laptop"))
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+    assert commit.status_code == 302
+    receipt_id = _latest_receipt_id()
+
+    send_attempts: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_attempts.append(int(receipt["id"]))
+        if len(send_attempts) == 1:
+            raise RuntimeError("smtp offline")
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    first = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+    second = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert first.status_code == 500
+    assert first.json == {"ok": False, "error": "smtp offline"}
+    assert second.status_code == 200
+    assert second.json["ok"] is True
+    assert int(second.json["receipt_id"]) == receipt_id
+    assert second.json["recipients"] == ["issue@example.org"]
+    assert send_attempts == [receipt_id, receipt_id]
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["sent_at"] is not None
+    assert row["last_attempt_at"] is not None
+    assert row["last_error"] is None
+
+
+def test_receipt_send_failed_retry_remains_recoverable_after_repeated_failure(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _insert_holder(
+        1,
+        name="Issue Holder",
+        identifier="IH-1",
+        organization="Operations",
+        organization_id=9,
+        email="issue@example.org",
+    )
+    _insert_slot(10, "CASE-10", 1)
+    _insert_asset(100, "ISSUE-100", location_type="STORAGE", home_slot_id=10, building_room="Storage/A1")
+    _occupy_slot(10, 100)
+    _login_issue_operator(client_with_temp_db)
+    intake_app.SCAN_QUEUE.clear()
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="ISSUE-100", equipment_type="laptop"))
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+    assert commit.status_code == 302
+    receipt_id = _latest_receipt_id()
+
+    send_attempts: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_attempts.append(int(receipt["id"]))
+        raise RuntimeError("smtp offline")
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    first = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+    second = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert first.status_code == 500
+    assert first.json == {"ok": False, "error": "smtp offline"}
+    assert second.status_code == 500
+    assert second.json == {"ok": False, "error": "smtp offline"}
+    assert send_attempts == [receipt_id, receipt_id]
+
+    detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert detail_response.status_code == 200
+    assert b">failed<" in detail_response.data
+    assert b"Retry Send" in detail_response.data
 
     conn = db.get_connection()
     try:
