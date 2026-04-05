@@ -165,6 +165,8 @@
   {% set organization = receipt.organization_snapshot %}
   {% set email_status_label = "Queued" if receipt.delivery.state == "pending" else receipt.delivery.state %}
   {% set receipt_action_label = "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" %}
+  {% set email_timing_label = "Delivered" if receipt.delivery.sent_at else "Last attempted" if receipt.delivery.last_attempt_at else "" %}
+  {% set email_timing_value = receipt.delivery_display.sent_at or receipt.delivery_display.last_attempt_at %}
   <nav class="actions" aria-label="Receipt navigation">
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
@@ -193,14 +195,12 @@
           {% elif receipt.holder_display_name %}
             for <strong>{{ receipt.holder_display_name }}</strong>
           {% endif %}
-          committed on <strong>{{ receipt.commit_at or "Unknown" }}</strong>.
+          committed on <strong>{{ receipt.commit_at_display or "Unknown" }}</strong>.
         </p>
         <p class="receipt-meta-line">
           Recipient: <strong>{{ receipt.recipient_email or "Not captured" }}</strong>
-          {% if receipt.delivery.sent_at %}
-            • Delivered at <strong>{{ receipt.delivery.sent_at }}</strong>
-          {% elif receipt.delivery.last_attempt_at %}
-            • Last attempt <strong>{{ receipt.delivery.last_attempt_at }}</strong>
+          {% if email_timing_value %}
+            • {{ email_timing_label }} <strong>{{ email_timing_value }}</strong>
           {% endif %}
           {% if receipt.delivery.last_error %}
             • Last error: <strong>{{ receipt.delivery.last_error }}</strong>
@@ -220,7 +220,7 @@
           </div>
           <div class="summary-value">
             <div class="summary-label">Committed at</div>
-            <div class="summary-copy">{{ receipt.commit_at or "Unknown" }}</div>
+            <div class="summary-copy">{{ receipt.commit_at_display or "Unknown" }}</div>
           </div>
         </section>
 
@@ -238,6 +238,12 @@
             <div class="summary-label">Recipient email</div>
             <div class="summary-copy">{{ receipt.recipient_email or "Not captured" }}</div>
           </div>
+          {% if email_timing_value %}
+            <div class="summary-value">
+              <div class="summary-label">{{ email_timing_label }}</div>
+              <div class="summary-copy">{{ email_timing_value }}</div>
+            </div>
+          {% endif %}
           {% if receipt.delivery.last_error %}
             <div class="summary-value">
               <div class="summary-label">Current issue</div>
@@ -305,10 +311,10 @@
           <p><span class="summary-label">Internal receipt ID</span><br /><span class="mono">{{ receipt.id }}</span></p>
           <p><span class="summary-label">Receipt key</span><br /><span class="mono">{{ receipt.receipt_key }}</span></p>
           {% if receipt.delivery.last_attempt_at %}
-            <p><span class="summary-label">Last delivery attempt</span><br />{{ receipt.delivery.last_attempt_at }}</p>
+            <p><span class="summary-label">Last delivery attempt</span><br />{{ receipt.delivery_display.last_attempt_at }}</p>
           {% endif %}
           {% if receipt.delivery.sent_at %}
-            <p><span class="summary-label">Delivered at</span><br />{{ receipt.delivery.sent_at }}</p>
+            <p><span class="summary-label">Delivered at</span><br />{{ receipt.delivery_display.sent_at }}</p>
           {% endif %}
         </section>
 
