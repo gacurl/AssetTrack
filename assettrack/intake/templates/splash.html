@@ -196,36 +196,6 @@
       text-align: center;
     }
 
-    .login-footer {
-      width: min(1100px, 100%);
-      max-width: 100%;
-      box-sizing: border-box;
-      margin: 0 auto;
-      padding-top: 0.9rem;
-      border-top: 1px solid color-mix(in srgb, var(--color-surface) 84%, transparent);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.8rem;
-      font-size: 0.78rem;
-      letter-spacing: 0.04em;
-      color: var(--color-text-muted);
-      text-align: left;
-    }
-
-    .footer-credit {
-      margin: 0;
-      flex: 0 1 auto;
-    }
-
-    .footer-badge {
-      width: clamp(70px, 8vw, 90px);
-      height: auto;
-      opacity: 0.52;
-      filter: grayscale(1) saturate(0.15);
-      flex: 0 0 auto;
-    }
-
     @media (max-width: 640px) {
       .splash_shell {
         gap: 1rem;
@@ -249,8 +219,7 @@
         margin-bottom: 0.8rem;
       }
       .hero-kicker,
-      .hero_summary,
-      .login-footer {
+      .hero_summary {
         text-align: center;
       }
       .hero_summary {
@@ -288,19 +257,11 @@
       .splash-button .btn_label {
         padding-left: 0.65rem;
       }
-      .login-footer {
-        padding-top: 0.7rem;
-        flex-direction: column-reverse;
-        gap: 0.45rem;
-      }
     }
 
     @media (max-width: 420px) {
       .hero-kicker {
         font-size: 0.7rem;
-      }
-      .login-footer {
-        font-size: 0.74rem;
       }
     }
 
@@ -371,14 +332,5 @@
         </form>
       </div>
     </div>
-
-    <footer class="login-footer">
-      <p class="footer-credit">AssetTrack by CurlTech LLC</p>
-      <img
-        class="footer-badge"
-        src="{{ url_for('static', filename='img/curltech-badge-512.png') }}"
-        alt="CurlTech"
-      />
-    </footer>
   </div>
 {% endblock %}
