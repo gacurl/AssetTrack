@@ -326,10 +326,11 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
     assert response.status_code == 200
     assert b"Issue Receipt" in response.data
     assert expected_title.encode("utf-8") in response.data
-    assert f"Internal receipt ID {receipt_id}".encode("utf-8") in response.data
+    assert b"Internal receipt ID" in response.data
+    assert f">{receipt_id}<".encode("utf-8") in response.data
     assert b"Receipt key" in response.data
     assert b"ISSUE:" in response.data
-    assert b"Receipt title" in response.data
+    assert b"What Happened" in response.data
     assert b"Committed by" in response.data
     assert b"issue-operator" in response.data
     assert b"Receipt holder" in response.data
@@ -343,7 +344,6 @@ def test_issue_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None
     assert b"Dell" in response.data
     assert b"Latitude" in response.data
     assert b"CASE-10 / 1" in response.data
-    assert b"Source Events" in response.data
 
 
 def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> None:
@@ -362,7 +362,6 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     assert b"Apple" in response.data
     assert b"iPad" in response.data
     assert b"CASE-20 / 1" in response.data
-    assert b"Source Events" in response.data
 
 
 def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:
@@ -411,7 +410,7 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert b"Send Receipt Email" not in failed_response.data
     assert b"Last delivery attempt" in failed_response.data
     assert b"2026-03-29T12:00:00+00:00" in failed_response.data
-    assert b"Last delivery error" in failed_response.data
+    assert b"Current issue" in failed_response.data
     assert b"smtp offline" in failed_response.data
 
     conn = db.get_connection()
@@ -488,7 +487,7 @@ def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Receipt title" in response.data
+    assert b"What Happened" in response.data
     assert expected_title.encode("utf-8") in response.data
     assert b"Receipt holder" not in response.data
     assert b"Return Holder One" in response.data

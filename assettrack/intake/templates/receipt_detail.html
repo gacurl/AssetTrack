@@ -150,9 +150,6 @@
     .receipt-extra-card p {
       margin: 0;
     }
-    .source-events-list {
-      line-height: 1.5;
-    }
     @media (max-width: 960px) {
       .receipt-extra-grid,
       .receipt-summary {
@@ -304,7 +301,7 @@
       <summary>More Receipt Detail</summary>
       <div class="receipt-extra-grid">
         <section class="receipt-extra-card">
-          <h2 class="summary-group-title">Internal Metadata</h2>
+          <h2 class="summary-group-title">Additional Receipt Info</h2>
           <p><span class="summary-label">Internal receipt ID</span><br /><span class="mono">{{ receipt.id }}</span></p>
           <p><span class="summary-label">Receipt key</span><br /><span class="mono">{{ receipt.receipt_key }}</span></p>
           {% if receipt.delivery.last_attempt_at %}
@@ -342,19 +339,6 @@
             <p><strong>Combined location:</strong> {{ receipt.location_context.get("building_room") or "Unknown" }}</p>
           </section>
         {% endif %}
-
-        <section class="receipt-extra-card">
-          <h2 class="summary-group-title">Source Events</h2>
-          <p class="source-events-list">
-            {% if receipt.source_event_ids %}
-              {% for event_id in receipt.source_event_ids %}
-                <span class="mono">{{ event_id }}</span>{% if not loop.last %}, {% endif %}
-              {% endfor %}
-            {% else %}
-              None recorded.
-            {% endif %}
-          </p>
-        </section>
       </div>
     </details>
   </section>
