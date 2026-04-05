@@ -9,6 +9,52 @@
     .page.receipt-detail-page {
       max-width: 1320px;
     }
+    .receipt-overview {
+      display: grid;
+      gap: 1rem;
+    }
+    .receipt-hero {
+      display: grid;
+      gap: 0.65rem;
+      padding: 1.15rem 1.2rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 14px;
+      background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--color-panel-bg) 92%, white),
+        var(--color-surface-bg)
+      );
+    }
+    .receipt-kicker {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .receipt-type-label {
+      margin: 0;
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .receipt-hero-title {
+      margin: 0;
+      font-size: 1.45rem;
+      line-height: 1.2;
+    }
+    .receipt-hero-copy {
+      margin: 0;
+      color: var(--color-text-muted);
+      line-height: 1.5;
+    }
+    .receipt-meta-line {
+      margin: 0;
+      color: var(--color-text-muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
     .receipt-summary {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -45,6 +91,9 @@
     .summary-copy {
       line-height: 1.4;
     }
+    .summary-copy strong {
+      color: var(--color-text);
+    }
     .summary-status {
       align-content: start;
     }
@@ -70,7 +119,42 @@
       background: color-mix(in srgb, var(--color-danger) 14%, white);
       color: var(--color-danger);
     }
+    .receipt-extra {
+      margin-top: 1rem;
+      border-top: 1px solid var(--color-surface);
+      padding-top: 0.9rem;
+    }
+    .receipt-extra summary {
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .receipt-extra summary:hover {
+      color: var(--color-text);
+    }
+    .receipt-extra-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 0.9rem;
+    }
+    .receipt-extra-card {
+      display: grid;
+      gap: 0.45rem;
+      padding: 0.95rem 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      background: var(--color-surface-bg);
+    }
+    .receipt-extra-card p {
+      margin: 0;
+    }
+    .source-events-list {
+      line-height: 1.5;
+    }
     @media (max-width: 960px) {
+      .receipt-extra-grid,
       .receipt-summary {
         grid-template-columns: 1fr;
       }
@@ -83,147 +167,197 @@
   {% set holder = receipt.holder_snapshot %}
   {% set organization = receipt.organization_snapshot %}
   {% set email_status_label = "Queued" if receipt.delivery.state == "pending" else receipt.delivery.state %}
+  {% set receipt_action_label = "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" %}
   <nav class="actions" aria-label="Receipt navigation">
     <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
     {% if receipt.delivery.state in ["pending", "failed"] %}
       <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
-        <button type="submit">{{ "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" }}</button>
+        <button type="submit">{{ receipt_action_label }}</button>
       </form>
     {% endif %}
   </nav>
 
   <section class="card">
-    <p class="summary-label">Internal receipt ID {{ receipt.id }}</p>
-    <div class="receipt-summary">
-      <section class="summary-group">
-        <h2 class="summary-group-title">Identity</h2>
-        <div class="summary-value">
-          <div class="summary-label">Receipt ID</div>
-          <div class="summary-copy mono">{{ receipt.id }}</div>
+    <div class="receipt-overview">
+      <section class="receipt-hero" aria-label="Receipt summary">
+        <div class="receipt-kicker">
+          <p class="receipt-type-label">{{ receipt.receipt_type_label }}</p>
+          {% if receipt.delivery.state %}
+            <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
+          {% endif %}
         </div>
-        <div class="summary-value">
-          <div class="summary-label">Receipt title</div>
-          <div class="summary-copy">{{ receipt.display_title }}</div>
-        </div>
-        <div class="summary-value">
-          <div class="summary-label">Receipt key</div>
-          <div class="summary-copy mono">{{ receipt.receipt_key }}</div>
-        </div>
+        <h2 class="receipt-hero-title">{{ receipt.display_title }}</h2>
+        <p class="receipt-hero-copy">
+          {{ receipt.assets|length }} asset{% if receipt.assets|length != 1 %}s{% endif %}
+          {% if holder and holder.name %}
+            for <strong>{{ holder.name }}</strong>
+          {% elif receipt.holder_display_name %}
+            for <strong>{{ receipt.holder_display_name }}</strong>
+          {% endif %}
+          committed on <strong>{{ receipt.commit_at or "Unknown" }}</strong>.
+        </p>
+        <p class="receipt-meta-line">
+          Recipient: <strong>{{ receipt.recipient_email or "Not captured" }}</strong>
+          {% if receipt.delivery.sent_at %}
+            • Delivered at <strong>{{ receipt.delivery.sent_at }}</strong>
+          {% elif receipt.delivery.last_attempt_at %}
+            • Last attempt <strong>{{ receipt.delivery.last_attempt_at }}</strong>
+          {% endif %}
+          {% if receipt.delivery.last_error %}
+            • Last error: <strong>{{ receipt.delivery.last_error }}</strong>
+          {% endif %}
+          {% if receipt.delivery.state in ["pending", "failed"] %}
+            • Action available: <strong>{{ receipt_action_label }}</strong>
+          {% endif %}
+        </p>
       </section>
 
-      <section class="summary-group summary-status">
-        <h2 class="summary-group-title">Email</h2>
-        {% if receipt.delivery.state %}
+      <div class="receipt-summary">
+        <section class="summary-group">
+          <h2 class="summary-group-title">What Happened</h2>
           <div class="summary-value">
-            <div class="summary-label">Receipt email status</div>
-            <div class="summary-copy">
-              <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
+            <div class="summary-label">Receipt type</div>
+            <div class="summary-copy">{{ receipt.receipt_type_label }}</div>
+          </div>
+          <div class="summary-value">
+            <div class="summary-label">Committed at</div>
+            <div class="summary-copy">{{ receipt.commit_at or "Unknown" }}</div>
+          </div>
+        </section>
+
+        <section class="summary-group summary-status">
+          <h2 class="summary-group-title">Do I Need To Act?</h2>
+          {% if receipt.delivery.state %}
+            <div class="summary-value">
+              <div class="summary-label">Receipt email status</div>
+              <div class="summary-copy">
+                <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
+              </div>
             </div>
-          </div>
-        {% endif %}
-        <div class="summary-value">
-          <div class="summary-label">Recipient email</div>
-          <div class="summary-copy">{{ receipt.recipient_email or "Not captured" }}</div>
-        </div>
-        {% if receipt.delivery.last_attempt_at %}
+          {% endif %}
           <div class="summary-value">
-            <div class="summary-label">Last delivery attempt</div>
-            <div class="summary-copy">{{ receipt.delivery.last_attempt_at }}</div>
+            <div class="summary-label">Recipient email</div>
+            <div class="summary-copy">{{ receipt.recipient_email or "Not captured" }}</div>
           </div>
-        {% endif %}
-        {% if receipt.delivery.sent_at %}
-          <div class="summary-value">
-            <div class="summary-label">Delivered at</div>
-            <div class="summary-copy">{{ receipt.delivery.sent_at }}</div>
-          </div>
-        {% endif %}
-        {% if receipt.delivery.last_error %}
-          <div class="summary-value">
-            <div class="summary-label">Last delivery error</div>
-            <div class="summary-copy">{{ receipt.delivery.last_error }}</div>
-          </div>
-        {% endif %}
-      </section>
+          {% if receipt.delivery.last_error %}
+            <div class="summary-value">
+              <div class="summary-label">Current issue</div>
+              <div class="summary-copy">{{ receipt.delivery.last_error }}</div>
+            </div>
+          {% endif %}
+          {% if receipt.delivery.state in ["pending", "failed"] %}
+            <div class="summary-value">
+              <div class="summary-label">Available action</div>
+              <div class="summary-copy">{{ receipt_action_label }}</div>
+            </div>
+          {% endif %}
+        </section>
 
-      <section class="summary-group">
-        <h2 class="summary-group-title">Actor</h2>
-        <div class="summary-value">
-          <div class="summary-label">Committed by</div>
-          <div class="summary-copy">
-            {% if operator and operator.username %}
-              {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %} [user_id {{ operator.id }}]
-            {% else %}
-              user_id {{ receipt.commit_operator_user_id }}
-            {% endif %}
-          </div>
-        </div>
-        {% if holder or receipt.holder_id is not none %}
+        <section class="summary-group">
+          <h2 class="summary-group-title">Who Was Involved</h2>
           <div class="summary-value">
-            <div class="summary-label">Receipt holder</div>
+            <div class="summary-label">Committed by</div>
             <div class="summary-copy">
-              {% if holder and holder.name %}
-                {{ holder.name }}
-                {% if holder.identifier %}(ID {{ holder.identifier }}){% endif %}
+              {% if operator and operator.username %}
+                {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %}
               {% else %}
-                holder_id {{ receipt.holder_id }}
+                Unknown
               {% endif %}
             </div>
           </div>
-        {% endif %}
-      </section>
-
-      <section class="summary-group">
-        <h2 class="summary-group-title">Context</h2>
-        <div class="summary-value">
-          <div class="summary-label">Committed at</div>
-          <div class="summary-copy">{{ receipt.commit_at or "Unknown" }}</div>
-        </div>
-        {% if organization %}
-          <div class="summary-value">
-            <div class="summary-label">Organization</div>
-            <div class="summary-copy">
-              {{ organization.organization or "Unknown" }}
-              {% if organization.organization_id is not none %}(org_id {{ organization.organization_id }}){% endif %}
+          {% if holder or receipt.holder_id is not none %}
+            <div class="summary-value">
+              <div class="summary-label">Receipt holder</div>
+              <div class="summary-copy">
+                {% if holder and holder.name %}
+                  {{ holder.name }}
+                  {% if holder.identifier %}(ID {{ holder.identifier }}){% endif %}
+                {% else %}
+                  holder_id {{ receipt.holder_id }}
+                {% endif %}
+              </div>
             </div>
-          </div>
-        {% endif %}
-      </section>
+          {% endif %}
+        </section>
+
+        <section class="summary-group">
+          <h2 class="summary-group-title">Context</h2>
+          {% if organization %}
+            <div class="summary-value">
+              <div class="summary-label">Organization</div>
+              <div class="summary-copy">{{ organization.organization or "Unknown" }}</div>
+            </div>
+          {% endif %}
+          {% if receipt.location_context %}
+            <div class="summary-value">
+              <div class="summary-label">Issue location</div>
+              <div class="summary-copy">{{ receipt.location_context.get("building_room") or "Unknown" }}</div>
+            </div>
+          {% endif %}
+        </section>
+      </div>
     </div>
+
+    <details class="receipt-extra">
+      <summary>More Receipt Detail</summary>
+      <div class="receipt-extra-grid">
+        <section class="receipt-extra-card">
+          <h2 class="summary-group-title">Internal Metadata</h2>
+          <p><span class="summary-label">Internal receipt ID</span><br /><span class="mono">{{ receipt.id }}</span></p>
+          <p><span class="summary-label">Receipt key</span><br /><span class="mono">{{ receipt.receipt_key }}</span></p>
+          {% if receipt.delivery.last_attempt_at %}
+            <p><span class="summary-label">Last delivery attempt</span><br />{{ receipt.delivery.last_attempt_at }}</p>
+          {% endif %}
+          {% if receipt.delivery.sent_at %}
+            <p><span class="summary-label">Delivered at</span><br />{{ receipt.delivery.sent_at }}</p>
+          {% endif %}
+        </section>
+
+        {% if receipt.acknowledgment %}
+          <section class="receipt-extra-card">
+            <h2 class="summary-group-title">Acknowledgment</h2>
+            <p><strong>Acknowledged:</strong> {{ "Yes" if receipt.acknowledgment.get("acknowledged") else "No" }}</p>
+            {% if receipt.acknowledgment.get("ack_scope") %}
+              <p><strong>Scope:</strong> {{ receipt.acknowledgment.get("ack_scope") }}</p>
+            {% endif %}
+            {% if receipt.acknowledgment.get("ack_at") %}
+              <p><strong>Captured at:</strong> {{ receipt.acknowledgment.get("ack_at") }}</p>
+            {% endif %}
+            {% if receipt.acknowledgment.get("ack_operator_user_id") is not none %}
+              <p><strong>Operator user ID:</strong> {{ receipt.acknowledgment.get("ack_operator_user_id") }}</p>
+            {% endif %}
+            {% if receipt.acknowledgment.get("ack_holder_id") is not none %}
+              <p><strong>Holder ID:</strong> {{ receipt.acknowledgment.get("ack_holder_id") }}</p>
+            {% endif %}
+          </section>
+        {% endif %}
+
+        {% if receipt.location_context %}
+          <section class="receipt-extra-card">
+            <h2 class="summary-group-title">Issue Location</h2>
+            <p><strong>Building:</strong> {{ receipt.location_context.get("building") or "Unknown" }}</p>
+            <p><strong>Room:</strong> {{ receipt.location_context.get("room") or "Unknown" }}</p>
+            <p><strong>Combined location:</strong> {{ receipt.location_context.get("building_room") or "Unknown" }}</p>
+          </section>
+        {% endif %}
+
+        <section class="receipt-extra-card">
+          <h2 class="summary-group-title">Source Events</h2>
+          <p class="source-events-list">
+            {% if receipt.source_event_ids %}
+              {% for event_id in receipt.source_event_ids %}
+                <span class="mono">{{ event_id }}</span>{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            {% else %}
+              None recorded.
+            {% endif %}
+          </p>
+        </section>
+      </div>
+    </details>
   </section>
-
-  {% if receipt.acknowledgment %}
-    <section class="card">
-      <h2>Acknowledgment</h2>
-      <p>
-        <strong>Acknowledged:</strong> {{ "Yes" if receipt.acknowledgment.get("acknowledged") else "No" }}<br />
-        {% if receipt.acknowledgment.get("ack_scope") %}
-          <strong>Scope:</strong> {{ receipt.acknowledgment.get("ack_scope") }}<br />
-        {% endif %}
-        {% if receipt.acknowledgment.get("ack_at") %}
-          <strong>Captured at:</strong> {{ receipt.acknowledgment.get("ack_at") }}<br />
-        {% endif %}
-        {% if receipt.acknowledgment.get("ack_operator_user_id") is not none %}
-          <strong>Operator user ID:</strong> {{ receipt.acknowledgment.get("ack_operator_user_id") }}<br />
-        {% endif %}
-        {% if receipt.acknowledgment.get("ack_holder_id") is not none %}
-          <strong>Holder ID:</strong> {{ receipt.acknowledgment.get("ack_holder_id") }}
-        {% endif %}
-      </p>
-    </section>
-  {% endif %}
-
-  {% if receipt.location_context %}
-    <section class="card">
-      <h2>Issue Location</h2>
-      <p>
-        <strong>Building:</strong> {{ receipt.location_context.get("building") or "Unknown" }}<br />
-        <strong>Room:</strong> {{ receipt.location_context.get("room") or "Unknown" }}<br />
-        <strong>Combined location:</strong> {{ receipt.location_context.get("building_room") or "Unknown" }}
-      </p>
-    </section>
-  {% endif %}
 
   <section class="card">
     <h2>Assets ({{ receipt.assets|length }})</h2>
@@ -292,18 +426,5 @@
         {% endfor %}
       </tbody>
     </table>
-  </section>
-
-  <section class="card">
-    <h2>Source Events</h2>
-    <p>
-      {% if receipt.source_event_ids %}
-        {% for event_id in receipt.source_event_ids %}
-          <span class="mono">{{ event_id }}</span>{% if not loop.last %}, {% endif %}
-        {% endfor %}
-      {% else %}
-        None recorded.
-      {% endif %}
-    </p>
   </section>
 {% endblock %}
