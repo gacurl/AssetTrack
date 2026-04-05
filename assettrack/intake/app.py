@@ -4335,6 +4335,10 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
         assets=assets,
     )
     display_date = _receipt_display_date(commit_at)
+    delivery_display = {
+        "sent_at": _receipt_display_timestamp(delivery.get("sent_at")),
+        "last_attempt_at": _receipt_display_timestamp(delivery.get("last_attempt_at")),
+    }
 
     return {
         "id": int(row["id"]),
@@ -4343,6 +4347,7 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
         "receipt_type_label": _receipt_type_label(receipt_type),
         "holder_display_name": holder_display_name,
         "commit_at": commit_at,
+        "commit_at_display": _receipt_display_timestamp(commit_at),
         "display_date": display_date,
         "display_title": _receipt_display_title(receipt_type, holder_display_name, display_date),
         "commit_operator_user_id": commit_operator_user_id,
@@ -4354,6 +4359,7 @@ def _receipt_from_queue_row(row: sqlite3.Row) -> dict[str, object]:
             snapshot.get("organization_snapshot") if isinstance(snapshot.get("organization_snapshot"), dict) else None
         ),
         "delivery": delivery,
+        "delivery_display": delivery_display,
         "acknowledgment": acknowledgment,
         "location_context": location_context,
         "assets": assets,
@@ -4530,6 +4536,22 @@ def _receipt_display_date(commit_at: str) -> str:
     day = parsed.day
     year = parsed.year
     return f"{month} {day}, {year}"
+
+
+def _receipt_display_timestamp(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return text
+
+    month = parsed.strftime("%b")
+    day = parsed.day
+    year = parsed.year
+    return f"{month} {day}, {year} at {parsed.strftime('%H:%M')} UTC"
 
 
 def _receipt_display_holder_name(
