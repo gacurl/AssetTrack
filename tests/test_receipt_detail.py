@@ -408,8 +408,8 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert b">failed<" in failed_response.data
     assert b"Retry Send" in failed_response.data
     assert b"Send Receipt Email" not in failed_response.data
-    assert b"Last delivery attempt" in failed_response.data
-    assert b"2026-03-29T12:00:00+00:00" in failed_response.data
+    assert b"Last attempted" in failed_response.data
+    assert b"Mar 29, 2026 at 12:00 UTC" in failed_response.data
     assert b"Current issue" in failed_response.data
     assert b"smtp offline" in failed_response.data
 
@@ -436,8 +436,8 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert b">sent<" in sent_response.data
     assert b"Retry Send" not in sent_response.data
     assert b"Send Receipt Email" not in sent_response.data
-    assert b"Delivered at" in sent_response.data
-    assert b"2026-03-29T12:05:00+00:00" in sent_response.data
+    assert b"Delivered" in sent_response.data
+    assert b"Mar 29, 2026 at 12:05 UTC" in sent_response.data
 
 
 def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
