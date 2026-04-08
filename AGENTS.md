@@ -103,3 +103,9 @@ When stopping, report:
 - No fluff.
 - Favor operator clarity over cleverness.
 - Prefer focused diffs over broad rewrites.
+
+## Repo-local Codex continuity docs
+
+When present, `docs/codex/PROJECT_MEMORY.md` stores durable project memory and `docs/codex/CURRENT_STATE.md` stores live handoff state.
+
+These files complement `AGENTS.md` and must not override it.
