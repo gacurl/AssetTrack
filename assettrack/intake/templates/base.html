@@ -67,6 +67,22 @@
       }
       a { color: var(--color-primary); text-decoration: none; }
       a:hover { text-decoration: underline; }
+      .nav-link {
+        color: var(--color-primary);
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.16em;
+      }
+      .nav-link:hover {
+        color: color-mix(in srgb, var(--color-primary) 82%, var(--color-text));
+        text-decoration-thickness: 2px;
+      }
+      .nav-link:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
       .page {
         max-width: 1100px;
         margin: 0 auto;

@@ -183,8 +183,8 @@
 
 {% block content %}
   <nav class="actions" aria-label="Receipt navigation">
-    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-    <a href="{{ url_for('human_report') }}">Open Current Status Report</a>
+    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
   </nav>
 
   <section class="card">
@@ -207,7 +207,7 @@
           <div class="filter-actions">
             <button type="submit">Search</button>
             {% if filters.asset_tag or filters.holder_name or filters.building_room %}
-              <a href="{{ url_for('receipts_list') }}">Clear search</a>
+              <a class="nav-link" href="{{ url_for('receipts_list') }}">Clear search</a>
             {% endif %}
           </div>
         </div>

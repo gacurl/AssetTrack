@@ -4,7 +4,7 @@
 {% block page_heading %}Admin: Tools{% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+  <p><a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
 
   {% if schema_warning %}
     <div class="flash error">{{ schema_warning }}</div>
@@ -12,8 +12,8 @@
 
   <div class="card">
     <h2>Admin Tools</h2>
-    <p><a href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a></p>
-    <p><a href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
+    <p><a class="nav-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a></p>
+    <p><a class="nav-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
     <p><a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a></p>
     <table>
       <tbody>
