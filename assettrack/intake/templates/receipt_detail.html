@@ -168,8 +168,8 @@
   {% set email_timing_label = "Delivered" if receipt.delivery.sent_at else "Last attempted" if receipt.delivery.last_attempt_at else "" %}
   {% set email_timing_value = receipt.delivery_display.sent_at or receipt.delivery_display.last_attempt_at %}
   <nav class="actions" aria-label="Receipt navigation">
-    <a class="chip" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-    <a class="chip" href="{{ url_for('human_report') }}">Open Current Status Report</a>
+    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+    <a href="{{ url_for('human_report') }}">Open Current Status Report</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
     {% if receipt.delivery.state in ["pending", "failed"] %}
       <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
