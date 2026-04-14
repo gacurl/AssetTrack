@@ -2,6 +2,7 @@
 
 {% block title %}Admin Current Status Report{% endblock %}
 {% block page_heading %}Admin: Current Status Report{% endblock %}
+{% block page_class %} report-page{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -48,7 +49,7 @@
 {% endblock %}
 
 {% block content %}
-  <div class="report-actions">
+  <div class="report-actions nav-row mixed-nav-row">
     <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
     <a class="chip" href="{{ url_for('admin_human_report_pdf') }}">Download PDF</a>
     <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
