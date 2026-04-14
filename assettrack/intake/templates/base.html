@@ -67,7 +67,20 @@
       }
       a { color: var(--color-primary); text-decoration: none; }
       a:hover { text-decoration: underline; }
+      .nav-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.95rem;
+      }
+      .mixed-nav-row .nav-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2rem;
+        line-height: 1.2;
+      }
       .nav-link {
+        display: inline-block;
         color: var(--color-primary);
         font-weight: 600;
         text-decoration: underline;
@@ -84,9 +97,15 @@
         border-radius: 4px;
       }
       .page {
-        max-width: 1100px;
+        max-width: 1200px;
         margin: 0 auto;
         padding: 1.25rem;
+      }
+      .page.page-wide,
+      .page.report-page,
+      .page.receipts-page,
+      .page.receipt-detail-page {
+        max-width: 1320px;
       }
       .page-tools {
         display: flex;
