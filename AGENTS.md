@@ -1,111 +1,165 @@
-# AssetTrack Codex Instructions
+# AssetTrack — Codex Operating Rules
 
-AssetTrack is an offline-first, append-only, event-sourced asset custody system.
+This file is the authoritative rule set.
 
-## Non-negotiable invariants
+If any other document conflicts with this file:
+→ THIS FILE WINS
 
-- Events are append-only.
-- Audit history is never modified or deleted.
-- System state derives from event history.
-- Asset custody state must reconcile with the event log.
-- Offline-first operation must remain intact.
-- SQLite persistence must not change unless explicitly approved.
-- Role enforcement must not be bypassable.
-- No hidden refactors.
-- No silent behavior changes.
+---
 
-## Workflow rules
+## 1. System Definition
 
-- One GitHub issue per branch.
-- Branch names should follow: `issue-X-Y-short-description`
-- Commit messages should follow: `Issue X-Y: <plain English>`
-- Stay within issue scope.
-- Do not expand scope without explicit instruction.
-- Stop if a change risks invariants.
-- Prefer the smallest safe change.
-- No dependency additions without approval.
-- No schema or migration changes without explicit approval.
-- No event payload/history semantic changes without explicit approval.
+AssetTrack is:
 
-## Required workflow seam
+- offline-first
+- append-only
+- event-sourced
 
-Keep this workflow intact:
+State is derived from immutable event history.
 
-`entry page → prerequisite selection → scan queue → preview → commit`
+---
 
-Do not shortcut or reorder that seam unless the issue explicitly requires it.
+## 2. Non-Negotiable Invariants
 
-## Change discipline
+These must NEVER be violated:
 
-Classify changes before implementation:
+- events are append-only
+- audit history is never modified or deleted
+- state derives from event history
+- custody state must reconcile with event log
+- offline-first operation must remain intact
+- SQLite persistence must not change without approval
+- role enforcement must not be bypassable
+- no hidden refactors
+- no silent behavior changes
+
+If a task risks any invariant:
+→ STOP immediately
+
+---
+
+## 3. Execution Discipline
+
+- one issue per branch
+- branch: issue-X-Y-description
+- commit: Issue X-Y: <plain English>
+- explicit file staging only (no git add .)
+- no scope expansion
+
+---
+
+## 4. Change Classification
+
+All work must be classified:
 
 - Class 1 — UI / Presentation
 - Class 2 — Logic / Behavior
-- Class 3 — Data Model / Schema
-- Class 4 — Security / Authentication
-- Class 5 — Infrastructure / Persistence
+- Class 3 — Schema
+- Class 4 — Security
+- Class 5 — Infrastructure
 
-Classes 3 through 5 require explicit approval before implementation.
+Classes 3–5 require explicit approval.
 
-## Testing discipline
+---
 
-When changing workflow behavior:
+## 5. Required Workflow Seam
 
-1. Rebuild with Docker:
-   `docker compose up -d --build`
-2. Use an incognito browser session.
-3. Perform a manual smoke test through the real operator path.
+Must remain intact:
 
-Minimum smoke test:
+entry → prerequisite → queue → preview → commit
+
+Rules:
+
+- do not reorder
+- do not shortcut
+- preview requires valid queue
+- entry must not redirect into preview
+
+---
+
+## 6. Testing Discipline
+
+For workflow changes:
+
+1. docker compose up -d --build
+2. use incognito browser
+
+Smoke test:
+
 - login
 - enter workflow
-- perform operator action
-- verify queue/state change
+- perform action
+- verify queue/state
 - verify preview
 - verify commit
 - verify queue clears
 
-CI success alone is not enough.
+---
 
-## Output format
+## 7. Output Requirements
 
-For implementation tasks, return:
+For implementation:
 
-1. Focused diff summary
-2. Files changed
-3. Why it works
-4. Risks / edge cases
-5. Tests run
-6. Manual verification steps
-7. Commit message only if implementation is complete
+1. focused diff summary
+2. files changed
+3. why it works
+4. risks
+5. tests run
+6. manual verification
 
-## Stop conditions
+---
 
-Stop immediately if:
+## 8. Stop Conditions
 
-- schema or migration is required without approval
-- event payload/history semantics must change without approval
+STOP if:
+
+- schema change required (no approval)
+- event semantics change required
 - persistence behavior changes
 - auth boundaries weaken
-- requirement is ambiguous in a way that risks audit integrity
-- scope expands beyond the issue
+- scope expands
+- requirement unclear
 
 When stopping, report:
 
 - what was attempted
-- what is blocking progress
-- the smallest safe next step
+- what is blocking
+- smallest safe next step
 
-## Preferred style
+---
 
-- Use plain language.
-- Explain simply and explain why.
-- No fluff.
-- Favor operator clarity over cleverness.
-- Prefer focused diffs over broad rewrites.
+## 9. Communication Style (Smart Brevity Constraint)
 
-## Repo-local Codex continuity docs
+All communication must follow:
 
-When present, `docs/codex/PROJECT_MEMORY.md` stores durable project memory and `docs/codex/CURRENT_STATE.md` stores live handoff state.
+- Lead with the answer
+- Remove non-essential detail
+- Use scannable structure (bullets, short sections)
+- Always answer: "why it matters"
 
-These files complement `AGENTS.md` and must not override it.
+This applies to:
+- Issues
+- PR descriptions
+- Codex prompts
+- Handoff summaries
+
+Purpose:
+Operators must understand state and next action in seconds under pressure.
+
+---
+
+## 10. Codex Context Rule
+
+Codex must ONLY rely on:
+
+- AGENTS.md
+- PROJECT_MEMORY.md
+- CURRENT_STATE.md
+
+Do NOT:
+
+- infer from other repos
+- reuse patterns without confirmation
+
+If unsure:
+→ ASK before acting
