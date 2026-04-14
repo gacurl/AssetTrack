@@ -6,9 +6,6 @@
 
 {% block extra_head %}
   <style>
-    .page.receipt-detail-page {
-      max-width: 1320px;
-    }
     .receipt-overview {
       display: grid;
       gap: 1rem;
@@ -167,7 +164,7 @@
   {% set receipt_action_label = "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" %}
   {% set email_timing_label = "Delivered" if receipt.delivery.sent_at else "Last attempted" if receipt.delivery.last_attempt_at else "" %}
   {% set email_timing_value = receipt.delivery_display.sent_at or receipt.delivery_display.last_attempt_at %}
-  <nav class="actions" aria-label="Receipt navigation">
+  <nav class="actions nav-row mixed-nav-row" aria-label="Receipt navigation">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
