@@ -78,6 +78,10 @@
 
     .actions { margin: 0.75rem 0 1rem 0; }
     .chip.secondary { background: var(--color-panel-bg); }
+    .actions-note {
+      margin: 0;
+      color: var(--color-text-muted);
+    }
 
     .grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1rem; }
     .grid > .card {
@@ -191,11 +195,10 @@
   </section>
 
   <section class="card" aria-label="Quick actions panel">
-    <h2>Workflow Shortcuts</h2>
+    <h2>Dashboard References</h2>
     <div class="accent"></div>
+    <p class="actions-note">Use the top navigation to start Issue or Return. Dashboard links below are for follow-up review.</p>
     <div class="actions">
-      <a class="chip" href="{{ url_for('issue_preview') }}">Issue</a>
-      <a class="chip" href="{{ url_for('return_queue') }}">Return</a>
       <a class="chip" href="{{ url_for('dashboard_holders') }}">Outstanding Holders</a>
       <a class="chip" href="{{ url_for('dashboard_cases') }}">Case Drilldown</a>
       <a class="chip" href="{{ url_for('human_report') }}">View Current Status Report</a>

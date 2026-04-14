@@ -189,7 +189,9 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Assets in custody", response.data)
         self.assertIn(b"Open storage slots", response.data)
         self.assertIn(b"Holders with assets out", response.data)
-        self.assertLess(response.data.index(b"At a Glance"), response.data.index(b"Workflow Shortcuts"))
+        self.assertIn(b"Dashboard References", response.data)
+        self.assertIn(b"Use the top navigation to start Issue or Return.", response.data)
+        self.assertLess(response.data.index(b"At a Glance"), response.data.index(b"Dashboard References"))
         self.assertIn(b"Inventory Summary", response.data)
         self.assertIn(b"Slot Summary", response.data)
         self.assertIn(b"Custody Summary", response.data)
@@ -208,6 +210,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Issued to", response.data)
         self.assertIn(b"AT-CUST", response.data)
         self.assertIn(b'href="/holders/1"', response.data)
+        self.assertNotIn(b"Workflow Shortcuts", response.data)
+        self.assertNotIn(b'href="/issue/preview">Issue</a>', response.data)
 
     def test_dashboard_empty_states_are_operator_facing(self) -> None:
         response = self.client.get("/dashboard")
