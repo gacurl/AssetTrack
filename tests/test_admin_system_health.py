@@ -318,7 +318,6 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
 
     assert response.status_code == 200
     assert b"Admin: Human-Readable Report" in response.data
-    assert b"This page is a read-only human-readable report" in response.data
     assert b"Download PDF" in response.data
     assert b"Download Database Backup" in response.data
     assert b"showing recent active events only" in response.data
@@ -332,6 +331,137 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert b"Jane Operator" in response.data
     assert b"Report Ops" in response.data
     assert b"CASE-1" in response.data
+
+
+def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-view-report", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO organizations (name, created_at, updated_at)
+        VALUES ('Report Ops', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO buildings (name, created_at, updated_at)
+        VALUES ('Report HQ', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    organization_id = int(
+        conn.execute("SELECT id FROM organizations WHERE name = 'Report Ops' LIMIT 1;").fetchone()[0]
+    )
+    building_id = int(
+        conn.execute("SELECT id FROM buildings WHERE name = 'Report HQ' LIMIT 1;").fetchone()[0]
+    )
+    conn.execute(
+        """
+        INSERT INTO organization_buildings (organization_id, building_id, created_at)
+        VALUES (?, ?, '2026-01-01T00:00:00Z');
+        """,
+        (organization_id, building_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO holders (
+            id, holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
+        )
+        VALUES (
+            1, 'PERSON', 'Jane Operator', 'Report Ops', ?, 'H-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+        );
+        """,
+        (organization_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES (10, 'CASE-1', 1, 'AT-100');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES (
+            'AT-100',
+            'SN-100',
+            'Dell',
+            'laptop',
+            'Report HQ',
+            '100',
+            'Latitude',
+            'LAT',
+            NULL,
+            'Report HQ/100',
+            'issued_to',
+            'accountable',
+            'serviceable',
+            '2026-01-01',
+            '2026-01-01T00:00:00Z',
+            'IN_CUSTODY',
+            1,
+            10
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT 10, id, '2026-01-01T00:00:00Z'
+        FROM assets
+        WHERE asset_tag = 'AT-100';
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+        VALUES (
+            'AT-100',
+            'ISSUE',
+            '2026-01-02T00:00:00Z',
+            'system',
+            NULL,
+            '{"to_location_type":"IN_CUSTODY"}',
+            1
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.get("/report")
+
+    assert response.status_code == 200
+    assert b"What Matters Now" in response.data
+    assert b"Report Scope" not in response.data
+    assert b"Review holders with assets out" in response.data
+    assert b"Check case space" in response.data
+    assert b"Look up an asset" in response.data
+    assert response.data.count(b"<details class=\"report-section\"") >= 5
+    assert b' href="/assets/search?asset_tag=AT-100"' in response.data
+    assert b' href="/holders/1"' in response.data
+    assert b' href="/dashboard/cases/CASE-1"' in response.data
 
 
 def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:

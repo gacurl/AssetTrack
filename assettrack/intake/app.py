@@ -5407,8 +5407,11 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
                     COALESCE(a.manufacturer, '') AS manufacturer,
                     COALESCE(a.model, '') AS model,
                     COALESCE(a.location_type, '') AS location_type,
+                    h.id AS holder_detail_id,
                     COALESCE(h.name, '') AS holder_name,
                     COALESCE(h.organization, '') AS holder_organization,
+                    COALESCE(s.case_name, '') AS home_case_name,
+                    s.slot_position AS home_slot_position,
                     COALESCE(s.case_name || ' / ' || s.slot_position, '') AS home_slot
                 FROM assets a
                 LEFT JOIN holders h
@@ -5480,6 +5483,7 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
             for row in conn.execute(
                 """
                 SELECT
+                    h.id AS holder_detail_id,
                     h.name AS holder_name,
                     COALESCE(h.organization, '') AS organization,
                     a.asset_tag,
@@ -5503,6 +5507,7 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
                     e.event_date,
                     e.asset_tag,
                     e.event_type,
+                    h.id AS holder_detail_id,
                     COALESCE(h.name, '') AS holder_name,
                     COALESCE(h.organization, '') AS holder_organization
                 FROM asset_events e
