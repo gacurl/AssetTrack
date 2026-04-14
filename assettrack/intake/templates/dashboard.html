@@ -16,6 +16,66 @@
     .topbar { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
     .subtitle { margin: 0; }
 
+    .status-overview {
+      padding: 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .status-lead {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem 1rem;
+    }
+    .status-kicker {
+      margin: 0;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+    .status-title {
+      margin: 0;
+      font-size: 1.45rem;
+      line-height: 1.2;
+    }
+    .status-note {
+      margin: 0;
+      color: var(--color-text-muted);
+      max-width: 44rem;
+    }
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 0.75rem;
+    }
+    .status-pill {
+      border: 1px solid var(--color-surface);
+      border-radius: 10px;
+      padding: 0.8rem 0.9rem;
+      background: var(--color-bg);
+    }
+    .status-pill strong {
+      display: block;
+      font-size: 1.4rem;
+      line-height: 1.1;
+    }
+    .status-pill span {
+      display: block;
+      margin-top: 0.2rem;
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+      line-height: 1.25;
+    }
+    .status-pill.priority {
+      border-color: var(--color-accent);
+      background: var(--color-primary-soft);
+    }
+
     .actions { margin: 0.75rem 0 1rem 0; }
     .chip.secondary { background: var(--color-panel-bg); }
 
@@ -76,17 +136,62 @@
       margin: 0.25rem 0 0.55rem 0;
     }
 
-    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .status-strip { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    }
+    @media (max-width: 600px) {
+      .status-strip { grid-template-columns: 1fr; }
+    }
   </style>
 {% endblock %}
 
 {% block content %}
+  {% set exception_total = dashboard.summary.exceptions.unslotted_assets + dashboard.summary.exceptions.in_custody_over_threshold + dashboard.summary.exceptions.slot_conflicts %}
   <div class="topbar">
-    <p class="muted subtitle">Custody workflow and status</p>
+    <p class="muted subtitle">Current status first. Actions and drilldowns stay below.</p>
   </div>
 
+  <section class="card status-overview" aria-label="Current status overview">
+    <div class="status-lead">
+      <div>
+        <p class="status-kicker">At a Glance</p>
+        {% if exception_total == 0 %}
+          <h2 class="status-title">No immediate problems</h2>
+        {% else %}
+          <h2 class="status-title">{{ exception_total }} items need attention</h2>
+        {% endif %}
+      </div>
+      <p class="status-note">
+        {% if exception_total == 0 %}
+          Storage, custody, and slot counts are stable right now.
+        {% else %}
+          Review problems first, then confirm custody load and available storage space.
+        {% endif %}
+      </p>
+    </div>
+    <div class="status-strip">
+      <div class="status-pill priority">
+        <strong>{{ exception_total }}</strong>
+        <span>Problems to review</span>
+      </div>
+      <div class="status-pill">
+        <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong>
+        <span>Assets in custody</span>
+      </div>
+      <div class="status-pill">
+        <strong>{{ dashboard.summary.slots.empty_slots }}</strong>
+        <span>Open storage slots</span>
+      </div>
+      <div class="status-pill">
+        <strong>{{ dashboard.summary.custody.unique_holders }}</strong>
+        <span>Holders with assets out</span>
+      </div>
+    </div>
+  </section>
+
   <section class="card" aria-label="Quick actions panel">
-    <h2>Quick Actions</h2>
+    <h2>Workflow Shortcuts</h2>
     <div class="accent"></div>
     <div class="actions">
       <a class="chip" href="{{ url_for('issue_preview') }}">Issue</a>
@@ -99,23 +204,11 @@
 
   <div class="grid">
     <section class="card">
-      <h2>Inventory Summary</h2>
+      <h2>Exceptions Summary</h2>
       <div class="accent"></div>
-      <p class="metric">Total Assets: <strong>{{ dashboard.summary.inventory.total_assets }}</strong></p>
-      <p class="metric">Active Assets: <strong>{{ dashboard.summary.inventory.active_assets }}</strong></p>
-      <p class="metric">Disposed Assets: <strong>{{ dashboard.summary.inventory.disposed_assets }}</strong></p>
-      <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
-      <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
-      <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
-    </section>
-
-    <section class="card">
-      <h2>Slot Summary</h2>
-      <div class="accent"></div>
-      <p class="metric">Total Slots: <strong>{{ dashboard.summary.slots.total_slots }}</strong></p>
-      <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
-      <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
-      <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
+      <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
+      <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
+      <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
     </section>
 
     <section class="card">
@@ -140,11 +233,23 @@
     </section>
 
     <section class="card">
-      <h2>Exceptions Summary</h2>
+      <h2>Inventory Summary</h2>
       <div class="accent"></div>
-      <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
-      <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
-      <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
+      <p class="metric">Total Assets: <strong>{{ dashboard.summary.inventory.total_assets }}</strong></p>
+      <p class="metric">Active Assets: <strong>{{ dashboard.summary.inventory.active_assets }}</strong></p>
+      <p class="metric">Disposed Assets: <strong>{{ dashboard.summary.inventory.disposed_assets }}</strong></p>
+      <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
+      <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
+      <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
+    </section>
+
+    <section class="card">
+      <h2>Slot Summary</h2>
+      <div class="accent"></div>
+      <p class="metric">Total Slots: <strong>{{ dashboard.summary.slots.total_slots }}</strong></p>
+      <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
+      <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
+      <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
     </section>
   </div>
 
