@@ -4527,9 +4527,8 @@ def _receipt_display_date(commit_at: str) -> str:
     if not value:
         return "Unknown Date"
 
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
+    parsed = _parse_display_timestamp(value)
+    if parsed is None:
         return value
 
     month = parsed.strftime("%b")
@@ -4538,14 +4537,25 @@ def _receipt_display_date(commit_at: str) -> str:
     return f"{month} {day}, {year}"
 
 
+def _parse_display_timestamp(value: object) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
 def _receipt_display_timestamp(value: object) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
 
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
+    parsed = _parse_display_timestamp(text)
+    if parsed is None:
         return text
 
     month = parsed.strftime("%b")
@@ -5436,6 +5446,9 @@ def holders_clear():
 @require_role("admin")
 def admin_users():
     users = list_users()
+    for user in users:
+        user["created_at_display"] = _receipt_display_timestamp(user.get("created_at"))
+        user["updated_at_display"] = _receipt_display_timestamp(user.get("updated_at"))
     return render_template("admin_users.html", users=users)
 
 
