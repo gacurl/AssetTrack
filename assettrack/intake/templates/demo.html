@@ -7,7 +7,7 @@
 {% block extra_head %}
   <style>
     .page.demo-page {
-      max-width: 1380px;
+      max-width: 1360px;
       padding: 1.5rem 1.75rem 2.5rem;
     }
     .demo-page .page-header {
@@ -19,73 +19,141 @@
     }
     .demo-hero {
       display: grid;
-      gap: 1.15rem;
-      padding: 1.6rem 1.7rem;
-      border: 1px solid var(--color-surface);
-      border-radius: 16px;
+      gap: 1.1rem;
+      padding: 1.5rem 1.6rem;
+      border: 2px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-surface));
+      border-radius: 18px;
       background:
-        linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 55%),
-        linear-gradient(180deg, var(--color-surface-bg), color-mix(in srgb, var(--color-primary-soft) 30%, var(--color-surface-bg)));
+        linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 18%, transparent), transparent 58%),
+        linear-gradient(180deg, var(--color-surface-bg), color-mix(in srgb, var(--color-primary-soft) 24%, var(--color-surface-bg)));
     }
     .demo-hero-copy {
       display: grid;
-      gap: 0.75rem;
-      max-width: min(90ch, 100%);
+      gap: 0.7rem;
+      max-width: 54rem;
     }
     .demo-hero-copy h2,
-    .demo-grid .card h2 {
+    .demo-story-card h2,
+    .demo-data-card h2 {
       margin: 0;
     }
     .demo-hero-copy h2 {
-      font-size: clamp(1.8rem, 2.4vw, 2.4rem);
-      line-height: 1.08;
+      max-width: 12ch;
+      font-size: clamp(2.1rem, 2.8vw, 3rem);
+      line-height: 0.98;
       letter-spacing: -0.025em;
+      text-wrap: balance;
+    }
+    .demo-kicker {
+      margin: 0;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
     }
     .demo-hero-copy p,
-    .demo-grid .card p {
+    .demo-story-card p,
+    .demo-data-card p {
       margin: 0;
     }
-    .demo-hero-copy p {
-      font-size: 1.02rem;
-      line-height: 1.55;
+    .demo-hero-copy .demo-standfirst {
+      font-size: 1rem;
+      line-height: 1.5;
+      color: var(--color-text-muted);
+      max-width: 34rem;
     }
     .demo-hero-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto minmax(18rem, 1fr);
       justify-content: flex-start;
-      align-items: flex-start;
-      gap: 0.75rem;
-      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.85rem 1.2rem;
+      margin-top: 0.15rem;
+      max-width: 54rem;
     }
-    .demo-hero-actions .chip:first-child {
+    .demo-hero-actions .chip {
+      padding: 0.7rem 1rem;
       background: var(--color-primary);
       border-color: var(--color-primary);
       color: #fff;
     }
-    .demo-hero-actions .chip:not(:first-child) {
-      background: var(--color-surface-bg);
+    .demo-hero-actions .demo-hero-support {
+      margin: 0;
+      color: var(--color-text-muted);
+      line-height: 1.45;
     }
-    .demo-summary {
-      margin-top: 1.25rem;
+    .demo-story {
+      margin-top: 1.4rem;
+      display: grid;
+      gap: 1rem;
+    }
+    .demo-story-card {
+      margin-top: 0;
+      display: grid;
+      gap: 0.9rem;
+      padding: 1.15rem 1.2rem 1.2rem;
+      border-radius: 14px;
+    }
+    .demo-story-card.problem {
+      border-left: 6px solid var(--color-accent);
+    }
+    .demo-story-card.action {
+      border-left: 6px solid var(--color-primary);
+    }
+    .demo-story-card.outcome {
+      border-left: 6px solid var(--color-success);
+    }
+    .demo-story-header {
+      display: grid;
+      gap: 0.25rem;
+    }
+    .demo-story-label {
+      margin: 0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+    .demo-list {
+      margin: 0;
+      padding-left: 1.1rem;
       display: grid;
       gap: 0.55rem;
+      line-height: 1.45;
     }
-    .demo-summary h2 {
-      margin: 0;
-      font-size: 1rem;
+    .demo-list li strong {
+      font-weight: 700;
     }
-    .demo-grid {
+    .demo-proof {
+      margin-top: 1.65rem;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      align-items: start;
-      gap: 1.25rem;
-      margin-top: 1.5rem;
+      gap: 1.2rem;
     }
-    .demo-grid > .card {
+    .demo-proof-section {
       margin-top: 0;
       display: grid;
       gap: 1rem;
       min-width: 0;
-      padding: 1.2rem 1.25rem 1.25rem;
+      padding: 0 0 1.2rem 0;
+      border: 0;
+      border-bottom: 1px solid var(--color-surface);
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .demo-proof-section:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .demo-data-card h2 {
+      font-size: 1.05rem;
+    }
+    .demo-data-card p {
+      max-width: 52rem;
+      color: var(--color-text-muted);
+      line-height: 1.45;
     }
     .demo-metrics {
       display: grid;
@@ -115,12 +183,6 @@
       font-size: 1.8rem;
       margin-top: 0.35rem;
       letter-spacing: -0.03em;
-    }
-    .demo-list {
-      margin: 0;
-      padding-left: 1.25rem;
-      display: grid;
-      gap: 0.65rem;
     }
     .demo-table-wrap {
       overflow-x: auto;
@@ -174,14 +236,8 @@
         padding-left: 1.4rem;
         padding-right: 1.4rem;
       }
-      .demo-hero-actions {
-        flex-wrap: wrap;
-      }
       .demo-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .demo-grid {
-        grid-template-columns: 1fr;
       }
     }
     @media (max-width: 820px) {
@@ -194,6 +250,9 @@
       .demo-hero {
         padding: 1.2rem;
       }
+      .demo-hero-actions {
+        grid-template-columns: 1fr;
+      }
       .demo-table-wide {
         min-width: 540px;
       }
@@ -202,52 +261,87 @@
 {% endblock %}
 
 {% block content %}
+  {% set visible_assets_out = holders|sum(attribute='asset_count') %}
+  {% set visible_holders = holders|length %}
+  {% set visible_receipts = receipts|length %}
+  {% set visible_audit_rows = audit_rows|length %}
   <div class="demo-hero">
     <div class="demo-hero-copy">
-      <p class="chip">Read-Only Demo</p>
-      <h2>Asset custody, without the guesswork</h2>
-      <p>
-        This page uses sample data. It does not touch live records or the system of record.
-      </p>
+      <p class="demo-kicker">Read-Only Demo</p>
+      <h2>Know where it is. Know who has it. Fix what’s wrong.</h2>
+      <p class="demo-standfirst">Sample data only. No live records. No write access.</p>
     </div>
     <div class="demo-hero-actions">
       <a class="chip" href="{{ url_for('intake') }}">Go to Operator Login</a>
-      <a class="nav-link" href="#workflow">See the workflow</a>
-      <a class="nav-link" href="#audit">View audit trail</a>
+      <p class="demo-hero-support">Sample-only walkthrough. Read the story, check the proof, then enter the real operator flow.</p>
     </div>
   </div>
 
-  <div class="demo-summary">
-    <h2>Demo at a glance</h2>
-  </div>
+  <section class="demo-story" aria-label="Demo story">
+    <div class="card demo-story-card problem">
+      <div class="demo-story-header">
+        <p class="demo-story-label">Problem</p>
+        <h2>You do not know where your equipment is.</h2>
+      </div>
+      <ul class="demo-list">
+        <li><strong>Checked-out assets</strong> disappear into spreadsheets and inboxes.</li>
+        <li><strong>Supervisors guess</strong> who has what and what still needs follow-up.</li>
+        <li><strong>Small problems stack up</strong> until audits and hand receipts take too long.</li>
+      </ul>
+    </div>
+
+    <div class="card demo-story-card action">
+      <div class="demo-story-header">
+        <p class="demo-story-label">Action</p>
+        <h2>Scan. Assign. Track.</h2>
+      </div>
+      <ul class="demo-list">
+        {% for step in workflow_steps %}
+          <li>{{ step }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card demo-story-card outcome">
+      <div class="demo-story-header">
+        <p class="demo-story-label">Outcome</p>
+        <h2>Know what is missing. Instantly.</h2>
+      </div>
+      <ul class="demo-list">
+        <li><strong>See who has assets out</strong> without opening the live system.</li>
+        <li><strong>See what needs attention</strong> before follow-up stalls.</li>
+        <li><strong>See the audit trail</strong> that explains how current state was reached.</li>
+      </ul>
+    </div>
+  </section>
 
   <div class="demo-metrics" aria-label="Demo summary">
     <div class="demo-metric">
-      <span>Assets in custody</span>
-      <strong>{{ summary.assets_in_custody }}</strong>
-      <small>Currently checked out in the demo</small>
+      <span>Assets out</span>
+      <strong>{{ visible_assets_out }}</strong>
+      <small>Matches the visible custody proof below</small>
     </div>
     <div class="demo-metric">
-      <span>Active holders</span>
-      <strong>{{ summary.holders }}</strong>
-      <small>People or teams holding assets</small>
+      <span>Holders shown</span>
+      <strong>{{ visible_holders }}</strong>
+      <small>Matches the visible holder proof below</small>
     </div>
     <div class="demo-metric">
-      <span>Pending receipts</span>
-      <strong>{{ summary.pending_receipts }}</strong>
-      <small>Follow-up messages not yet sent</small>
+      <span>Receipts shown</span>
+      <strong>{{ visible_receipts }}</strong>
+      <small>Matches the visible receipt proof below</small>
     </div>
     <div class="demo-metric">
-      <span>Tracked cases</span>
-      <strong>{{ summary.cases }}</strong>
-      <small>Storage cases represented in demo data</small>
+      <span>Audit events shown</span>
+      <strong>{{ visible_audit_rows }}</strong>
+      <small>Matches the visible event proof below</small>
     </div>
   </div>
 
-  <div class="demo-grid">
-    <div class="card">
-      <h2>Who Has What</h2>
-      <p>Supervisors can see who is holding assets, who still needs follow-up, and where work is starting to stack up.</p>
+  <section class="demo-proof" aria-label="Supporting proof">
+    <div class="demo-proof-section demo-data-card">
+      <h2>Who has what</h2>
+      <p><strong>Current custody.</strong> The visible rows below add up to <strong>{{ visible_assets_out }} assets</strong> across <strong>{{ visible_holders }} holders</strong>.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -267,19 +361,9 @@
       </div>
     </div>
 
-    <div class="card" id="workflow">
-      <h2>How the Workflow Stays Safe</h2>
-      <p>The operator path stays explicit, so review happens before anything is written to the record.</p>
-      <ol class="demo-list">
-        {% for step in workflow_steps %}
-          <li>{{ step }}</li>
-        {% endfor %}
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>Receipts, At a Glance</h2>
-      <p>Each receipt captures the handoff snapshot and shows whether follow-up is still queued or already sent.</p>
+    <div class="demo-proof-section demo-data-card">
+      <h2>What needs follow-up</h2>
+      <p><strong>Receipt status.</strong> The visible sample shows <strong>{{ visible_receipts }} receipts</strong> and whether follow-up is still queued or already sent.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -299,9 +383,9 @@
       </div>
     </div>
 
-    <div class="card" id="audit">
-      <h2>Why the Audit Trail Matters</h2>
-      <p>The event log stays the source of truth. Current state and receipts are views built from that history.</p>
+    <div class="demo-proof-section demo-data-card">
+      <h2>Why the audit trail matters</h2>
+      <p><strong>Event history stays primary.</strong> The visible sample shows <strong>{{ visible_audit_rows }} event rows</strong> explaining how state was reached.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -320,7 +404,7 @@
         </table>
       </div>
     </div>
-  </div>
+  </section>
 
   <div class="demo-note">
     <strong>Safety note:</strong>
