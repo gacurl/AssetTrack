@@ -222,6 +222,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"No immediate problems", response.data)
         self.assertIn(b"Storage, custody, and slot counts are stable right now.", response.data)
+        self.assertIn(b"Total assets in the system", response.data)
+        self.assertIn(b"Issued / out now", response.data)
         self.assertIn(b"No assets currently issued", response.data)
         self.assertIn(b"No assets currently issued.", response.data)
         self.assertIn(b"No case data available.", response.data)
