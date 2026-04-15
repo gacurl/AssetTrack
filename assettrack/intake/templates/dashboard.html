@@ -50,7 +50,7 @@
     }
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 0.75rem;
     }
     .status-pill {
@@ -70,6 +70,11 @@
       color: var(--color-text-muted);
       font-size: 0.9rem;
       line-height: 1.25;
+    }
+    .status-pill .nav-link {
+      display: inline-flex;
+      margin-top: 0.55rem;
+      font-size: 0.9rem;
     }
     .status-pill.priority {
       border-color: var(--color-accent);
@@ -142,16 +147,13 @@
 
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
-      .status-strip { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
-    }
-    @media (max-width: 600px) {
-      .status-strip { grid-template-columns: 1fr; }
     }
   </style>
 {% endblock %}
 
 {% block content %}
-  {% set exception_total = dashboard.summary.exceptions.unslotted_assets + dashboard.summary.exceptions.in_custody_over_threshold + dashboard.summary.exceptions.slot_conflicts %}
+  {% set overview = dashboard.summary.overview %}
+  {% set exception_total = overview.attention_count %}
   <div class="topbar">
     <p class="muted subtitle">Current status first. Actions and drilldowns stay below.</p>
   </div>
@@ -176,20 +178,34 @@
     </div>
     <div class="status-strip">
       <div class="status-pill priority">
-        <strong>{{ exception_total }}</strong>
+        <strong>{{ overview.attention_count }}</strong>
         <span>Problems to review</span>
+        <a class="nav-link" href="#problems-panel">Review problems</a>
       </div>
       <div class="status-pill">
-        <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong>
-        <span>Assets in custody</span>
+        <strong>{{ overview.total_assets }}</strong>
+        <span>Total assets in the system</span>
+        <a class="nav-link" href="{{ url_for('asset_search') }}">Search assets</a>
       </div>
       <div class="status-pill">
-        <strong>{{ dashboard.summary.slots.empty_slots }}</strong>
-        <span>Open storage slots</span>
+        <strong>{{ overview.in_storage_assets }}</strong>
+        <span>In storage now</span>
+        <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
       </div>
       <div class="status-pill">
-        <strong>{{ dashboard.summary.custody.unique_holders }}</strong>
+        <strong>{{ overview.issued_assets }}</strong>
+        <span>Issued / out now</span>
+        <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open holder follow-up</a>
+      </div>
+      <div class="status-pill">
+        <strong>{{ overview.holders_with_assets_out }}</strong>
         <span>Holders with assets out</span>
+        <a class="nav-link" href="{{ url_for('dashboard_holders') }}">View holders</a>
+      </div>
+      <div class="status-pill">
+        <strong>{{ overview.open_storage_slots }}</strong>
+        <span>Open storage slots</span>
+        <a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a>
       </div>
     </div>
   </section>
@@ -199,6 +215,7 @@
     <div class="accent"></div>
     <p class="actions-note">Use the top navigation to start Issue or Return. Dashboard links below are for follow-up review.</p>
     <div class="actions nav-row">
+      <a class="nav-link" href="{{ url_for('asset_search') }}">Asset Search</a>
       <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Outstanding Holders</a>
       <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Case Drilldown</a>
       <a class="nav-link" href="{{ url_for('human_report') }}">View Current Status Report</a>
@@ -217,6 +234,8 @@
     <section class="card">
       <h2>Custody Summary</h2>
       <div class="accent"></div>
+      <p class="metric">Issued / Out: <strong>{{ overview.issued_assets }}</strong></p>
+      <p class="metric">In Storage: <strong>{{ overview.in_storage_assets }}</strong></p>
       <p class="metric">Unique Holders: <strong>{{ dashboard.summary.custody.unique_holders }}</strong></p>
       <p class="metric">
         Top Holder:
@@ -259,7 +278,7 @@
   <h2 class="section-title">Snapshots</h2>
   <p class="muted">Immediate reference for holder accountability, available space, and problems that need attention.</p>
 
-  <details class="collapsible">
+    <details class="collapsible" id="problems-panel">
     <summary>
       <span>Outstanding Holders Summary</span>
       <span class="summary-hint">
