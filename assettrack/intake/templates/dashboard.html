@@ -22,6 +22,9 @@
       display: flex;
       flex-direction: column;
       gap: 0.85rem;
+      border-width: 2px;
+      border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
+      background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-accent-soft) 100%);
     }
     .status-lead {
       display: flex;
@@ -77,10 +80,38 @@
       font-size: 0.9rem;
     }
     .status-pill.priority {
-      border-color: var(--color-accent);
-      background: var(--color-primary-soft);
+      grid-column: span 2;
+      border-color: color-mix(in srgb, var(--color-accent) 70%, var(--color-surface));
+      background: var(--color-surface-bg);
+      box-shadow: 0 10px 24px rgba(29, 53, 87, 0.08);
+    }
+    .status-pill.priority strong {
+      font-size: 2rem;
+    }
+    .status-pill.priority span {
+      font-size: 1rem;
+    }
+    .priority-action {
+      margin-top: 0.9rem;
+    }
+    .priority-action .chip {
+      padding: 0.65rem 1rem;
+      font-size: 1rem;
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+    }
+    .priority-action .chip:hover {
+      text-decoration: none;
+      background: color-mix(in srgb, var(--color-primary) 88%, black);
     }
 
+    .card-link {
+      margin-top: 0.7rem;
+    }
+    .card-link .nav-link {
+      font-weight: 700;
+    }
     .actions { margin: 0.75rem 0 1rem 0; }
     .chip.secondary { background: var(--color-panel-bg); }
     .actions-note {
@@ -147,6 +178,12 @@
 
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
+      .status-strip { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+      .status-pill.priority { grid-column: span 2; }
+    }
+    @media (max-width: 600px) {
+      .status-strip { grid-template-columns: 1fr; }
+      .status-pill.priority { grid-column: span 1; }
     }
   </style>
 {% endblock %}
@@ -180,7 +217,16 @@
       <div class="status-pill priority">
         <strong>{{ overview.attention_count }}</strong>
         <span>Problems to review</span>
-        <a class="nav-link" href="#problems-panel">Review problems</a>
+        <p class="actions-note" style="margin-top: 0.45rem;">
+          {% if exception_total == 0 %}
+            Start here to confirm there is nothing blocking follow-up work.
+          {% else %}
+            Start here before reviewing custody load or storage capacity.
+          {% endif %}
+        </p>
+        <div class="priority-action">
+          <a class="chip" href="#problems-panel">Review problems</a>
+        </div>
       </div>
       <div class="status-pill">
         <strong>{{ overview.total_assets }}</strong>
@@ -210,18 +256,6 @@
     </div>
   </section>
 
-  <section class="card" aria-label="Quick actions panel">
-    <h2>Dashboard References</h2>
-    <div class="accent"></div>
-    <p class="actions-note">Use the top navigation to start Issue or Return. Dashboard links below are for follow-up review.</p>
-    <div class="actions nav-row">
-      <a class="nav-link" href="{{ url_for('asset_search') }}">Asset Search</a>
-      <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Outstanding Holders</a>
-      <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Case Drilldown</a>
-      <a class="nav-link" href="{{ url_for('human_report') }}">View Current Status Report</a>
-    </div>
-  </section>
-
   <div class="grid">
     <section class="card">
       <h2>Exceptions Summary</h2>
@@ -229,6 +263,7 @@
       <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
       <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
       <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
+      <p class="card-link"><a class="nav-link" href="#problems-panel">Review problems</a></p>
     </section>
 
     <section class="card">
@@ -252,6 +287,7 @@
           <strong>None</strong>
         {% endif %}
       </p>
+      <p class="card-link"><a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open outstanding holders</a></p>
     </section>
 
     <section class="card">
@@ -263,6 +299,7 @@
       <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
       <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
       <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
+      <p class="card-link"><a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a></p>
     </section>
 
     <section class="card">
@@ -272,6 +309,7 @@
       <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
       <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
       <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
+      <p class="card-link"><a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case drilldown</a></p>
     </section>
   </div>
 
