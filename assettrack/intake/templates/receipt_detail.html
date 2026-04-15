@@ -12,7 +12,7 @@
     }
     .receipt-hero {
       display: grid;
-      gap: 0.65rem;
+      gap: 0.8rem;
       padding: 1.15rem 1.2rem;
       border: 1px solid var(--color-surface);
       border-radius: 14px;
@@ -38,15 +38,22 @@
     }
     .receipt-hero-title {
       margin: 0;
-      font-size: 1.45rem;
-      line-height: 1.2;
+      font-size: 1.7rem;
+      line-height: 1.15;
     }
-    .receipt-hero-copy {
+    .receipt-status-line {
       margin: 0;
-      color: var(--color-text-muted);
-      line-height: 1.5;
+      font-size: 1.02rem;
+      font-weight: 600;
+      line-height: 1.4;
     }
-    .receipt-meta-line {
+    .receipt-status-line[data-tone="calm"] {
+      color: var(--color-text-muted);
+    }
+    .receipt-status-line[data-tone="action"] {
+      color: var(--color-accent);
+    }
+    .receipt-context-line {
       margin: 0;
       color: var(--color-text-muted);
       font-size: 0.92rem;
@@ -54,7 +61,7 @@
     }
     .receipt-summary {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 1rem;
     }
     .summary-group {
@@ -93,6 +100,13 @@
     }
     .summary-status {
       align-content: start;
+    }
+    .summary-group.emphasis {
+      background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--color-primary-soft) 36%, var(--color-surface-bg)),
+        var(--color-surface-bg)
+      );
     }
     .status-chip {
       display: inline-flex;
@@ -147,6 +161,31 @@
     .receipt-extra-card p {
       margin: 0;
     }
+    .receipt-assets-lead {
+      margin: 0 0 0.85rem 0;
+      color: var(--color-text-muted);
+    }
+    .asset-tag {
+      font-weight: 700;
+    }
+    .asset-detail-stack,
+    .asset-move-stack,
+    .asset-holder-stack {
+      display: grid;
+      gap: 0.22rem;
+    }
+    .asset-subtle {
+      color: var(--color-text-muted);
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+    .asset-move-label {
+      color: var(--color-text-muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
     @media (max-width: 960px) {
       .receipt-extra-grid,
       .receipt-summary {
@@ -164,6 +203,36 @@
   {% set receipt_action_label = "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" %}
   {% set email_timing_label = "Delivered" if receipt.delivery.sent_at else "Last attempted" if receipt.delivery.last_attempt_at else "" %}
   {% set email_timing_value = receipt.delivery_display.sent_at or receipt.delivery_display.last_attempt_at %}
+  {% set holder_display_name = holder.name if holder and holder.name else receipt.holder_display_name %}
+  {% set receipt_action_word = "issued" if receipt.receipt_type == "ISSUE" else "returned" %}
+  {% set receipt_direction = "to" if receipt.receipt_type == "ISSUE" else "from" %}
+  {% set headline_subject = holder_display_name if holder_display_name else "recorded holder" %}
+  {% set context_parts = [] %}
+  {% if holder_display_name %}
+    {% set context_parts = context_parts + [holder_display_name] %}
+  {% endif %}
+  {% if receipt.location_context and receipt.location_context.get("building_room") %}
+    {% set context_parts = context_parts + [receipt.location_context.get("building_room")] %}
+  {% endif %}
+  {% if receipt.commit_at_display %}
+    {% set context_parts = context_parts + [receipt.commit_at_display] %}
+  {% endif %}
+  {% if operator and operator.username %}
+    {% set context_parts = context_parts + ["Recorded by " ~ operator.username] %}
+  {% endif %}
+  {% if receipt.delivery.state == "failed" %}
+    {% set receipt_status_text = "Email failed — resend recommended" %}
+    {% set receipt_status_tone = "action" %}
+  {% elif receipt.delivery.state == "pending" %}
+    {% set receipt_status_text = "Email queued — no action needed unless delivery stalls" %}
+    {% set receipt_status_tone = "calm" %}
+  {% elif receipt.delivery.state == "sent" %}
+    {% set receipt_status_text = "No action needed" %}
+    {% set receipt_status_tone = "calm" %}
+  {% else %}
+    {% set receipt_status_text = "No action needed" %}
+    {% set receipt_status_tone = "calm" %}
+  {% endif %}
   <nav class="actions nav-row mixed-nav-row" aria-label="Receipt navigation">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
@@ -184,39 +253,36 @@
             <span class="status-chip" data-state="{{ receipt.delivery.state }}">{{ email_status_label }}</span>
           {% endif %}
         </div>
-        <h2 class="receipt-hero-title">{{ receipt.display_title }}</h2>
-        <p class="receipt-hero-copy">
-          {{ receipt.assets|length }} asset{% if receipt.assets|length != 1 %}s{% endif %}
-          {% if holder and holder.name %}
-            for <strong>{{ holder.name }}</strong>
-          {% elif receipt.holder_display_name %}
-            for <strong>{{ receipt.holder_display_name }}</strong>
-          {% endif %}
-          committed on <strong>{{ receipt.commit_at_display or "Unknown" }}</strong>.
+        <h2 class="receipt-hero-title">
+          {{ receipt.assets|length }} asset{% if receipt.assets|length != 1 %}s{% endif %} {{ receipt_action_word }} {{ receipt_direction }} {{ headline_subject }}
+        </h2>
+        <p class="receipt-status-line" data-tone="{{ receipt_status_tone }}">
+          {{ receipt_status_text }}
         </p>
-        <p class="receipt-meta-line">
-          Recipient: <strong>{{ receipt.recipient_email or "Not captured" }}</strong>
+        <p class="receipt-context-line">
+          {{ context_parts|join(" · ") if context_parts else "Context not captured" }}
+          {% if receipt.recipient_email %}
+            · Receipt email {{ receipt.recipient_email }}
+          {% endif %}
           {% if email_timing_value %}
-            • {{ email_timing_label }} <strong>{{ email_timing_value }}</strong>
-          {% endif %}
-          {% if receipt.delivery.last_error %}
-            • Last error: <strong>{{ receipt.delivery.last_error }}</strong>
-          {% endif %}
-          {% if receipt.delivery.state in ["pending", "failed"] %}
-            • Action available: <strong>{{ receipt_action_label }}</strong>
+            · {{ email_timing_label }} {{ email_timing_value }}
           {% endif %}
         </p>
       </section>
 
       <div class="receipt-summary">
-        <section class="summary-group">
+        <section class="summary-group emphasis">
           <h2 class="summary-group-title">What Happened</h2>
           <div class="summary-value">
-            <div class="summary-label">Receipt type</div>
+            <div class="summary-label">Action</div>
             <div class="summary-copy">{{ receipt.receipt_type_label }}</div>
           </div>
           <div class="summary-value">
-            <div class="summary-label">Committed at</div>
+            <div class="summary-label">Assets in this receipt</div>
+            <div class="summary-copy">{{ receipt.assets|length }}</div>
+          </div>
+          <div class="summary-value">
+            <div class="summary-label">Recorded at</div>
             <div class="summary-copy">{{ receipt.commit_at_display or "Unknown" }}</div>
           </div>
         </section>
@@ -256,17 +322,7 @@
         </section>
 
         <section class="summary-group">
-          <h2 class="summary-group-title">Who Was Involved</h2>
-          <div class="summary-value">
-            <div class="summary-label">Committed by</div>
-            <div class="summary-copy">
-              {% if operator and operator.username %}
-                {{ operator.username }}{% if operator.role %} ({{ operator.role }}){% endif %}
-              {% else %}
-                Unknown
-              {% endif %}
-            </div>
-          </div>
+          <h2 class="summary-group-title">Who and Where</h2>
           {% if holder or receipt.holder_id is not none %}
             <div class="summary-value">
               <div class="summary-label">Receipt holder</div>
@@ -280,10 +336,6 @@
               </div>
             </div>
           {% endif %}
-        </section>
-
-        <section class="summary-group">
-          <h2 class="summary-group-title">Context</h2>
           {% if organization %}
             <div class="summary-value">
               <div class="summary-label">Organization</div>
@@ -296,17 +348,30 @@
               <div class="summary-copy">{{ receipt.location_context.get("building_room") or "Unknown" }}</div>
             </div>
           {% endif %}
+          <div class="summary-value">
+            <div class="summary-label">Committed by</div>
+            <div class="summary-copy">
+              {% if operator and operator.username %}
+                {{ operator.username }}
+              {% else %}
+                Unknown
+              {% endif %}
+            </div>
+          </div>
         </section>
       </div>
     </div>
 
     <details class="receipt-extra">
-      <summary>More Receipt Detail</summary>
+      <summary>Technical Details</summary>
       <div class="receipt-extra-grid">
         <section class="receipt-extra-card">
-          <h2 class="summary-group-title">Additional Receipt Info</h2>
+          <h2 class="summary-group-title">Receipt Record</h2>
           <p><span class="summary-label">Internal receipt ID</span><br /><span class="mono">{{ receipt.id }}</span></p>
           <p><span class="summary-label">Receipt key</span><br /><span class="mono">{{ receipt.receipt_key }}</span></p>
+          {% if operator and operator.role %}
+            <p><span class="summary-label">Committed by role</span><br />{{ operator.role }}</p>
+          {% endif %}
           {% if receipt.delivery.last_attempt_at %}
             <p><span class="summary-label">Last delivery attempt</span><br />{{ receipt.delivery_display.last_attempt_at }}</p>
           {% endif %}
@@ -348,15 +413,13 @@
 
   <section class="card">
     <h2>Assets ({{ receipt.assets|length }})</h2>
+    <p class="receipt-assets-lead">Review this only if something looks wrong. Each row shows the asset, movement, holder context, and home slot.</p>
     <table>
       <thead>
         <tr>
           <th>Asset Tag</th>
-          <th>Equipment</th>
-          <th>Serial</th>
-          <th>Make / Model</th>
-          <th>From</th>
-          <th>To</th>
+          <th>Details</th>
+          <th>Movement</th>
           <th>Holder</th>
           <th>Home Slot</th>
         </tr>
@@ -367,36 +430,52 @@
           {% set return_holder = asset.get("from_holder_snapshot") if asset.get("from_holder_snapshot") is mapping else None %}
           {% set home_slot = asset.get("home_slot") if asset.get("home_slot") is mapping else None %}
           <tr>
-            <td class="mono">{{ asset.get("asset_tag") or "" }}</td>
-            <td>{{ asset.get("equipment_type") or "" }}</td>
-            <td class="mono">{{ asset.get("serial_number") or "" }}</td>
+            <td class="mono asset-tag">{{ asset.get("asset_tag") or "" }}</td>
             <td>
-              {{ asset.get("manufacturer") or "" }}
-              {% if asset.get("model") %} / {{ asset.get("model") }}{% endif %}
-              {% if asset.get("model_code") %} ({{ asset.get("model_code") }}){% endif %}
+              <div class="asset-detail-stack">
+                <div>{{ asset.get("equipment_type") or "Unknown type" }}</div>
+                <div class="asset-subtle">Serial: <span class="mono">{{ asset.get("serial_number") or "Not captured" }}</span></div>
+                <div class="asset-subtle">
+                  {{ asset.get("manufacturer") or "Unknown make" }}
+                  {% if asset.get("model") %} / {{ asset.get("model") }}{% endif %}
+                  {% if asset.get("model_code") %} ({{ asset.get("model_code") }}){% endif %}
+                </div>
+              </div>
             </td>
-            <td>{{ asset.get("from_location_type") or "" }}{% if asset.get("from_building_room") %}<br />{{ asset.get("from_building_room") }}{% endif %}</td>
-            <td>{{ asset.get("to_location_type") or "" }}{% if asset.get("to_building_room") %}<br />{{ asset.get("to_building_room") }}{% endif %}</td>
             <td>
-              {% if receipt.receipt_type == "ISSUE" %}
-                {% if issue_holder and issue_holder.get("name") %}
-                  {{ issue_holder.get("name") }}
-                  {% if issue_holder.get("identifier") %}<br />ID {{ issue_holder.get("identifier") }}{% endif %}
-                {% elif asset.get("holder_id") is not none %}
-                  holder_id {{ asset.get("holder_id") }}
+              <div class="asset-move-stack">
+                <div>
+                  <span class="asset-move-label">From</span><br />
+                  {{ asset.get("from_location_type") or "Unknown" }}{% if asset.get("from_building_room") %}<br /><span class="asset-subtle">{{ asset.get("from_building_room") }}</span>{% endif %}
+                </div>
+                <div>
+                  <span class="asset-move-label">To</span><br />
+                  {{ asset.get("to_location_type") or "Unknown" }}{% if asset.get("to_building_room") %}<br /><span class="asset-subtle">{{ asset.get("to_building_room") }}</span>{% endif %}
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="asset-holder-stack">
+                {% if receipt.receipt_type == "ISSUE" %}
+                  {% if issue_holder and issue_holder.get("name") %}
+                    <div>{{ issue_holder.get("name") }}</div>
+                    {% if issue_holder.get("identifier") %}<div class="asset-subtle">ID {{ issue_holder.get("identifier") }}</div>{% endif %}
+                  {% elif asset.get("holder_id") is not none %}
+                    <div>holder_id {{ asset.get("holder_id") }}</div>
+                  {% else %}
+                    <div>Unknown</div>
+                  {% endif %}
                 {% else %}
-                  Unknown
+                  {% if return_holder and return_holder.get("name") %}
+                    <div>{{ return_holder.get("name") }}</div>
+                    {% if return_holder.get("identifier") %}<div class="asset-subtle">ID {{ return_holder.get("identifier") }}</div>{% endif %}
+                  {% elif asset.get("from_holder_id") is not none %}
+                    <div>holder_id {{ asset.get("from_holder_id") }}</div>
+                  {% else %}
+                    <div>None</div>
+                  {% endif %}
                 {% endif %}
-              {% else %}
-                {% if return_holder and return_holder.get("name") %}
-                  {{ return_holder.get("name") }}
-                  {% if return_holder.get("identifier") %}<br />ID {{ return_holder.get("identifier") }}{% endif %}
-                {% elif asset.get("from_holder_id") is not none %}
-                  holder_id {{ asset.get("from_holder_id") }}
-                {% else %}
-                  None
-                {% endif %}
-              {% endif %}
+              </div>
             </td>
             <td>
               {% if home_slot %}
@@ -408,7 +487,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="8">No assets were captured in this receipt snapshot.</td>
+            <td colspan="5">No assets were captured in this receipt snapshot.</td>
           </tr>
         {% endfor %}
       </tbody>
