@@ -416,6 +416,28 @@ def _exceptions_summary(
     }
 
 
+def _overview_summary(
+    *,
+    inventory_summary: dict,
+    slot_summary: dict,
+    custody_summary: dict,
+    exceptions_summary: dict,
+) -> dict:
+    attention_count = (
+        int(exceptions_summary["unslotted_assets"])
+        + int(exceptions_summary["slot_conflicts"])
+        + int(exceptions_summary["in_custody_over_threshold"])
+    )
+    return {
+        "attention_count": attention_count,
+        "total_assets": int(inventory_summary["total_assets"]),
+        "in_storage_assets": int(inventory_summary["in_storage_assets"]),
+        "issued_assets": int(inventory_summary["in_custody_assets"]),
+        "holders_with_assets_out": int(custody_summary["unique_holders"]),
+        "open_storage_slots": int(slot_summary["empty_slots"]),
+    }
+
+
 def build_dashboard_data(
     conn: sqlite3.Connection,
     *,
@@ -438,9 +460,16 @@ def build_dashboard_data(
         in_custody_days_out=in_custody_days_out,
         custody_days_threshold=custody_days_threshold,
     )
+    overview_summary = _overview_summary(
+        inventory_summary=inventory_summary,
+        slot_summary=slot_summary,
+        custody_summary=custody_summary,
+        exceptions_summary=exceptions_summary,
+    )
 
     return {
         "summary": {
+            "overview": overview_summary,
             "inventory": inventory_summary,
             "slots": slot_summary,
             "custody": custody_summary,
