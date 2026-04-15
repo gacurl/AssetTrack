@@ -22,7 +22,20 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_admin_can_view_user_table(client_with_temp_db) -> None:
     admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
-    create_test_user(username="operator-a", password="op-pass", role="operator")
+    operator_id = create_test_user(username="operator-a", password="op-pass", role="operator")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE users
+            SET created_at = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            ("2026-04-05T13:15:00+00:00", "2026-04-06T09:45:00+00:00", operator_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     login_session(client_with_temp_db, admin_user_id)
 
     response = client_with_temp_db.get("/admin/users")
@@ -30,6 +43,30 @@ def test_admin_can_view_user_table(client_with_temp_db) -> None:
     assert response.status_code == 200
     assert b"Admin: Users" in response.data
     assert b"operator-a" in response.data
+    assert b"Apr 5, 2026 at 13:15 UTC" in response.data
+    assert b"Apr 6, 2026 at 09:45 UTC" in response.data
+    assert b"2026-04-05T13:15:00+00:00" not in response.data
+    assert b"2026-04-06T09:45:00+00:00" not in response.data
+
+
+def test_admin_users_page_formats_microsecond_timestamps(client_with_temp_db) -> None:
+    admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+    target_user_id = create_test_user(username="operator-b", password="op-pass", role="operator")
+    stored_user = get_user_by_id(target_user_id)
+    assert stored_user is not None
+    raw_created_at = str(stored_user["created_at"])
+    raw_updated_at = str(stored_user["updated_at"])
+    assert "." in raw_created_at
+    assert "." in raw_updated_at
+    login_session(client_with_temp_db, admin_user_id)
+
+    response = client_with_temp_db.get("/admin/users")
+
+    assert response.status_code == 200
+    assert raw_created_at.encode("utf-8") not in response.data
+    assert raw_updated_at.encode("utf-8") not in response.data
+    assert intake_app._receipt_display_timestamp(raw_created_at).encode("utf-8") in response.data
+    assert intake_app._receipt_display_timestamp(raw_updated_at).encode("utf-8") in response.data
 
 
 def test_admin_can_create_operator_user(client_with_temp_db) -> None:
