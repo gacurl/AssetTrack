@@ -9,6 +9,23 @@
     .pill.good { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
     ul { margin: 0.5rem 0 0 1.25rem; }
     .holder-summary { margin: 0; line-height: 1.55; }
+    .holder-name {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .holder-subtle {
+      margin: 0.22rem 0 0 0;
+      color: var(--color-text-muted);
+    }
+    .holder-meta {
+      display: flex;
+      gap: 0.45rem 0.8rem;
+      flex-wrap: wrap;
+      margin-top: 0.65rem;
+      color: var(--color-text-muted);
+      font-size: 0.94rem;
+    }
   </style>
 {% endblock %}
 
@@ -45,14 +62,19 @@
   <div class="card workflow-card">
     <h2>Selected Holder</h2>
     {% if selected_holder %}
-      <p class="holder-summary">
-        <strong>Type:</strong> {{ holder_display_type(selected_holder) }}<br />
-        <strong>Person or group:</strong> {{ holder_display_name(selected_holder) }}<br />
-        <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
-        <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}
-      </p>
+      <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Ready to issue to</p>
+      <p class="holder-name">{{ holder_display_name(selected_holder) }}</p>
+      {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+        <p class="holder-subtle">{{ selected_holder["organization"] }}</p>
+      {% endif %}
+      <div class="holder-meta" aria-label="Selected holder details">
+        <span>{{ holder_display_type(selected_holder) }}</span>
+        {% if selected_holder["identifier"] %}
+          <span>ID {{ selected_holder["identifier"] }}</span>
+        {% endif %}
+      </div>
       <div class="actions" style="margin-top: 0.75rem;">
-        <a class="chip" href="{{ url_for('holders_search') }}">Change holder selection</a>
+        <a class="chip" href="{{ url_for('holders_search') }}">Change holder</a>
       </div>
     {% else %}
       <p>No holder selected.</p>
