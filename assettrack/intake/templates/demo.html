@@ -38,20 +38,20 @@
       margin: 0;
     }
     .demo-hero-copy h2 {
-      max-width: 12ch;
+      max-width: 16ch;
       font-size: clamp(2.1rem, 2.8vw, 3rem);
       line-height: 0.98;
       letter-spacing: -0.025em;
-      text-wrap: balance;
     }
     .demo-hero-line {
       display: block;
+      white-space: nowrap;
     }
     .demo-hero-line.shift-2 {
-      margin-left: 0.8rem;
+      margin-left: 1.7rem;
     }
     .demo-hero-line.shift-3 {
-      margin-left: 1.6rem;
+      margin-left: 3.3rem;
     }
     .demo-kicker {
       margin: 0;
@@ -293,6 +293,12 @@
       }
       .demo-hero {
         padding: 1.2rem;
+      }
+      .demo-hero-copy h2 {
+        max-width: none;
+      }
+      .demo-hero-line {
+        white-space: normal;
       }
       .demo-hero-line.shift-2,
       .demo-hero-line.shift-3 {
