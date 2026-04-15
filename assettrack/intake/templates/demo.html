@@ -230,6 +230,35 @@
       max-width: none;
       line-height: 1.5;
     }
+    .demo-email-panel {
+      margin-top: 1.3rem;
+      padding: 1rem 1.15rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      background: var(--color-surface-bg);
+      display: grid;
+      gap: 0.8rem;
+      max-width: 42rem;
+    }
+    .demo-email-panel p {
+      margin: 0;
+    }
+    .demo-email-form {
+      display: flex;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .demo-email-form input[type="email"] {
+      flex: 1 1 18rem;
+      min-width: 16rem;
+      padding: 0.7rem 0.8rem;
+      font-size: 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 8px;
+      background: var(--color-surface-bg);
+      color: var(--color-text);
+    }
     @media (max-width: 1180px) {
       .page.demo-page {
         max-width: 1220px;
@@ -253,6 +282,9 @@
       .demo-hero-actions {
         grid-template-columns: 1fr;
       }
+      .demo-email-form {
+        align-items: stretch;
+      }
       .demo-table-wide {
         min-width: 540px;
       }
@@ -265,6 +297,13 @@
   {% set visible_holders = holders|length %}
   {% set visible_receipts = receipts|length %}
   {% set visible_audit_rows = audit_rows|length %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
   <div class="demo-hero">
     <div class="demo-hero-copy">
       <p class="demo-kicker">Read-Only Demo</p>
@@ -276,6 +315,21 @@
       <p class="demo-hero-support">Sample-only walkthrough. Read the story, check the proof, then enter the real operator flow.</p>
     </div>
   </div>
+
+  {% if demo_send_enabled %}
+    <section class="demo-email-panel" aria-label="Demo sample receipt">
+      <div>
+        <p class="demo-kicker">Optional Demo Action</p>
+        <p><strong>Send me a sample receipt</strong></p>
+        <p class="muted">Demo only. No real data. Session limit: {{ demo_send_limit }} sends.</p>
+      </div>
+      <form class="demo-email-form" method="post" action="{{ url_for('demo_send_sample_receipt') }}">
+        <input type="hidden" name="token" value="{{ demo_token }}" />
+        <input type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+        <button type="submit">Send me a sample receipt</button>
+      </form>
+    </section>
+  {% endif %}
 
   <section class="demo-story" aria-label="Demo story">
     <div class="card demo-story-card problem">
