@@ -192,7 +192,7 @@
   {% set overview = dashboard.summary.overview %}
   {% set exception_total = overview.attention_count %}
   <div class="topbar">
-    <p class="muted subtitle">Current status first. Actions and drilldowns stay below.</p>
+    <p class="muted subtitle">Problems first. System state stays below.</p>
   </div>
 
   <section class="card status-overview" aria-label="Current status overview">
@@ -200,33 +200,36 @@
       <div>
         <p class="status-kicker">At a Glance</p>
         {% if exception_total == 0 %}
-          <h2 class="status-title">No immediate problems</h2>
+          <h2 class="status-title">No current problems</h2>
         {% else %}
           <h2 class="status-title">{{ exception_total }} items need attention</h2>
         {% endif %}
       </div>
       <p class="status-note">
         {% if exception_total == 0 %}
-          Storage, custody, and slot counts are stable right now.
+          Custody, storage, and slot checks are clear right now.
         {% else %}
-          Review problems first, then confirm custody load and available storage space.
+          Review problems first. Then confirm custody load and storage space.
         {% endif %}
       </p>
     </div>
     <div class="status-strip">
       <div class="status-pill priority">
-        <strong>{{ overview.attention_count }}</strong>
-        <span>Problems to review</span>
-        <p class="actions-note" style="margin-top: 0.45rem;">
-          {% if exception_total == 0 %}
-            Start here to confirm there is nothing blocking follow-up work.
-          {% else %}
-            Start here before reviewing custody load or storage capacity.
-          {% endif %}
-        </p>
-        <div class="priority-action">
-          <a class="chip" href="#problems-panel">Review problems</a>
-        </div>
+        {% if exception_total == 0 %}
+          <strong>0</strong>
+          <span>No current problems</span>
+          <p class="actions-note" style="margin-top: 0.45rem;">Nothing needs immediate review.</p>
+          <div class="priority-action">
+            <a class="chip secondary" href="{{ url_for('human_report') }}">Open current status report</a>
+          </div>
+        {% else %}
+          <strong>{{ overview.attention_count }}</strong>
+          <span>Problems to review</span>
+          <p class="actions-note" style="margin-top: 0.45rem;">Start here before reviewing custody load or storage capacity.</p>
+          <div class="priority-action">
+            <a class="chip" href="#problems-panel">Review problems</a>
+          </div>
+        {% endif %}
       </div>
       <div class="status-pill">
         <strong>{{ overview.total_assets }}</strong>
@@ -316,7 +319,7 @@
   <h2 class="section-title">Snapshots</h2>
   <p class="muted">Immediate reference for holder accountability, available space, and problems that need attention.</p>
 
-    <details class="collapsible" id="problems-panel">
+  <details class="collapsible">
     <summary>
       <span>Outstanding Holders Summary</span>
       <span class="summary-hint">
@@ -460,12 +463,12 @@
     </div>
   </details>
 
-  <details class="collapsible">
+  <details class="collapsible" id="problems-panel" {% if exception_total > 0 %}open{% endif %}>
     <summary>
       <span>Problems</span>
       <span class="summary-hint">
         {% if dashboard.summary.exceptions.unslotted_assets == 0 and dashboard.summary.exceptions.in_custody_over_threshold == 0 and dashboard.summary.exceptions.slot_conflicts == 0 %}
-          No exceptions detected.
+          No current problems.
         {% else %}
           {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
         {% endif %}
