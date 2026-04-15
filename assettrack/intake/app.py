@@ -4668,7 +4668,7 @@ def _send_receipt_email(receipt: dict[str, object]) -> list[str]:
         message["Cc"] = ", ".join(cc_recipients)
     message.set_content(_build_receipt_email_body(receipt))
     message.add_attachment(
-        _build_receipt_pdf(receipt),
+        _build_receipt_pdf(receipt, for_email=True),
         maintype="application",
         subtype="pdf",
         filename=_receipt_pdf_download_name(receipt),
@@ -4754,11 +4754,31 @@ def _receipt_pdf_location_type_label(value: object) -> str:
     return str(value or "").strip().replace("_", " ")
 
 
-def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
+def _build_receipt_pdf(receipt: dict[str, object], *, for_email: bool = False) -> bytes:
     styles = getSampleStyleSheet()
     body = styles["BodyText"]
     heading = styles["Heading2"]
     title = styles["Title"]
+    hero = ParagraphStyle(
+        "ReceiptPdfHero",
+        parent=styles["Heading1"],
+        fontSize=16,
+        leading=19,
+        spaceAfter=4,
+    )
+    status = ParagraphStyle(
+        "ReceiptPdfStatus",
+        parent=body,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#335c81"),
+        spaceAfter=4,
+    )
+    supporting = ParagraphStyle(
+        "ReceiptPdfSupporting",
+        parent=body,
+        textColor=colors.HexColor("#4f5d6b"),
+        spaceAfter=4,
+    )
     table_body = ParagraphStyle(
         "ReceiptPdfTableBody",
         parent=body,
@@ -4815,6 +4835,53 @@ def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
 
     typed_name = _receipt_pdf_ack_name(receipt)
     location_summary = _receipt_pdf_location_summary(receipt)
+    receipt_type_label = _receipt_type_label(receipt_type)
+    asset_count = sum(1 for asset in receipt.get("assets", []) if isinstance(asset, dict))
+    asset_count_label = f"{asset_count} asset" if asset_count == 1 else f"{asset_count} assets"
+    action_phrase = "issued to"
+    if receipt_type == "RETURN":
+        action_phrase = "returned from"
+    elif receipt_type not in {"ISSUE", "RETURN"}:
+        action_phrase = "recorded for"
+
+    delivery = receipt.get("delivery")
+    delivery_state = ""
+    delivery_error = ""
+    if isinstance(delivery, dict):
+        delivery_state = str(delivery.get("state") or "").strip().lower()
+        delivery_error = str(delivery.get("last_error") or "").strip()
+
+    if for_email:
+        status_text = "Receipt attached for your records."
+    elif delivery_state == "failed":
+        status_text = "Receipt email failed. Resend recommended."
+    elif delivery_state == "pending":
+        status_text = "Receipt email queued. No action needed unless delivery stalls."
+    else:
+        status_text = "No action needed."
+
+    recorded_at = _receipt_display_timestamp(ack_timestamp or receipt.get("commit_at"))
+    summary_rows = [
+        ["Action", receipt_type_label],
+        ["Assets in this receipt", str(asset_count)],
+        ["Recorded at", recorded_at or "Unknown"],
+        ["Holder", typed_name],
+        ["Organization", organization_name],
+        ["Location", location_summary],
+    ]
+    audit_rows = [
+        ["Receipt ID", str(receipt.get("id") or "Unknown")],
+        ["Receipt key", str(receipt.get("receipt_key") or "Unknown")],
+        ["Acknowledgment", _receipt_acknowledgment_statement(receipt_type)],
+        ["Typed name", typed_name],
+        ["Initials", _receipt_pdf_initials(typed_name)],
+    ]
+    recipient_email = str(receipt.get("recipient_email") or "").strip().lower()
+    if recipient_email:
+        audit_rows.append(["Recipient email", recipient_email])
+    if delivery_error:
+        audit_rows.append(["Delivery issue", delivery_error])
+
     asset_rows: list[list[object]] = []
 
     for asset in receipt.get("assets", []):
@@ -4851,27 +4918,46 @@ def _build_receipt_pdf(receipt: dict[str, object]) -> bytes:
     )
 
     story: list[object] = [
-        Paragraph("Custody Acknowledgment Receipt", title),
+        Paragraph(receipt_type_label, title),
         Spacer(1, 0.1 * inch),
-        Paragraph(f"Receipt ID: {_text(receipt.get('id'))}", body),
-        Paragraph(f"Receipt key: {_text(receipt.get('receipt_key'))}", body),
-        Paragraph(f"Receipt type: {_text(receipt_type)}", body),
-        Paragraph(f"Holder: {_text(typed_name)}", body),
-        Paragraph(f"Organization: {_text(organization_name)}", body),
-        Paragraph(f"Location: {_text(location_summary)}", body),
-        Paragraph(f"Acknowledgment: {_text(_receipt_acknowledgment_statement(receipt_type))}", body),
-        Paragraph(f"Typed name: {_text(typed_name)}", body),
-        Paragraph(f"Initials: {_text(_receipt_pdf_initials(typed_name))}", body),
-        Paragraph(f"Timestamp: {_text(ack_timestamp or 'Unknown')}", body),
+        Paragraph(f"{_text(asset_count_label)} {action_phrase} {_text(typed_name)}", hero),
+        Paragraph(_text(status_text), status),
+        Paragraph(
+            _text(" · ".join(part for part in [recorded_at or "Unknown", organization_name, location_summary] if part)),
+            supporting,
+        ),
+        Spacer(1, 0.08 * inch),
+        Paragraph("What Happened", heading),
+        Spacer(1, 0.05 * inch),
+        _render_table(
+            ["Question", "Answer"],
+            summary_rows,
+            [1.8 * inch, 5.2 * inch],
+        ),
+        Spacer(1, 0.16 * inch),
         Spacer(1, 0.18 * inch),
         Paragraph("Assets", heading),
         Spacer(1, 0.08 * inch),
         _render_table(
-            ["Asset Tag", "Equipment", "Serial", "Make / Model", "From", "To"],
+            ["Tag", "Type", "Serial", "Item", "From", "To"],
             asset_rows or [["No assets captured.", "", "", "", "", ""]],
             [1.15 * inch, 1.0 * inch, 1.25 * inch, 1.95 * inch, 0.95 * inch, 1.0 * inch],
         ),
     ]
+
+    if not for_email:
+        story.extend(
+            [
+                Spacer(1, 0.16 * inch),
+                Paragraph("Audit Details", heading),
+                Spacer(1, 0.05 * inch),
+                _render_table(
+                    ["Detail", "Recorded value"],
+                    audit_rows,
+                    [1.8 * inch, 5.2 * inch],
+                ),
+            ]
+        )
 
     def _invariant_canvas(*args, **kwargs):
         kwargs.setdefault("invariant", 1)

@@ -699,14 +699,21 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     assert expected_download_name in disposition
 
     pdf_text = _extract_pdf_text(response.data)
-    assert "Custody Acknowledgment Receipt" in pdf_text
-    assert f"Receipt ID: {receipt_id}" in pdf_text
-    assert "Receipt type: ISSUE" in pdf_text
-    assert "Holder: Issue Holder" in pdf_text
-    assert "Organization: Operations" in pdf_text
-    assert "Location: HQ North/210" in pdf_text
-    assert "Typed name: Issue Holder" in pdf_text
-    assert "Initials: IH" in pdf_text
+    assert "Issue Receipt" in pdf_text
+    assert "1 asset issued to Issue Holder" in pdf_text
+    assert "Receipt email queued. No action needed unless delivery stalls." in pdf_text
+    assert "What Happened" in pdf_text
+    assert "Action" in pdf_text
+    assert "Assets in this receipt" in pdf_text
+    assert "Organization" in pdf_text
+    assert "Operations" in pdf_text
+    assert "Location" in pdf_text
+    assert "HQ North/210" in pdf_text
+    assert "Audit Details" in pdf_text
+    assert "Receipt ID" in pdf_text
+    assert str(receipt_id) in pdf_text
+    assert "Typed name" in pdf_text
+    assert "Initials" in pdf_text
     assert "ISSUE-100" in pdf_text
     assert "Dell / Latitude (LAT-14)" in pdf_text
     assert "IN CUSTODY" in pdf_text
@@ -1041,10 +1048,26 @@ def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.Mon
         "id": 7,
         "receipt_key": "R-7",
         "display_title": "Issue Receipt",
+        "receipt_type": "ISSUE",
         "commit_at": "2026-01-01T00:00:00Z",
         "holder_display_name": "Issue Holder",
+        "holder_snapshot": {"name": "Issue Holder"},
+        "organization_snapshot": {"organization": "Operations"},
+        "location_context": {"building_room": "HQ North/210"},
         "recipient_email": "issue@example.org",
-        "assets": [{"asset_tag": "ISSUE-100"}],
+        "delivery": {"state": "pending", "last_error": "SMTP timeout"},
+        "assets": [
+            {
+                "asset_tag": "ISSUE-100",
+                "equipment_type": "Laptop",
+                "serial_number": "SN-ISSUE-100",
+                "manufacturer": "Dell",
+                "model": "Latitude",
+                "model_code": "LAT-14",
+                "from_location_type": "IN_CUSTODY",
+                "to_location_type": "IN_CUSTODY",
+            }
+        ],
     }
 
     captured: dict[str, object] = {}
@@ -1076,6 +1099,18 @@ def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.Mon
     assert isinstance(message, EmailMessage)
     assert message["To"] == "issue@example.org"
     assert message["Cc"] == "oversight@example.org"
+    attachments = list(message.iter_attachments())
+    assert len(attachments) == 1
+    pdf_text = _extract_pdf_text(attachments[0].get_payload(decode=True))
+    assert "Issue Receipt" in pdf_text
+    assert "Receipt attached for your records." in pdf_text
+    assert "ISSUE-100" in pdf_text
+    assert "Audit Details" not in pdf_text
+    assert "Receipt ID" not in pdf_text
+    assert "Receipt key" not in pdf_text
+    assert "Recipient email" not in pdf_text
+    assert "Delivery issue" not in pdf_text
+    assert "Receipt email queued. No action needed unless delivery stalls." not in pdf_text
 
 
 def test_send_receipt_email_omits_cc_when_config_is_blank(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1083,8 +1118,10 @@ def test_send_receipt_email_omits_cc_when_config_is_blank(monkeypatch: pytest.Mo
         "id": 8,
         "receipt_key": "R-8",
         "display_title": "Issue Receipt",
+        "receipt_type": "ISSUE",
         "commit_at": "2026-01-01T00:00:00Z",
         "holder_display_name": "Issue Holder",
+        "holder_snapshot": {"name": "Issue Holder"},
         "recipient_email": "issue@example.org",
         "assets": [{"asset_tag": "ISSUE-101"}],
     }
@@ -1173,8 +1210,9 @@ def test_return_receipt_pdf_lists_multiple_holders_when_batch_is_mixed(client_wi
 
     assert response.status_code == 200
     pdf_text = _extract_pdf_text(response.data)
-    assert "Receipt type: RETURN" in pdf_text
-    assert "Holder: Return Holder One, Return Holder Two" in pdf_text
-    assert "Location: HQ North/210, HQ North/211" in pdf_text
+    assert "Return Receipt" in pdf_text
+    assert "2 assets returned from Return Holder One, Return Holder Two" in pdf_text
+    assert "Location" in pdf_text
+    assert "HQ North/210, HQ North/211" in pdf_text
     assert "RETURN-200" in pdf_text
     assert "RETURN-201" in pdf_text
