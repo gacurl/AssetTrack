@@ -38,11 +38,20 @@
       margin: 0;
     }
     .demo-hero-copy h2 {
-      max-width: 12ch;
+      max-width: 16ch;
       font-size: clamp(2.1rem, 2.8vw, 3rem);
       line-height: 0.98;
       letter-spacing: -0.025em;
-      text-wrap: balance;
+    }
+    .demo-hero-line {
+      display: block;
+      white-space: nowrap;
+    }
+    .demo-hero-line.shift-2 {
+      margin-left: 1.7rem;
+    }
+    .demo-hero-line.shift-3 {
+      margin-left: 3.3rem;
     }
     .demo-kicker {
       margin: 0;
@@ -259,6 +268,12 @@
       background: var(--color-surface-bg);
       color: var(--color-text);
     }
+    .demo-email-privacy {
+      margin: -0.15rem 0 0 0;
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
     @media (max-width: 1180px) {
       .page.demo-page {
         max-width: 1220px;
@@ -278,6 +293,16 @@
       }
       .demo-hero {
         padding: 1.2rem;
+      }
+      .demo-hero-copy h2 {
+        max-width: none;
+      }
+      .demo-hero-line {
+        white-space: normal;
+      }
+      .demo-hero-line.shift-2,
+      .demo-hero-line.shift-3 {
+        margin-left: 0.45rem;
       }
       .demo-hero-actions {
         grid-template-columns: 1fr;
@@ -307,7 +332,11 @@
   <div class="demo-hero">
     <div class="demo-hero-copy">
       <p class="demo-kicker">Read-Only Demo</p>
-      <h2>Know where it is. Know who has it. Fix what’s wrong.</h2>
+      <h2>
+        <span class="demo-hero-line">Know where it is.</span>
+        <span class="demo-hero-line shift-2">Know who has it.</span>
+        <span class="demo-hero-line shift-3">Fix what’s wrong.</span>
+      </h2>
       <p class="demo-standfirst">Sample data only. No live records. No write access.</p>
     </div>
     <div class="demo-hero-actions">
@@ -328,6 +357,7 @@
         <input type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
         <button type="submit">Send me a sample receipt</button>
       </form>
+      <p class="demo-email-privacy">Demo only. No real data. Email is not stored.</p>
     </section>
   {% endif %}
 
