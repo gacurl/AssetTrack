@@ -10,6 +10,23 @@
     input[type="text"] { width: 100%; max-width: 520px; box-sizing: border-box; padding: 0.6rem; font-size: 1rem; }
     button { margin-left: 0.25rem; }
     th, td { border-bottom: 1px solid #eee; }
+    .selected-holder-name {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .selected-holder-subtle {
+      margin: 0.22rem 0 0 0;
+      color: var(--color-text-muted);
+    }
+    .selected-holder-meta {
+      display: flex;
+      gap: 0.45rem 0.8rem;
+      flex-wrap: wrap;
+      margin-top: 0.65rem;
+      color: var(--color-text-muted);
+      font-size: 0.94rem;
+    }
   </style>
 {% endblock %}
 
@@ -55,16 +72,25 @@
   <div class="card">
     <h2>Selected Holder</h2>
     {% if selected_holder %}
-      <p>
-        <strong>Type:</strong> {{ holder_display_type(selected_holder) }}<br />
-        <strong>Person or group:</strong> {{ holder_display_name(selected_holder) }}<br />
-        <strong>Organization:</strong> {{ selected_holder["organization"] or "" }}<br />
-        <strong>Identifier:</strong> {{ selected_holder["identifier"] or "" }}<br />
-        <strong>Email:</strong> {{ selected_holder["email"] or "" }}
-      </p>
-      <form method="post" action="{{ url_for('holders_clear') }}">
-        <button type="submit">Clear selection</button>
-      </form>
+      <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Current selection</p>
+      <p class="selected-holder-name">{{ holder_display_name(selected_holder) }}</p>
+      {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+        <p class="selected-holder-subtle">{{ selected_holder["organization"] }}</p>
+      {% endif %}
+      <div class="selected-holder-meta" aria-label="Selected holder details">
+        <span>{{ holder_display_type(selected_holder) }}</span>
+        {% if selected_holder["identifier"] %}
+          <span>ID {{ selected_holder["identifier"] }}</span>
+        {% endif %}
+        {% if selected_holder["email"] %}
+          <span>{{ selected_holder["email"] }}</span>
+        {% endif %}
+      </div>
+      <div class="actions" style="margin-top: 0.75rem;">
+        <form method="post" action="{{ url_for('holders_clear') }}">
+          <button type="submit">Clear selection</button>
+        </form>
+      </div>
     {% else %}
       <p>No holder selected.</p>
     {% endif %}
