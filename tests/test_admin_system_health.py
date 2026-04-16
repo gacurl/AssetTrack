@@ -453,12 +453,17 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     response = client_with_temp_db.get("/report")
 
     assert response.status_code == 200
-    assert b"What Matters Now" in response.data
+    assert b"Use Current State to Decide the Next Step" in response.data
+    assert b"This page shows the current custody and storage picture." in response.data
     assert b"Report Scope" not in response.data
     assert b"Review holders with assets out" in response.data
     assert b"Check case space" in response.data
     assert b"Look up an asset" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
+    assert response.data.count(b'href="/assets/search"') >= 2
+    assert b'href="/dashboard/cases"' in response.data
+    assert b'href="/dashboard/holders"' in response.data
+    assert b'href="/receipts"' in response.data
     assert b' href="/assets/search?asset_tag=AT-100"' in response.data
     assert b' href="/holders/1"' in response.data
     assert b' href="/dashboard/cases/CASE-1"' in response.data
