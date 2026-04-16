@@ -75,4 +75,4 @@ legacy/
 
 # Legacy documentation archive (intentionally tracked)
 !docs/legacy/
-!docs/legacy/**
+!docs/legacy/**.codex/
