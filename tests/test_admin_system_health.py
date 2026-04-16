@@ -460,13 +460,119 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Check case space" in response.data
     assert b"Look up an asset" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
-    assert response.data.count(b'href="/assets/search"') >= 2
-    assert b'href="/dashboard/cases"' in response.data
-    assert b'href="/dashboard/holders"' in response.data
-    assert b'href="/receipts"' in response.data
-    assert b' href="/assets/search?asset_tag=AT-100"' in response.data
-    assert b' href="/holders/1"' in response.data
-    assert b' href="/dashboard/cases/CASE-1"' in response.data
+    assert response.data.count(b'href="/assets/search?return_to=/report"') >= 2
+    assert b'href="/dashboard/cases?return_to=/report"' in response.data
+    assert b'href="/dashboard/holders?return_to=/report"' in response.data
+    assert b'href="/receipts?return_to=/report"' in response.data
+    assert b' href="/assets/search?asset_tag=AT-100&amp;return_to=/report"' in response.data
+    assert b' href="/holders/1?return_to=/report"' in response.data
+    assert b' href="/dashboard/cases/CASE-1?return_to=/report"' in response.data
+
+
+def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-report-return", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
+        VALUES (1, 'PERSON', 'Return Holder', 'RET-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES (10, 'CASE-RETURN', 1, 'RET-100');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES (
+            'RET-100',
+            'SN-RET-100',
+            'Dell',
+            'laptop',
+            'HQ',
+            '100',
+            'Latitude',
+            'LAT',
+            NULL,
+            'HQ/100',
+            'issued_to',
+            'accountable',
+            'serviceable',
+            '2026-01-01',
+            '2026-01-01T00:00:00Z',
+            'IN_CUSTODY',
+            1,
+            10
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT 10, id, '2026-01-01T00:00:00Z'
+        FROM assets
+        WHERE asset_tag = 'RET-100';
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100&return_to=/report")
+    assert asset_response.status_code == 200
+    assert b'href="/report"' in asset_response.data
+    assert b"Back to Report" in asset_response.data
+
+    holder_response = client_with_temp_db.get("/holders/1?return_to=/report")
+    assert holder_response.status_code == 200
+    assert b"Back to Report" in holder_response.data
+
+    receipts_response = client_with_temp_db.get("/receipts?return_to=/report")
+    assert receipts_response.status_code == 200
+    assert b"Back to Report" in receipts_response.data
+    assert b"Open Current Status Report" not in receipts_response.data
+
+    cases_response = client_with_temp_db.get("/dashboard/cases?return_to=/report")
+    assert cases_response.status_code == 200
+    assert b"Back to Report" in cases_response.data
+    assert b'href="/dashboard/cases/CASE-RETURN?return_to=/report"' in cases_response.data
+
+    case_detail_response = client_with_temp_db.get("/dashboard/cases/CASE-RETURN?return_to=/report")
+    assert case_detail_response.status_code == 200
+    assert b"Back to Report" in case_detail_response.data
+    assert b'href="/dashboard/cases?return_to=/report"' in case_detail_response.data
+
+    direct_asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100")
+    assert direct_asset_response.status_code == 200
+    assert b"Back to Report" not in direct_asset_response.data
+
+    unsafe_asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100&return_to=//evil.example")
+    assert unsafe_asset_response.status_code == 200
+    assert b"Back to Report" not in unsafe_asset_response.data
 
 
 def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:

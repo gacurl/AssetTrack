@@ -13,6 +13,9 @@
 
 {% block content %}
   <nav class="actions" aria-label="Contextual navigation">
+    {% if return_to == url_for('human_report') %}
+      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+    {% endif %}
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </nav>
 
@@ -29,7 +32,7 @@
       <tbody>
         {% for row in holders %}
           <tr>
-            <td><a href="{{ url_for('dashboard_holder_detail', holder_id=row.holder_id) }}">{{ row.holder_name }}</a></td>
+            <td><a href="{{ url_for('dashboard_holder_detail', holder_id=row.holder_id, return_to=return_to) }}">{{ row.holder_name }}</a></td>
             <td>{{ row.organization or "" }}</td>
             <td>{{ row.asset_count }}</td>
           </tr>

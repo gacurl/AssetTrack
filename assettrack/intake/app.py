@@ -3650,6 +3650,7 @@ def dashboard():
 @app.get("/dashboard/holders")
 @require_login
 def dashboard_holders():
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     conn = get_connection()
     try:
         holders = list_holders_in_custody(conn)
@@ -3659,12 +3660,14 @@ def dashboard_holders():
     return render_template(
         "dashboard_holders.html",
         holders=holders,
+        return_to=return_to,
     )
 
 
 @app.get("/dashboard/holders/<int:holder_id>")
 @require_login
 def dashboard_holder_detail(holder_id: int):
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     conn = get_connection()
     try:
         detail = get_holder_custody_detail(conn, holder_id)
@@ -3677,12 +3680,14 @@ def dashboard_holder_detail(holder_id: int):
     return render_template(
         "dashboard_holder_detail.html",
         holder=detail,
+        return_to=return_to,
     )
 
 
 @app.get("/dashboard/cases")
 @require_login
 def dashboard_cases():
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     conn = get_connection()
     try:
         cases = list_case_summaries(conn)
@@ -3692,12 +3697,14 @@ def dashboard_cases():
     return render_template(
         "dashboard_cases.html",
         cases=cases,
+        return_to=return_to,
     )
 
 
 @app.get("/dashboard/cases/<case_name>")
 @require_login
 def dashboard_case_detail(case_name: str):
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     conn = get_connection()
     try:
         detail = get_case_slot_detail(conn, case_name)
@@ -3710,6 +3717,7 @@ def dashboard_case_detail(case_name: str):
     return render_template(
         "dashboard_case_detail.html",
         case_detail=detail,
+        return_to=return_to,
     )
 
 
@@ -3721,6 +3729,7 @@ def asset_search():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     form_state = {
         "asset_tag": (request.args.get("asset_tag") or "").strip().upper(),
         "serial_number": (request.args.get("serial_number") or "").strip(),
@@ -3746,6 +3755,7 @@ def asset_search():
         assets=assets,
         error_message=error_message,
         lookup_mode=lookup_mode,
+        return_to=return_to,
     )
 
 
@@ -4396,7 +4406,7 @@ def holders_search():
         return redirect(url_for("intake"))
 
     query = (request.args.get("q") or "").strip()
-    return_to = (request.args.get("return_to") or "").strip()
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     results = search_holders(query) if query else list_holders()
 
     return render_template(
@@ -4422,7 +4432,7 @@ def holder_detail(holder_id: int):
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
-    return_to = (request.args.get("return_to") or "").strip()
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     holder = get_holder(holder_id)
     if holder is None:
         abort(404)
@@ -5253,6 +5263,7 @@ def receipts_list():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
     asset_tag = (request.args.get("asset_tag") or "").strip()
     holder_name = (request.args.get("holder_name") or "").strip()
     building_room = (request.args.get("building_room") or "").strip()
@@ -5350,6 +5361,7 @@ def receipts_list():
             "holder_name": holder_name,
             "building_room": building_room,
         },
+        return_to=return_to,
     )
 
 
