@@ -30,7 +30,9 @@
     .demo-hero-copy {
       display: grid;
       gap: 0.7rem;
-      max-width: 54rem;
+      width: min(100%, 54rem);
+      justify-items: start;
+      text-align: left;
     }
     .demo-hero-copy h2,
     .demo-story-card h2,
@@ -38,7 +40,9 @@
       margin: 0;
     }
     .demo-hero-copy h2 {
-      max-width: 16ch;
+      width: min(100%, 34rem);
+      max-width: 34rem;
+      margin-inline: auto;
       font-size: clamp(2.1rem, 2.8vw, 3rem);
       line-height: 0.98;
       letter-spacing: -0.025em;
@@ -48,13 +52,15 @@
       white-space: nowrap;
     }
     .demo-hero-line.shift-2 {
-      margin-left: 1.7rem;
+      margin-left: 8.25ch;
     }
     .demo-hero-line.shift-3 {
-      margin-left: 3.3rem;
+      margin-left: 15.75ch;
     }
     .demo-kicker {
       margin: 0;
+      justify-self: start;
+      text-align: left;
       font-size: 0.82rem;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -67,19 +73,20 @@
       margin: 0;
     }
     .demo-hero-copy .demo-standfirst {
+      justify-self: start;
+      text-align: left;
       font-size: 1rem;
       line-height: 1.5;
       color: var(--color-text-muted);
-      max-width: 34rem;
     }
     .demo-hero-actions {
-      display: grid;
-      grid-template-columns: auto minmax(18rem, 1fr);
-      justify-content: flex-start;
+      display: flex;
+      flex-wrap: wrap;
+      justify-self: start;
       align-items: center;
+      text-align: left;
       gap: 0.85rem 1.2rem;
       margin-top: 0.15rem;
-      max-width: 54rem;
     }
     .demo-hero-actions .chip {
       padding: 0.7rem 1rem;
@@ -295,17 +302,18 @@
         padding: 1.2rem;
       }
       .demo-hero-copy h2 {
-        max-width: none;
+        width: 100%;
       }
       .demo-hero-line {
         white-space: normal;
       }
       .demo-hero-line.shift-2,
       .demo-hero-line.shift-3 {
-        margin-left: 0.45rem;
+        margin-left: 0;
       }
       .demo-hero-actions {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
       }
       .demo-email-form {
         align-items: stretch;
