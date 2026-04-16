@@ -28,6 +28,7 @@ ENV/
 .vscode/
 .idea/
 .local/
+.codex/
 
 # ----------------------------
 # Databases (NEVER COMMIT)
