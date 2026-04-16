@@ -180,13 +180,21 @@
 
 {% block content %}
   <nav class="actions nav-row" aria-label="Receipt navigation">
+    {% if return_to == url_for('human_report') %}
+      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+    {% endif %}
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-    <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
+    {% if return_to != url_for('human_report') %}
+      <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
+    {% endif %}
   </nav>
 
   <section class="card">
     <h2>Search Receipts</h2>
     <form method="get" action="{{ url_for('receipts_list') }}">
+      {% if return_to %}
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
       <div class="filters">
         <div class="row">
           <label for="asset_tag">Asset Tag</label>
@@ -204,7 +212,11 @@
           <div class="filter-actions">
             <button type="submit">Search</button>
             {% if filters.asset_tag or filters.holder_name or filters.building_room %}
-              <a class="nav-link" href="{{ url_for('receipts_list') }}">Clear search</a>
+              {% if return_to %}
+                <a class="nav-link" href="{{ url_for('receipts_list', return_to=return_to) }}">Clear search</a>
+              {% else %}
+                <a class="nav-link" href="{{ url_for('receipts_list') }}">Clear search</a>
+              {% endif %}
             {% endif %}
           </div>
         </div>

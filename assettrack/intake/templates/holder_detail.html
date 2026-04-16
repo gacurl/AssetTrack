@@ -6,6 +6,9 @@
 
 {% block content %}
   <nav class="actions" aria-label="Holder navigation">
+    {% if return_to == url_for('human_report') %}
+      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+    {% endif %}
     <a class="nav-link" href="{{ url_for('holders_search', return_to=return_to) }}">Back to Holders</a>
     {% if return_to %}
       <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id, return_to=return_to) }}">Edit Holder</a>

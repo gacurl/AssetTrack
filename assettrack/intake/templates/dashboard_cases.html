@@ -15,6 +15,9 @@
 
 {% block content %}
   <nav class="actions" aria-label="Contextual navigation">
+    {% if return_to == url_for('human_report') %}
+      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+    {% endif %}
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </nav>
 
@@ -35,7 +38,7 @@
         {% for row in cases %}
           {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
           <tr>
-            <td><a href="{{ url_for('dashboard_case_detail', case_name=row.case_name) }}">{{ row.case_name }}</a></td>
+            <td><a href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=return_to) }}">{{ row.case_name }}</a></td>
             <td class="status-cell">
               <span class="status-badge">
                 <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>

@@ -158,6 +158,7 @@
 {% endblock %}
 
 {% block content %}
+  {% set report_return_to = url_for('human_report') %}
   <div class="report-actions nav-row">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
@@ -174,28 +175,28 @@
       </p>
     </div>
     <div class="report-actions nav-row report-priority-links">
-      <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Review holders with assets out</a>
-      <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Check case space</a>
-      <a class="nav-link" href="{{ url_for('asset_search') }}">Look up an asset</a>
-      <a class="nav-link" href="{{ url_for('receipts_list') }}">Open receipts</a>
+      <a class="nav-link" href="{{ url_for('dashboard_holders', return_to=report_return_to) }}">Review holders with assets out</a>
+      <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=report_return_to) }}">Check case space</a>
+      <a class="nav-link" href="{{ url_for('asset_search', return_to=report_return_to) }}">Look up an asset</a>
+      <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Open receipts</a>
     </div>
     <div class="report-grid">
-      <a class="report-stat report-stat-link" href="{{ url_for('asset_search') }}">
+      <a class="report-stat report-stat-link" href="{{ url_for('asset_search', return_to=report_return_to) }}">
         Total assets
         <strong>{{ asset_summary.total_assets }}</strong>
         <span class="nav-link report-stat-action">Search asset records</span>
       </a>
-      <a class="report-stat report-stat-link" href="{{ url_for('dashboard_cases') }}">
+      <a class="report-stat report-stat-link" href="{{ url_for('dashboard_cases', return_to=report_return_to) }}">
         In storage
         <strong>{{ asset_summary.storage_assets }}</strong>
         <span class="nav-link report-stat-action">Review case space</span>
       </a>
-      <a class="report-stat report-stat-link" href="{{ url_for('dashboard_holders') }}">
+      <a class="report-stat report-stat-link" href="{{ url_for('dashboard_holders', return_to=report_return_to) }}">
         In custody
         <strong>{{ asset_summary.in_custody_assets }}</strong>
         <span class="nav-link report-stat-action">Open holder follow-up</span>
       </a>
-      <a class="report-stat report-stat-link" href="{{ url_for('receipts_list') }}">
+      <a class="report-stat report-stat-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">
         Disposed
         <strong>{{ asset_summary.disposed_assets }}</strong>
         <span class="nav-link report-stat-action">Review receipts</span>
@@ -224,14 +225,14 @@
         <tbody>
           {% for row in assets %}
             <tr>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.equipment_type or "" }}</td>
               <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
               <td>{{ row.location_type or "" }}</td>
               <td>
                 {% if row.holder_name %}
                   {% if row.holder_detail_id %}
-                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id) }}">{{ row.holder_name }}</a>
+                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                   {% else %}
                     {{ row.holder_name }}
                   {% endif %}
@@ -240,7 +241,7 @@
               </td>
               <td>
                 {% if row.home_case_name %}
-                  <a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.home_case_name) }}">{{ row.home_slot }}</a>
+                  <a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.home_case_name, return_to=report_return_to) }}">{{ row.home_slot }}</a>
                 {% else %}
                   {{ row.home_slot or "" }}
                 {% endif %}
@@ -278,7 +279,7 @@
             <tr>
               <td><code>{{ row.id }}</code></td>
               <td>{{ row.holder_type }}</td>
-              <td><a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.id) }}">{{ row.name }}</a></td>
+              <td><a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.id, return_to=report_return_to) }}">{{ row.name }}</a></td>
               <td>{{ row.organization }}</td>
               <td>{{ row.identifier }}</td>
               <td>{{ row.assets_in_custody }}</td>
@@ -363,13 +364,13 @@
             <tr>
               <td>
                 {% if row.holder_detail_id %}
-                  <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id) }}">{{ row.holder_name }}</a>
+                  <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                 {% else %}
                   {{ row.holder_name }}
                 {% endif %}
               </td>
               <td>{{ row.organization }}</td>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.equipment_type }}</td>
               <td>{{ row.current_location }}</td>
             </tr>
@@ -404,12 +405,12 @@
             <tr>
               <td><code>{{ row.id }}</code></td>
               <td>{{ row.event_date }}</td>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.event_type }}</td>
               <td>
                 {% if row.holder_name %}
                   {% if row.holder_detail_id %}
-                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id) }}">{{ row.holder_name }}</a>
+                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                   {% else %}
                     {{ row.holder_name }}
                   {% endif %}
@@ -444,7 +445,7 @@
         <tbody>
           {% for row in cases %}
             <tr>
-              <td><a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name) }}">{{ row.case_name }}</a></td>
+              <td><a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=report_return_to) }}">{{ row.case_name }}</a></td>
               <td>{{ row.total_slots }}</td>
               <td>{{ row.occupied_slots }}</td>
             </tr>

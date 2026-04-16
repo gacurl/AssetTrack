@@ -46,6 +46,12 @@
 {% endblock %}
 
 {% block content %}
+  {% if return_to == url_for('human_report') %}
+    <nav class="actions nav-row" aria-label="Asset search navigation">
+      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+    </nav>
+  {% endif %}
+
   {% if error_message %}
     <div class="flash error">{{ error_message }}</div>
   {% endif %}
@@ -54,6 +60,9 @@
     <h2>Find Asset</h2>
     <p class="muted">Search by asset tag or serial number. If both are entered, asset tag is used first.</p>
     <form class="asset-search-form" method="get" action="{{ url_for('asset_search') }}">
+      {% if return_to %}
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
       <div class="search-grid">
         <div class="row form-group search-field">
           <label class="form-label" for="asset_tag"><strong>Asset tag</strong></label>
@@ -67,7 +76,11 @@
       <div class="search-actions">
         <button type="submit">Search</button>
         {% if form.asset_tag or form.serial_number %}
-          <a class="search-clear" href="{{ url_for('asset_search') }}">Clear</a>
+          {% if return_to %}
+            <a class="search-clear" href="{{ url_for('asset_search', return_to=return_to) }}">Clear</a>
+          {% else %}
+            <a class="search-clear" href="{{ url_for('asset_search') }}">Clear</a>
+          {% endif %}
         {% endif %}
       </div>
     </form>
