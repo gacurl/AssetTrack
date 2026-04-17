@@ -331,6 +331,9 @@ def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/admin/assets/new")
     assert response.status_code == 403
 
+    retire_response = client_with_temp_db.get("/admin/assets/retire")
+    assert retire_response.status_code == 403
+
     post_response = client_with_temp_db.post(
         "/admin/assets/new",
         data={
@@ -363,6 +366,8 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     assert response.status_code == 200
     edit_response = client_with_temp_db.get("/admin/assets/edit")
     assert edit_response.status_code == 200
+    retire_response = client_with_temp_db.get("/admin/assets/retire")
+    assert retire_response.status_code == 200
     reference_data_response = client_with_temp_db.get("/admin/reference-data")
     assert reference_data_response.status_code == 200
 
