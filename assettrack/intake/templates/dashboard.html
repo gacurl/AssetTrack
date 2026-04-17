@@ -22,12 +22,16 @@
       border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
       background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-accent-soft) 100%);
     }
+    .status-overview.calm {
+      border-color: var(--color-surface);
+      background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-surface-soft) 100%);
+    }
     .status-overview summary {
       cursor: pointer;
       list-style: none;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      align-items: flex-start;
+      justify-content: flex-start;
       gap: 0.75rem;
       padding: 1rem;
     }
@@ -52,8 +56,8 @@
     .status-lead {
       display: flex;
       flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
+      align-items: flex-start;
+      justify-content: flex-start;
       gap: 0.5rem 1rem;
     }
     .status-kicker {
@@ -73,6 +77,7 @@
       margin: 0;
       color: var(--color-text-muted);
       max-width: 44rem;
+      flex-basis: 100%;
     }
     .status-strip {
       display: grid;
@@ -108,6 +113,11 @@
       background: var(--color-surface-bg);
       box-shadow: 0 10px 24px rgba(29, 53, 87, 0.08);
     }
+    .status-pill.priority.calm {
+      border-color: var(--color-surface);
+      background: var(--color-panel-bg);
+      box-shadow: none;
+    }
     .status-pill.priority strong {
       font-size: 2rem;
     }
@@ -120,6 +130,11 @@
     .priority-action .chip {
       padding: 0.65rem 1rem;
       font-size: 1rem;
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+    }
+    .priority-action .chip.secondary {
       background: var(--color-primary);
       border-color: var(--color-primary);
       color: #fff;
@@ -218,13 +233,13 @@
     <p class="muted subtitle">Problems first. System state stays below.</p>
   </div>
 
-  <details class="card status-overview" id="at-a-glance-panel" open>
+  <details class="card status-overview{% if exception_total == 0 %} calm{% endif %}" id="at-a-glance-panel" {% if exception_total > 0 %}open{% endif %}>
     <summary aria-label="At a Glance dashboard summary">
       <div class="status-lead">
         <div>
           <p class="status-kicker">At a Glance</p>
           {% if exception_total == 0 %}
-            <h2 class="status-title">No current problems</h2>
+            <h2 class="status-title">No problems</h2>
           {% else %}
             <h2 class="status-title">{{ exception_total }} items need attention</h2>
           {% endif %}
@@ -240,10 +255,10 @@
     </summary>
     <div class="status-overview-body">
       <div class="status-strip">
-        <div class="status-pill priority">
+        <div class="status-pill priority{% if exception_total == 0 %} calm{% endif %}">
           {% if exception_total == 0 %}
             <strong>0</strong>
-            <span>No current problems</span>
+            <span>No problems</span>
             <p class="actions-note" style="margin-top: 0.45rem;">Nothing needs immediate review.</p>
             <div class="priority-action">
               <a class="chip secondary" href="{{ url_for('human_report') }}">Open current status report</a>
