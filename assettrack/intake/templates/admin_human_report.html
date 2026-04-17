@@ -34,6 +34,22 @@
     .table-wrap {
       overflow-x: auto;
     }
+    .state-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.24rem 0.58rem;
+      border-radius: 999px;
+      font-weight: 700;
+      line-height: 1.2;
+      background: var(--color-surface-soft);
+      color: var(--color-text);
+    }
+    .state-badge.terminal {
+      background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-bg));
+      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-surface));
+      color: var(--color-danger);
+      letter-spacing: 0.01em;
+    }
     @media print {
       .page-tools,
       .top-nav,
@@ -92,7 +108,9 @@
               <td><code>{{ row.asset_tag }}</code></td>
               <td>{{ row.equipment_type or "" }}</td>
               <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
-              <td>{{ row.location_type or "" }}</td>
+              <td>
+                <span class="state-badge{% if asset_is_terminal(row.location_type) %} terminal{% endif %}">{{ asset_state_label(row.location_type) }}</span>
+              </td>
               <td>
                 {% if row.holder_name %}
                   {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}

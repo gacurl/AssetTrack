@@ -134,6 +134,8 @@ def inject_auth_user():
         "authenticated_user": user,
         "authenticated_role": None if user is None else user.get("role"),
         "case_status_summary": _case_status_summary,
+        "asset_state_label": _asset_state_label,
+        "asset_is_terminal": _is_terminal_location_type,
         "holder_display_name": _holder_display_name,
         "holder_display_type": _holder_display_type,
     }
@@ -785,7 +787,7 @@ def _asset_state_label(location_type: object) -> str:
     if normalized == "IN_CUSTODY":
         return "In custody"
     if normalized in TERMINAL_LOCATION_TYPES:
-        return "Retired / disposed"
+        return "RETIRED — Not in service"
     if not normalized:
         return "Unknown"
     return normalized.replace("_", " ").title()
@@ -1083,7 +1085,7 @@ def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], l
 
     location_type = _normalize_location_type(asset.get("location_type"))
     if _is_terminal_location_type(location_type):
-        return None, ["Asset is retired/disposed and cannot be edited."]
+        return None, [f"Asset is {_asset_state_label(location_type)} and cannot be edited."]
 
     current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset["asset_tag"]))
     home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
