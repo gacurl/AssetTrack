@@ -429,6 +429,50 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     )
     conn.execute(
         """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES (
+            'AT-OLD-1',
+            'SN-OLD-1',
+            'Dell',
+            'laptop',
+            'Report HQ',
+            '099',
+            'Latitude',
+            'LAT',
+            NULL,
+            'Report HQ/099',
+            'retired',
+            'accountable',
+            'unserviceable',
+            '2025-12-01',
+            '2026-01-01T00:00:00Z',
+            'DISPOSED',
+            NULL,
+            NULL
+        );
+        """
+    )
+    conn.execute(
+        """
         INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
         SELECT 10, id, '2026-01-01T00:00:00Z'
         FROM assets
@@ -456,11 +500,12 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
 
     assert response.status_code == 200
     assert b"Use Current State to Decide the Next Step" in response.data
-    assert b"This page shows the current custody and storage picture." in response.data
+    assert b"This page shows the active custody and storage picture first." in response.data
     assert b"Report Scope" not in response.data
     assert b"Review holders with assets out" in response.data
     assert b"Check case space" in response.data
     assert b"Look up an asset" in response.data
+    assert b"Include retired assets" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
     assert response.data.count(b'href="/assets/search?return_to=/report"') >= 2
     assert b'href="/dashboard/cases?return_to=/report"' in response.data
@@ -470,6 +515,11 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b' href="/holders/1?return_to=/report"' in response.data
     assert b' href="/dashboard/cases/CASE-1?return_to=/report"' in response.data
     assert b"Last 10 Events" in response.data
+    assert b"Active assets" in response.data
+    assert b"1 active records" in response.data
+    assert b"Retired hidden" in response.data
+    assert b"AT-OLD-1" not in response.data
+    assert b'<details class="report-section" open>' not in response.data
     assert b"Jan 2, 2026 12:00 AM" in response.data
     assert b"2026-01-02T00:00:00Z" not in response.data
 
@@ -713,11 +763,20 @@ def test_reports_mark_retired_assets_as_not_in_service(client_with_temp_db) -> N
     response = client_with_temp_db.get("/report")
 
     assert response.status_code == 200
-    assert b"AT-RET-1" in response.data
-    assert b"RETIRED \xe2\x80\x94 Not in service" in response.data
-    assert b"state-badge terminal" in response.data
+    assert b"AT-RET-1" not in response.data
+    assert b"RETIRED \xe2\x80\x94 Not in service" not in response.data
+    assert b"Include retired assets" in response.data
     assert b"In storage" in response.data
     assert b"Retired / disposed" not in response.data
+
+    full_response = client_with_temp_db.get("/report?include_retired=1")
+    assert full_response.status_code == 200
+    assert b"AT-RET-1" in full_response.data
+    assert b"RETIRED \xe2\x80\x94 Not in service" in full_response.data
+    assert b"state-badge terminal" in full_response.data
+    assert b"View active inventory only" in full_response.data
+    assert b"2 total records" in full_response.data
+    assert full_response.data.find(b"AT-LIVE-1") < full_response.data.find(b"AT-RET-1")
 
     admin_id = create_test_user(username="admin-report-retired", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
