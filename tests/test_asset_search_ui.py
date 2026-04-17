@@ -126,6 +126,16 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
 
+    def test_search_marks_retired_assets_with_clear_terminal_label(self) -> None:
+        self._insert_asset("AT-RET-1", serial_number="SER-RET-1", location_type="DISPOSED", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-RET-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"RETIRED \xe2\x80\x94 Not in service", response.data)
+        self.assertIn(b"state-badge terminal", response.data)
+        self.assertNotIn(b"Retired / disposed", response.data)
+
     def test_partial_asset_tag_search_returns_matching_assets(self) -> None:
         self._insert_holder(1, "Alex Holder", "Field Ops")
         self._insert_asset("AT-100", serial_number="SER-100", location_type="IN_CUSTODY", home_slot_id=None, current_holder_id=1)

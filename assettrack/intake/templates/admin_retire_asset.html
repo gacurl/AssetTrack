@@ -11,6 +11,22 @@
     textarea { min-height: 120px; }
     .warn { color: #8a1f11; font-weight: 700; }
     .check { display: flex; align-items: center; gap: 0.5rem; }
+    .state-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.24rem 0.58rem;
+      border-radius: 999px;
+      font-weight: 700;
+      line-height: 1.2;
+      background: var(--color-surface-soft);
+      color: var(--color-text);
+    }
+    .state-badge.terminal {
+      background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-bg));
+      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-surface));
+      color: var(--color-danger);
+      letter-spacing: 0.01em;
+    }
   </style>
 {% endblock %}
 
@@ -46,7 +62,7 @@
       <h2>2) Current Asset State</h2>
       <div class="grid">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
-        <div><strong>location_type:</strong> <code>{{ asset.location_type }}</code></div>
+        <div><strong>location_type:</strong> <span class="state-badge{% if asset_is_terminal(asset.location_type) %} terminal{% endif %}">{{ asset_state_label(asset.location_type) }}</span></div>
         <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
         <div><strong>model:</strong> {{ asset.model or "" }}</div>
         <div><strong>serial_number:</strong> {{ asset.serial_number or "" }}</div>

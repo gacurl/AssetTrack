@@ -102,6 +102,21 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Edit Asset", response.data)
 
+    def test_edit_asset_ui_marks_retired_assets_as_not_in_service(self) -> None:
+        self._insert_asset(
+            "AT-RET-EDIT-1",
+            serial_number="SER-RET-EDIT-1",
+            location_type="DISPOSED",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.get("/admin/assets/edit?asset_tag=AT-RET-EDIT-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"RETIRED \xe2\x80\x94 Not in service", response.data)
+        self.assertNotIn(b"Retired / disposed", response.data)
+
     def test_edit_storage_asset_moves_slot_and_persists_fields(self) -> None:
         self._insert_slot(201, "CASE-A", 1)
         self._insert_slot(202, "CASE-B", 2)

@@ -636,6 +636,101 @@ def test_report_recent_active_events_is_limited_to_latest_ten_and_newest_first(c
     assert b"2026-01-12T00:00:00Z" not in admin_response.data
 
 
+def test_reports_mark_retired_assets_as_not_in_service(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-report-retired", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO assets (
+            asset_tag,
+            serial_number,
+            manufacturer,
+            equipment_type,
+            building,
+            room,
+            model,
+            model_code,
+            notes,
+            building_room,
+            custody_state,
+            accountability_status,
+            condition,
+            created_date,
+            updated_date,
+            location_type,
+            current_holder_id,
+            home_slot_id
+        )
+        VALUES
+            (
+                'AT-LIVE-1',
+                'SN-LIVE',
+                'Dell',
+                'laptop',
+                'HQ',
+                '100',
+                'Latitude',
+                'LAT',
+                NULL,
+                'HQ/100',
+                'in_stock',
+                'accountable',
+                'serviceable',
+                '2026-01-01',
+                '2026-01-01T00:00:00Z',
+                'STORAGE',
+                NULL,
+                NULL
+            ),
+            (
+                'AT-RET-1',
+                'SN-RET',
+                'Dell',
+                'laptop',
+                'HQ',
+                '200',
+                'Latitude',
+                'LAT',
+                NULL,
+                'HQ/200',
+                'retired',
+                'accountable',
+                'unserviceable',
+                '2026-01-01',
+                '2026-01-02T00:00:00Z',
+                'DISPOSED',
+                NULL,
+                NULL
+            );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.get("/report")
+
+    assert response.status_code == 200
+    assert b"AT-RET-1" in response.data
+    assert b"RETIRED \xe2\x80\x94 Not in service" in response.data
+    assert b"state-badge terminal" in response.data
+    assert b"In storage" in response.data
+    assert b"Retired / disposed" not in response.data
+
+    admin_id = create_test_user(username="admin-report-retired", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    admin_response = client_with_temp_db.get("/admin/report")
+
+    assert admin_response.status_code == 200
+    assert b"AT-RET-1" in admin_response.data
+    assert b"RETIRED \xe2\x80\x94 Not in service" in admin_response.data
+    assert b"state-badge terminal" in admin_response.data
+    assert b"In storage" in admin_response.data
+    assert b"Retired / disposed" not in admin_response.data
+
+
 def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-report-pdf", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
