@@ -213,8 +213,7 @@ def test_receipts_list_links_to_existing_receipt_detail(client_with_temp_db) -> 
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
     assert expected_title.encode("utf-8") in response.data
-    assert b"Internal receipt ID" in response.data
-    assert f">{receipt_id}<".encode("utf-8") in response.data
+    assert b"Internal receipt ID" not in response.data
     assert b"Detail" not in response.data
 
     detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
