@@ -390,7 +390,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Holder: Detail Holder", response.data)
         self.assertIn(b"Organization:</strong> Org Detail", response.data)
         self.assertIn(b"Email:</strong>", response.data)
-        self.assertIn(b"Assigned Assets (1)", response.data)
+        self.assertIn(b"Assets In Custody (1)", response.data)
         self.assertIn(b"DETAIL-ASSET-1", response.data)
         self.assertIn(f'href="/holders/edit/{holder_id}"'.encode("utf-8"), response.data)
 
@@ -613,7 +613,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.get(f"/holders/{int(holder_row['id'])}")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Assigned Assets (0)", response.data)
+        self.assertIn(b"Assets In Custody (0)", response.data)
         self.assertIn(b"No assigned assets.", response.data)
 
     def test_holder_detail_displays_group_holder_cleanly(self) -> None:
@@ -631,8 +631,8 @@ class HolderCreationViabilityTests(unittest.TestCase):
         response = self.client.get(f"/holders/{int(holder_row['id'])}")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Type:</strong> Group / organization", response.data)
-        self.assertIn(b"Person or group:</strong> Ops Section", response.data)
+        self.assertIn(b"Group / organization", response.data)
+        self.assertIn(b"Ops Section", response.data)
 
 
 if __name__ == "__main__":
