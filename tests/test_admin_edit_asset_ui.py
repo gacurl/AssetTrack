@@ -285,7 +285,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         deleted = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
         self.assertIsNone(deleted)
 
-    def test_cleanup_ui_describes_orphan_only_delete_path(self) -> None:
+    def test_edit_asset_ui_directs_admins_to_retire_flow_instead_of_delete(self) -> None:
         self._insert_asset(
             "AT-JUNK-UI-1",
             serial_number="SER-JUNK-UI-1",
@@ -297,12 +297,12 @@ class AdminEditAssetUiTests(unittest.TestCase):
         response = self.client.get("/admin/assets/edit?asset_tag=AT-JUNK-UI-1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Orphan / Junk Asset Cleanup", response.data)
-        self.assertIn(b"Use cleanup delete only for orphan/junk records", response.data)
-        self.assertIn(b"Cleanup delete is allowed.", response.data)
-        self.assertIn(b"Delete Orphan / Junk Asset", response.data)
-        self.assertIn(b"Delete this orphan/junk asset record permanently?", response.data)
+        self.assertIn(b"Asset Removal", response.data)
+        self.assertIn(b"Asset records are not removed from the admin UI.", response.data)
+        self.assertIn(b"Use the retire flow for asset removal handling.", response.data)
+        self.assertIn(b"Open Retire Asset", response.data)
         self.assertIn(b'href="/admin/assets/retire"', response.data)
+        self.assertNotIn(b"Delete Orphan / Junk Asset", response.data)
 
     def test_cleanup_blocks_asset_with_event_history(self) -> None:
         asset_id = self._insert_asset(
@@ -325,9 +325,8 @@ class AdminEditAssetUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset has event history and cannot be removed.", response.data)
-        self.assertIn(b"This asset cannot be cleanup-deleted.", response.data)
-        self.assertIn(b"Use Retire Asset instead", response.data)
-        self.assertIn(b'Delete Orphan / Junk Asset</button>', response.data)
+        self.assertIn(b"This asset must use the retire flow rather than removal from edit.", response.data)
+        self.assertIn(b"Open Retire Asset", response.data)
         self.assertIn(b'href="/admin/assets/retire"', response.data)
         still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
         self.assertIsNotNone(still_present)
