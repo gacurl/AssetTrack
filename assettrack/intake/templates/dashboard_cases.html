@@ -10,6 +10,13 @@
     .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
     .status-dot.open { background: #b42318; }
+    .drill-link {
+      display: inline-flex;
+      align-items: center;
+      font-weight: 600;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 0.16em;
+    }
   </style>
 {% endblock %}
 
@@ -38,7 +45,7 @@
         {% for row in cases %}
           {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
           <tr>
-            <td><a href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=return_to) }}">{{ row.case_name }}</a></td>
+            <td><a class="nav-link drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=return_to) }}">{{ row.case_name }}</a></td>
             <td class="status-cell">
               <span class="status-badge">
                 <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>

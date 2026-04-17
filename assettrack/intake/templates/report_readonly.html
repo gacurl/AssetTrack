@@ -142,6 +142,13 @@
     .report-section-body {
       padding: 1rem;
     }
+    .report-drill-link {
+      display: inline-flex;
+      align-items: center;
+      font-weight: 600;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 0.16em;
+    }
     @media print {
       .page-tools,
       .top-nav,
@@ -225,14 +232,14 @@
         <tbody>
           {% for row in assets %}
             <tr>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.equipment_type or "" }}</td>
               <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
               <td>{{ row.location_type or "" }}</td>
               <td>
                 {% if row.holder_name %}
                   {% if row.holder_detail_id %}
-                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
+                    <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                   {% else %}
                     {{ row.holder_name }}
                   {% endif %}
@@ -241,7 +248,7 @@
               </td>
               <td>
                 {% if row.home_case_name %}
-                  <a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.home_case_name, return_to=report_return_to) }}">{{ row.home_slot }}</a>
+                  <a class="nav-link report-drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.home_case_name, return_to=report_return_to) }}">{{ row.home_slot }}</a>
                 {% else %}
                   {{ row.home_slot or "" }}
                 {% endif %}
@@ -279,7 +286,7 @@
             <tr>
               <td><code>{{ row.id }}</code></td>
               <td>{{ row.holder_type }}</td>
-              <td><a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.id, return_to=report_return_to) }}">{{ row.name }}</a></td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.id, return_to=report_return_to) }}">{{ row.name }}</a></td>
               <td>{{ row.organization }}</td>
               <td>{{ row.identifier }}</td>
               <td>{{ row.assets_in_custody }}</td>
@@ -364,13 +371,13 @@
             <tr>
               <td>
                 {% if row.holder_detail_id %}
-                  <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
+                  <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                 {% else %}
                   {{ row.holder_name }}
                 {% endif %}
               </td>
               <td>{{ row.organization }}</td>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.equipment_type }}</td>
               <td>{{ row.current_location }}</td>
             </tr>
@@ -405,12 +412,12 @@
             <tr>
               <td><code>{{ row.id }}</code></td>
               <td>{{ row.event_date }}</td>
-              <td><a class="nav-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.event_type }}</td>
               <td>
                 {% if row.holder_name %}
                   {% if row.holder_detail_id %}
-                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
+                    <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
                   {% else %}
                     {{ row.holder_name }}
                   {% endif %}
@@ -445,7 +452,7 @@
         <tbody>
           {% for row in cases %}
             <tr>
-              <td><a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=report_return_to) }}">{{ row.case_name }}</a></td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=report_return_to) }}">{{ row.case_name }}</a></td>
               <td>{{ row.total_slots }}</td>
               <td>{{ row.occupied_slots }}</td>
             </tr>
