@@ -184,6 +184,9 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Dashboard Summary Metrics", response.data)
         self.assertIn(b"At a Glance", response.data)
+        self.assertIn(b'id="at-a-glance-panel"', response.data)
+        self.assertIn(b'id="at-a-glance-panel" open', response.data)
+        self.assertIn(b'aria-label="At a Glance dashboard summary"', response.data)
         self.assertIn(b"2 items need attention", response.data)
         self.assertIn(b"Problems to review", response.data)
         self.assertIn(b"Review problems", response.data)
@@ -225,6 +228,8 @@ class DashboardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"No current problems", response.data)
+        self.assertIn(b'id="at-a-glance-panel"', response.data)
+        self.assertIn(b'id="at-a-glance-panel" open', response.data)
         self.assertIn(b"Custody, storage, and slot checks are clear right now.", response.data)
         self.assertIn(b"Nothing needs immediate review.", response.data)
         self.assertIn(b"Open current status report", response.data)

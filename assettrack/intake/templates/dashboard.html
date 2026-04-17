@@ -17,14 +17,37 @@
     .subtitle { margin: 0; }
 
     .status-overview {
-      padding: 1rem;
       margin-bottom: 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
       border-width: 2px;
       border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
       background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-accent-soft) 100%);
+    }
+    .status-overview summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 1rem;
+    }
+    .status-overview summary::-webkit-details-marker { display: none; }
+    .status-overview summary::before {
+      content: "▾";
+      flex: 0 0 auto;
+      color: var(--color-primary);
+      font-size: 1rem;
+      line-height: 1;
+      transform: translateY(0.02rem);
+    }
+    .status-overview:not([open]) summary::before {
+      content: "▸";
+    }
+    .status-overview-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      padding: 0 1rem 1rem;
     }
     .status-lead {
       display: flex;
@@ -195,69 +218,73 @@
     <p class="muted subtitle">Problems first. System state stays below.</p>
   </div>
 
-  <section class="card status-overview" aria-label="Current status overview">
-    <div class="status-lead">
-      <div>
-        <p class="status-kicker">At a Glance</p>
-        {% if exception_total == 0 %}
-          <h2 class="status-title">No current problems</h2>
-        {% else %}
-          <h2 class="status-title">{{ exception_total }} items need attention</h2>
-        {% endif %}
+  <details class="card status-overview" id="at-a-glance-panel" open>
+    <summary aria-label="At a Glance dashboard summary">
+      <div class="status-lead">
+        <div>
+          <p class="status-kicker">At a Glance</p>
+          {% if exception_total == 0 %}
+            <h2 class="status-title">No current problems</h2>
+          {% else %}
+            <h2 class="status-title">{{ exception_total }} items need attention</h2>
+          {% endif %}
+        </div>
+        <p class="status-note">
+          {% if exception_total == 0 %}
+            Custody, storage, and slot checks are clear right now.
+          {% else %}
+            Review problems first. Then confirm custody load and storage space.
+          {% endif %}
+        </p>
       </div>
-      <p class="status-note">
-        {% if exception_total == 0 %}
-          Custody, storage, and slot checks are clear right now.
-        {% else %}
-          Review problems first. Then confirm custody load and storage space.
-        {% endif %}
-      </p>
+    </summary>
+    <div class="status-overview-body">
+      <div class="status-strip">
+        <div class="status-pill priority">
+          {% if exception_total == 0 %}
+            <strong>0</strong>
+            <span>No current problems</span>
+            <p class="actions-note" style="margin-top: 0.45rem;">Nothing needs immediate review.</p>
+            <div class="priority-action">
+              <a class="chip secondary" href="{{ url_for('human_report') }}">Open current status report</a>
+            </div>
+          {% else %}
+            <strong>{{ overview.attention_count }}</strong>
+            <span>Problems to review</span>
+            <p class="actions-note" style="margin-top: 0.45rem;">Start here before reviewing custody load or storage capacity.</p>
+            <div class="priority-action">
+              <a class="chip" href="#problems-panel">Review problems</a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="status-pill">
+          <strong>{{ overview.total_assets }}</strong>
+          <span>Total assets in the system</span>
+          <a class="nav-link" href="{{ url_for('asset_search') }}">Search assets</a>
+        </div>
+        <div class="status-pill">
+          <strong>{{ overview.in_storage_assets }}</strong>
+          <span>In storage now</span>
+          <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
+        </div>
+        <div class="status-pill">
+          <strong>{{ overview.issued_assets }}</strong>
+          <span>Issued / out now</span>
+          <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open holder follow-up</a>
+        </div>
+        <div class="status-pill">
+          <strong>{{ overview.holders_with_assets_out }}</strong>
+          <span>Holders with assets out</span>
+          <a class="nav-link" href="{{ url_for('dashboard_holders') }}">View holders</a>
+        </div>
+        <div class="status-pill">
+          <strong>{{ overview.open_storage_slots }}</strong>
+          <span>Open storage slots</span>
+          <a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a>
+        </div>
+      </div>
     </div>
-    <div class="status-strip">
-      <div class="status-pill priority">
-        {% if exception_total == 0 %}
-          <strong>0</strong>
-          <span>No current problems</span>
-          <p class="actions-note" style="margin-top: 0.45rem;">Nothing needs immediate review.</p>
-          <div class="priority-action">
-            <a class="chip secondary" href="{{ url_for('human_report') }}">Open current status report</a>
-          </div>
-        {% else %}
-          <strong>{{ overview.attention_count }}</strong>
-          <span>Problems to review</span>
-          <p class="actions-note" style="margin-top: 0.45rem;">Start here before reviewing custody load or storage capacity.</p>
-          <div class="priority-action">
-            <a class="chip" href="#problems-panel">Review problems</a>
-          </div>
-        {% endif %}
-      </div>
-      <div class="status-pill">
-        <strong>{{ overview.total_assets }}</strong>
-        <span>Total assets in the system</span>
-        <a class="nav-link" href="{{ url_for('asset_search') }}">Search assets</a>
-      </div>
-      <div class="status-pill">
-        <strong>{{ overview.in_storage_assets }}</strong>
-        <span>In storage now</span>
-        <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
-      </div>
-      <div class="status-pill">
-        <strong>{{ overview.issued_assets }}</strong>
-        <span>Issued / out now</span>
-        <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open holder follow-up</a>
-      </div>
-      <div class="status-pill">
-        <strong>{{ overview.holders_with_assets_out }}</strong>
-        <span>Holders with assets out</span>
-        <a class="nav-link" href="{{ url_for('dashboard_holders') }}">View holders</a>
-      </div>
-      <div class="status-pill">
-        <strong>{{ overview.open_storage_slots }}</strong>
-        <span>Open storage slots</span>
-        <a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a>
-      </div>
-    </div>
-  </section>
+  </details>
 
   <div class="grid">
     <section class="card">
