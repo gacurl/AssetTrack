@@ -181,7 +181,7 @@
 {% endblock %}
 
 {% block content %}
-  {% set report_return_to = url_for('human_report') %}
+  {% set report_return_to = url_for('human_report', include_retired='1') if include_retired_assets else url_for('human_report') %}
   <div class="report-actions nav-row">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </div>
@@ -194,7 +194,11 @@
     <div>
       <h2>Use Current State to Decide the Next Step</h2>
       <p class="report-priority-copy">
-        This page shows the current custody and storage picture. Use the links below to move from status into the next existing view without re-searching.
+        {% if include_retired_assets %}
+          This page shows the full inventory picture, including retired assets. Use the links below to move from status into the next existing view without re-searching.
+        {% else %}
+          This page shows the active custody and storage picture first. Use the links below to move from status into the next existing view without re-searching.
+        {% endif %}
       </p>
     </div>
     <div class="report-actions nav-row report-priority-links">
@@ -202,12 +206,17 @@
       <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=report_return_to) }}">Check case space</a>
       <a class="nav-link" href="{{ url_for('asset_search', return_to=report_return_to) }}">Look up an asset</a>
       <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Open receipts</a>
+      {% if include_retired_assets %}
+        <a class="nav-link" href="{{ url_for('human_report') }}">View active inventory only</a>
+      {% else %}
+        <a class="nav-link" href="{{ url_for('human_report', include_retired='1') }}">Include retired assets</a>
+      {% endif %}
     </div>
     <div class="report-grid">
       <a class="report-stat report-stat-link" href="{{ url_for('asset_search', return_to=report_return_to) }}">
-        Total assets
+        {% if include_retired_assets %}Total assets{% else %}Active assets{% endif %}
         <strong>{{ asset_summary.total_assets }}</strong>
-        <span class="nav-link report-stat-action">Search asset records</span>
+        <span class="nav-link report-stat-action">{% if include_retired_assets %}Search all asset records{% else %}Search active asset records{% endif %}</span>
       </a>
       <a class="report-stat report-stat-link" href="{{ url_for('dashboard_cases', return_to=report_return_to) }}">
         In storage
@@ -219,18 +228,24 @@
         <strong>{{ asset_summary.in_custody_assets }}</strong>
         <span class="nav-link report-stat-action">Open holder follow-up</span>
       </a>
-      <a class="report-stat report-stat-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">
-        Disposed
+      <a class="report-stat report-stat-link" href="{% if include_retired_assets %}{{ url_for('human_report') }}{% else %}{{ url_for('human_report', include_retired='1') }}{% endif %}">
+        {% if include_retired_assets %}Retired shown{% else %}Retired hidden{% endif %}
         <strong>{{ asset_summary.disposed_assets }}</strong>
-        <span class="nav-link report-stat-action">Review receipts</span>
+        <span class="nav-link report-stat-action">{% if include_retired_assets %}Return to active-first view{% else %}Include retired assets{% endif %}</span>
       </a>
     </div>
   </div>
 
-  <details class="report-section" open>
+  <details class="report-section">
     <summary>
       <span class="report-section-title">Assets</span>
-      <span class="report-section-hint">{{ asset_summary.total_assets }} total records</span>
+      <span class="report-section-hint">
+        {% if include_retired_assets %}
+          {{ asset_summary.total_assets }} total records
+        {% else %}
+          {{ asset_summary.total_assets }} active records
+        {% endif %}
+      </span>
     </summary>
     <div class="report-section-body">
     <div class="table-wrap">

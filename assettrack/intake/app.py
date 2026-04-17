@@ -5689,7 +5689,7 @@ def admin_system():
     )
 
 
-def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
+def _load_admin_human_report_data(resolved_db_path: Path, *, include_retired_assets: bool = True) -> dict:
     recent_events_limit = 10
     conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -5699,17 +5699,29 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
             """
             SELECT
                 COUNT(*) AS total_assets,
+                SUM(CASE WHEN COALESCE(location_type, '') NOT IN ('DISPOSED', 'RETIRED') THEN 1 ELSE 0 END) AS active_assets,
                 SUM(CASE WHEN location_type = 'STORAGE' THEN 1 ELSE 0 END) AS storage_assets,
                 SUM(CASE WHEN location_type = 'IN_CUSTODY' THEN 1 ELSE 0 END) AS in_custody_assets,
-                SUM(CASE WHEN location_type = 'DISPOSED' THEN 1 ELSE 0 END) AS disposed_assets
+                SUM(CASE WHEN location_type IN ('DISPOSED', 'RETIRED') THEN 1 ELSE 0 END) AS disposed_assets
             FROM assets;
             """
         ).fetchone()
 
+        asset_where = ""
+        if not include_retired_assets:
+            asset_where = "WHERE COALESCE(a.location_type, '') NOT IN ('DISPOSED', 'RETIRED')"
+
+        asset_order_by = "a.asset_tag COLLATE NOCASE ASC, a.id ASC"
+        if include_retired_assets:
+            asset_order_by = (
+                "CASE WHEN COALESCE(a.location_type, '') IN ('DISPOSED', 'RETIRED') THEN 1 ELSE 0 END ASC, "
+                "a.asset_tag COLLATE NOCASE ASC, a.id ASC"
+            )
+
         assets = [
             dict(row)
             for row in conn.execute(
-                """
+                f"""
                 SELECT
                     a.asset_tag,
                     COALESCE(a.equipment_type, '') AS equipment_type,
@@ -5727,7 +5739,8 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
                   ON h.id = a.current_holder_id
                 LEFT JOIN slots s
                   ON s.id = a.home_slot_id
-                ORDER BY a.asset_tag COLLATE NOCASE ASC, a.id ASC;
+                {asset_where}
+                ORDER BY {asset_order_by};
                 """
             ).fetchall()
         ]
@@ -5853,7 +5866,10 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
 
         return {
             "asset_summary": {
-                "total_assets": int(asset_summary_row["total_assets"] or 0),
+                "total_assets": int(
+                    asset_summary_row["total_assets" if include_retired_assets else "active_assets"] or 0
+                ),
+                "active_assets": int(asset_summary_row["active_assets"] or 0),
                 "storage_assets": int(asset_summary_row["storage_assets"] or 0),
                 "in_custody_assets": int(asset_summary_row["in_custody_assets"] or 0),
                 "disposed_assets": int(asset_summary_row["disposed_assets"] or 0),
@@ -6107,9 +6123,11 @@ def admin_db_export():
 def human_report():
     resolved_db_path = _resolved_runtime_db_path()
     report_error: str | None = None
+    include_retired_assets = request.args.get("include_retired") == "1"
     report_data = {
         "asset_summary": {
             "total_assets": 0,
+            "active_assets": 0,
             "storage_assets": 0,
             "in_custody_assets": 0,
             "disposed_assets": 0,
@@ -6124,13 +6142,17 @@ def human_report():
     }
 
     try:
-        report_data = _load_admin_human_report_data(resolved_db_path)
+        report_data = _load_admin_human_report_data(
+            resolved_db_path,
+            include_retired_assets=include_retired_assets,
+        )
     except sqlite3.Error as exc:
         report_error = f"Could not read report data: {exc}"
 
     return render_template(
         "report_readonly.html",
         report_error=report_error,
+        include_retired_assets=include_retired_assets,
         **report_data,
     )
 
@@ -6144,6 +6166,7 @@ def admin_human_report():
     report_data = {
         "asset_summary": {
             "total_assets": 0,
+            "active_assets": 0,
             "storage_assets": 0,
             "in_custody_assets": 0,
             "disposed_assets": 0,
