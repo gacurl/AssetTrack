@@ -4,14 +4,34 @@
 {% block title %}Holder Detail{% endblock %}
 {% block page_heading %}Outstanding Assets: {{ holder.holder_name }}{% endblock %}
 
+{% block extra_head %}
+  <style>
+    .page-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .page-header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
-  <nav class="actions" aria-label="Contextual navigation">
-    {% if return_to == url_for('human_report') %}
-      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
-    {% endif %}
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-    <a class="nav-link" href="{{ url_for('dashboard_holders', return_to=return_to) }}">Back to Holders</a>
-  </nav>
+  <div class="page-header-bar">
+    <nav class="page-header-nav" aria-label="Contextual navigation">
+      {% if return_to == url_for('human_report') %}
+        <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+      {% endif %}
+      <a class="nav-link" href="{{ url_for('dashboard_holders', return_to=return_to) }}">Back to Holders</a>
+    </nav>
+  </div>
 
   <section class="card">
     <p>
