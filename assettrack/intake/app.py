@@ -5670,6 +5670,7 @@ def admin_system():
 
 
 def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
+    recent_events_limit = 10
     conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
 
@@ -5803,8 +5804,10 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
                   ON h.id = e.holder_id
                 WHERE {ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)}
                 ORDER BY e.id DESC
-                LIMIT 25;
+                LIMIT ?;
                 """
+                ,
+                (recent_events_limit,),
             ).fetchall()
         ]
 

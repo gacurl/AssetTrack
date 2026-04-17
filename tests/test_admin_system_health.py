@@ -575,6 +575,57 @@ def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(clien
     assert b"Back to Report" not in unsafe_asset_response.data
 
 
+def test_report_recent_active_events_is_limited_to_latest_ten_and_newest_first(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-report-tail", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    conn = db.get_connection()
+    _create_assets_table(conn)
+    conn.execute(
+        """
+        INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
+        VALUES (1, 'PERSON', 'Tail Holder', 'TAIL-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+        """
+    )
+    for index in range(1, 13):
+        conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+            VALUES (?, 'ISSUE', ?, 'system', NULL, '{"to_location_type":"IN_CUSTODY"}', 1);
+            """,
+            (
+                f"TAIL-{index:02d}",
+                f"2026-01-{index:02d}T00:00:00Z",
+            ),
+        )
+    conn.commit()
+
+    stored_count = conn.execute("SELECT COUNT(*) AS c FROM asset_events;").fetchone()["c"]
+    conn.close()
+    assert stored_count == 12
+
+    response = client_with_temp_db.get("/report")
+
+    assert response.status_code == 200
+    assert b"10 latest active events" in response.data
+    assert response.data.find(b"TAIL-12") < response.data.find(b"TAIL-11")
+    assert response.data.find(b"TAIL-11") < response.data.find(b"TAIL-10")
+    assert b"TAIL-12" in response.data
+    assert b"TAIL-03" in response.data
+    assert b"TAIL-02" not in response.data
+    assert b"TAIL-01" not in response.data
+
+    admin_id = create_test_user(username="admin-report-tail", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    admin_response = client_with_temp_db.get("/admin/report")
+
+    assert admin_response.status_code == 200
+    assert b"TAIL-12" in admin_response.data
+    assert b"TAIL-03" in admin_response.data
+    assert b"TAIL-02" not in admin_response.data
+    assert b"TAIL-01" not in admin_response.data
+
+
 def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-report-pdf", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
