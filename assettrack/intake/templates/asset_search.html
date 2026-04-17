@@ -113,7 +113,13 @@
         <tbody>
           {% for asset in assets %}
             <tr>
-              <td><code>{{ asset.asset_tag or "" }}</code></td>
+              <td>
+                {% if authenticated_role == 'admin' and asset.asset_tag %}
+                  <a class="nav-link" href="{{ url_for('admin_edit_asset', asset_tag=asset.asset_tag) }}"><code>{{ asset.asset_tag }}</code></a>
+                {% else %}
+                  <code>{{ asset.asset_tag or "" }}</code>
+                {% endif %}
+              </td>
               <td>{{ asset.serial_number or "Not recorded" }}</td>
               <td>{{ asset.state_label }}</td>
               <td>{{ asset.holder_label or "Not assigned" }}</td>

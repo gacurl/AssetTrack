@@ -99,6 +99,18 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Alex Holder (Field Ops)", response.data)
         self.assertIn(b"CASE-A", response.data)
         self.assertIn(b"Slot 4", response.data)
+        self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
+
+    def test_admin_search_links_asset_tag_to_admin_edit_asset(self) -> None:
+        admin_user_id = create_test_user(username="admin-search", password="admin-pass", role="admin")
+        login_session(self.client, admin_user_id)
+        self._insert_asset("AT-ADMIN-1", serial_number="SER-ADMIN-1", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-ADMIN-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b' href="/admin/assets/edit?asset_tag=AT-ADMIN-1"', response.data)
+        self.assertIn(b"AT-ADMIN-1", response.data)
 
     def test_search_finds_asset_by_serial_number(self) -> None:
         self._insert_asset("AT-200", serial_number="SER-200", location_type="IN_CUSTODY", home_slot_id=None)
