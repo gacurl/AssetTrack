@@ -126,32 +126,18 @@
     </div>
 
     <div class="card">
-      <h2>Orphan / Junk Asset Cleanup</h2>
+      <h2>Asset Removal</h2>
       <p class="muted">
-        Use cleanup delete only for orphan/junk records with no event history and no live inventory links.
-        If this record represents a real asset that left service, use
+        Asset records are not removed from the admin UI. If this asset left service, use
         <a class="nav-link" href="{{ url_for('admin_retire_asset') }}">Retire Asset</a>
-        instead so audit history stays intact.
+        so the inventory record and audit history stay aligned.
       </p>
       {% if asset.cleanup.allowed %}
-        <p>This asset has no event history, no slot assignment, and no active custody state. Cleanup delete is allowed.</p>
+        <p>This record has no event history or live inventory links, but removal is not exposed here. Use the retire flow for asset removal handling.</p>
       {% else %}
-        <p>This asset cannot be cleanup-deleted. Use Retire Asset instead if this is a real asset record.</p>
-        <ul>
-          {% for reason in asset.cleanup.reasons %}
-            <li>{{ reason }}</li>
-          {% endfor %}
-        </ul>
+        <p>This asset must use the retire flow rather than removal from edit.</p>
       {% endif %}
-      <form method="post" action="{{ url_for('admin_edit_asset') }}">
-        <input type="hidden" name="action" value="cleanup" />
-        <input type="hidden" name="lookup_asset_tag" value="{{ form.lookup_asset_tag or asset.asset_tag }}" />
-        <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
-        <button
-          type="submit"
-          {% if not asset.cleanup.allowed %}disabled{% else %}onclick="return confirm('Delete this orphan/junk asset record permanently? Only assets with no event history or live dependencies may be removed this way.');"{% endif %}
-        >Delete Orphan / Junk Asset</button>
-      </form>
+      <p><a class="nav-link" href="{{ url_for('admin_retire_asset') }}">Open Retire Asset</a></p>
     </div>
   {% endif %}
 {% endblock %}
