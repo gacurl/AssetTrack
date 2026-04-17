@@ -286,6 +286,37 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue((response.headers["Location"]).endswith("/issue"))
 
+    def test_edit_holder_can_return_to_holder_detail_with_report_context(self) -> None:
+        organization_id = self._create_org("Report Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Report Workflow Holder", "organization_id": str(organization_id), "email": "report-workflow@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Report Workflow Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        response = self.client.post(
+            f"/holders/edit/{holder_id}",
+            data={
+                "name": "Report Workflow Holder",
+                "organization_id": str(organization_id),
+                "email": "report-workflow@example.org",
+                "return_to": f"/holders/{holder_id}?return_to=/report",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith(f"/holders/{holder_id}?return_to=/report"))
+
+        follow_up = self.client.get(response.headers["Location"])
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertIn(b"Back to Report", follow_up.data)
+
     def test_holders_list_shows_holders_and_asset_count(self) -> None:
         holder_name = "Holder List Person"
         organization_id = self._create_org("Ad Hoc")
@@ -362,6 +393,49 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Assigned Assets (1)", response.data)
         self.assertIn(b"DETAIL-ASSET-1", response.data)
         self.assertIn(f'href="/holders/edit/{holder_id}"'.encode("utf-8"), response.data)
+
+    def test_holder_detail_from_report_keeps_back_link_but_not_report_action_return_to(self) -> None:
+        organization_id = self._create_org("Report Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Report Holder", "organization_id": str(organization_id), "email": "report@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Report Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        response = self.client.get(f"/holders/{holder_id}?return_to=/report")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/report"', response.data)
+        self.assertIn(b"Back to Report", response.data)
+        self.assertIn(b'action="/holders/select"', response.data)
+        self.assertIn(b'name="holder_id"', response.data)
+        self.assertNotIn(b'name="return_to" value="/report"', response.data)
+        self.assertIn(f'href="/holders/edit/{holder_id}?return_to=/holders/{holder_id}?return_to%3D/report"'.encode("utf-8"), response.data)
+        self.assertNotIn(f'href="/holders/edit/{holder_id}?return_to=/report"'.encode("utf-8"), response.data)
+
+    def test_holder_detail_preserves_non_report_action_return_to(self) -> None:
+        organization_id = self._create_org("Issue Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Issue Holder", "organization_id": str(organization_id), "email": "issue@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Issue Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        response = self.client.get(f"/holders/{holder_id}?return_to=/issue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'name="return_to" value="/issue"', response.data)
+        self.assertIn(f'href="/holders/edit/{holder_id}?return_to=/issue"'.encode("utf-8"), response.data)
 
     def test_post_holders_new_rejects_invalid_email_with_clear_feedback(self) -> None:
         org_id = self._create_org("Alpha Org")

@@ -6,6 +6,20 @@
 
 {% block extra_head %}
   <style>
+    .page-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .page-header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
     .status-card { margin-bottom: 1rem; }
     .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
@@ -18,13 +32,14 @@
   {% set total_slots = case_detail.slots | length %}
   {% set empty_slots = total_slots - occupied_slots %}
   {% set status = case_status_summary(total_slots, occupied_slots) %}
-  <nav class="actions" aria-label="Contextual navigation">
-    {% if return_to == url_for('human_report') %}
-      <a class="nav-link" href="{{ return_to }}">Back to Report</a>
-    {% endif %}
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-    <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=return_to) }}">Back to Cases</a>
-  </nav>
+  <div class="page-header-bar">
+    <nav class="page-header-nav" aria-label="Contextual navigation">
+      {% if return_to == url_for('human_report') %}
+        <a class="nav-link" href="{{ return_to }}">Back to Report</a>
+      {% endif %}
+      <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=return_to) }}">Back to Cases</a>
+    </nav>
+  </div>
 
   <section class="card status-card">
     <h2>Case Status</h2>
