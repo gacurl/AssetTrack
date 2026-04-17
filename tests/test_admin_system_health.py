@@ -317,7 +317,7 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     response = client_with_temp_db.get("/admin/report")
 
     assert response.status_code == 200
-    assert b"Admin: Human-Readable Report" in response.data
+    assert b"Admin: Current Status Report" in response.data
     assert b"Download PDF" in response.data
     assert b"Download Database Backup" in response.data
     assert b"showing recent active events only" in response.data
@@ -325,12 +325,14 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert b"Holders" in response.data
     assert b"Organizations and Building Access" in response.data
     assert b"Current Custody" in response.data
-    assert b"Recent Active Events" in response.data
+    assert b"Last 10 Events" in response.data
     assert b"Location and Case Data" in response.data
     assert b"AT-100" in response.data
     assert b"Jane Operator" in response.data
     assert b"Report Ops" in response.data
     assert b"CASE-1" in response.data
+    assert b"Jan 2, 2026 12:00 AM" in response.data
+    assert b"2026-01-02T00:00:00Z" not in response.data
 
 
 def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp_db) -> None:
@@ -467,6 +469,9 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b' href="/assets/search?asset_tag=AT-100&amp;return_to=/report"' in response.data
     assert b' href="/holders/1?return_to=/report"' in response.data
     assert b' href="/dashboard/cases/CASE-1?return_to=/report"' in response.data
+    assert b"Last 10 Events" in response.data
+    assert b"Jan 2, 2026 12:00 AM" in response.data
+    assert b"2026-01-02T00:00:00Z" not in response.data
 
 
 def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(client_with_temp_db) -> None:
@@ -607,23 +612,28 @@ def test_report_recent_active_events_is_limited_to_latest_ten_and_newest_first(c
     response = client_with_temp_db.get("/report")
 
     assert response.status_code == 200
-    assert b"10 latest active events" in response.data
+    assert b"Last 10 Events" in response.data
     assert response.data.find(b"TAIL-12") < response.data.find(b"TAIL-11")
     assert response.data.find(b"TAIL-11") < response.data.find(b"TAIL-10")
     assert b"TAIL-12" in response.data
     assert b"TAIL-03" in response.data
     assert b"TAIL-02" not in response.data
     assert b"TAIL-01" not in response.data
+    assert b"Jan 12, 2026 12:00 AM" in response.data
+    assert b"2026-01-12T00:00:00Z" not in response.data
 
     admin_id = create_test_user(username="admin-report-tail", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
     admin_response = client_with_temp_db.get("/admin/report")
 
     assert admin_response.status_code == 200
+    assert b"Last 10 Events" in admin_response.data
     assert b"TAIL-12" in admin_response.data
     assert b"TAIL-03" in admin_response.data
     assert b"TAIL-02" not in admin_response.data
     assert b"TAIL-01" not in admin_response.data
+    assert b"Jan 12, 2026 12:00 AM" in admin_response.data
+    assert b"2026-01-12T00:00:00Z" not in admin_response.data
 
 
 def test_admin_can_download_human_readable_report_pdf(client_with_temp_db) -> None:

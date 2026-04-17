@@ -392,8 +392,7 @@
 
   <details class="report-section">
     <summary>
-      <span class="report-section-title">Recent Active Events</span>
-      <span class="report-section-hint">{{ recent_active_events|length }} latest active events</span>
+      <span class="report-section-title">Last 10 Events</span>
     </summary>
     <div class="report-section-body">
     <div class="table-wrap">
@@ -411,7 +410,7 @@
           {% for row in recent_active_events %}
             <tr>
               <td><code>{{ row.id }}</code></td>
-              <td>{{ row.event_date }}</td>
+              <td>{{ row.event_date_display }}</td>
               <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
               <td>{{ row.event_type }}</td>
               <td>

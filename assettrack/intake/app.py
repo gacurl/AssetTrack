@@ -4768,6 +4768,24 @@ def _receipt_display_timestamp(value: object) -> str:
     return f"{month} {day}, {year} at {parsed.strftime('%H:%M')} UTC"
 
 
+def _report_event_display_timestamp(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    parsed = _parse_display_timestamp(text)
+    if parsed is None:
+        return text
+
+    month = parsed.strftime("%b")
+    day = parsed.day
+    year = parsed.year
+    hour = parsed.strftime("%I").lstrip("0") or "0"
+    minute = parsed.strftime("%M")
+    meridiem = parsed.strftime("%p")
+    return f"{month} {day}, {year} {hour}:{minute} {meridiem}"
+
+
 def _receipt_display_holder_name(
     holder_snapshot: Optional[dict[str, object]],
     *,
@@ -5788,7 +5806,10 @@ def _load_admin_human_report_data(resolved_db_path: Path) -> dict:
         ]
 
         recent_active_events = [
-            dict(row)
+            {
+                **dict(row),
+                "event_date_display": _report_event_display_timestamp(row["event_date"]),
+            }
             for row in conn.execute(
                 f"""
                 SELECT

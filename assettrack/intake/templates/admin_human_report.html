@@ -215,7 +215,7 @@
   </div>
 
   <div class="card">
-    <h2>Recent Active Events</h2>
+    <h2>Last 10 Events</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -231,7 +231,7 @@
           {% for row in recent_active_events %}
             <tr>
               <td><code>{{ row.id }}</code></td>
-              <td>{{ row.event_date }}</td>
+              <td>{{ row.event_date_display }}</td>
               <td><code>{{ row.asset_tag }}</code></td>
               <td>{{ row.event_type }}</td>
               <td>
