@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -113,6 +114,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b'id="holder-count">1<' in response.data
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
+    assert b"Import Holders from CSV" in response.data
     assert b"Open Human-Readable Report" in response.data
     assert b"Download Database Backup" in response.data
 
@@ -124,6 +126,80 @@ def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/admin/system")
 
     assert response.status_code == 403
+
+
+def test_operator_is_forbidden_for_holder_import_page(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-import", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.get("/admin/holders/import")
+
+    assert response.status_code == 403
+
+
+def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-import", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={
+            "csv_file": (
+                BytesIO(b"organization,name,email\nOps Alpha,Jane Doe,jane@example.org\n"),
+                "holders.csv",
+            )
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Holder import complete. Processed 1 row: created 1, updated 0." in response.data
+    assert b"Processed:</strong> 1" in response.data
+    assert b"Created:</strong> 1" in response.data
+    assert b"Updated:</strong> 0" in response.data
+    assert b"Errors:</strong> 0" in response.data
+
+    conn = db.get_connection()
+    try:
+        holder = conn.execute(
+            "SELECT name, organization, email FROM holders WHERE email = ?;",
+            ("jane@example.org",),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert holder is not None
+    assert dict(holder) == {"name": "Jane Doe", "organization": "Ops Alpha", "email": "jane@example.org"}
+
+
+def test_admin_holder_import_surfaces_existing_validation_errors(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-import-error", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={
+            "csv_file": (
+                BytesIO(b"organization,name,email\nOps Alpha,,jane@example.org\n"),
+                "holders.csv",
+            )
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Holder import failed. Processed 1 row with 1 error." in response.data
+    assert b"Row 2: name is required" in response.data
+
+    conn = db.get_connection()
+    try:
+        holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+    finally:
+        conn.close()
+
+    assert holder_count == 0
 
 
 def test_operator_is_forbidden_for_human_readable_report(client_with_temp_db) -> None:
