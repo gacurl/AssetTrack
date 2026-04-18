@@ -19,6 +19,7 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn = db.get_connection()
     conn.close()
     intake_app.LOGIN_FAILURE_ATTEMPTS.clear()
+    intake_app.ADMIN_ROUTE_ATTEMPTS.clear()
     intake_app.app.testing = True
     client = intake_app.app.test_client()
     return client
@@ -495,6 +496,29 @@ def test_authenticated_post_root_queue_action_is_not_rate_limited(
         sess["user_id"] = int(created["id"])
         sess["last_seen"] = 1000
         sess["session_started_at"] = 1000
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"action": "clear", "return_to": "/add-assets"},
+    )
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/add-assets")
+
+
+def test_operator_workflow_post_root_is_unaffected_by_admin_route_rate_limit_state(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = create_user("operator", "op-pass", "operator", True)
+    base_time = 1000
+    monkeypatch.setattr(intake_app, "now_seconds", lambda: base_time)
+    monkeypatch.setattr(auth, "now_seconds", lambda: base_time)
+    intake_app.ADMIN_ROUTE_ATTEMPTS[f"{int(created['id'])}|admin_users_create"] = [base_time] * 10
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = int(created["id"])
+        sess["last_seen"] = base_time
+        sess["session_started_at"] = base_time
 
     response = client_with_temp_db.post(
         "/",
