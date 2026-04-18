@@ -48,6 +48,7 @@ from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
 from assettrack.auth import (
+    SESSION_ABSOLUTE_TIMEOUT_SECONDS,
     SESSION_IDLE_TIMEOUT_SECONDS,
     begin_auth_session,
     clear_auth_session,
@@ -155,6 +156,8 @@ def inject_auth_user():
         "asset_is_terminal": _is_terminal_location_type,
         "holder_display_name": _holder_display_name,
         "holder_display_type": _holder_display_type,
+        "format_duration_label": _format_duration_label,
+        "session_absolute_timeout_seconds": SESSION_ABSOLUTE_TIMEOUT_SECONDS,
     }
 
 
@@ -162,6 +165,26 @@ def inject_auth_user():
 
 def now_seconds() -> int:
     return int(time.time())
+
+
+def _format_duration_label(total_seconds: object) -> str:
+    try:
+        seconds = max(0, int(total_seconds))
+    except (TypeError, ValueError):
+        return "0 seconds"
+
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts: list[str] = []
+
+    if hours:
+        parts.append(f"{hours} hour" + ("" if hours == 1 else "s"))
+    if minutes:
+        parts.append(f"{minutes} minute" + ("" if minutes == 1 else "s"))
+    if seconds or not parts:
+        parts.append(f"{seconds} second" + ("" if seconds == 1 else "s"))
+
+    return " ".join(parts)
 
 
 def touch_session() -> None:
