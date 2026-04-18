@@ -23,7 +23,7 @@ from email.utils import getaddresses
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from reportlab.lib import colors
@@ -204,10 +204,61 @@ def _demo_page_context() -> dict[str, object]:
     }
 
 
+def _configured_demo_tokens() -> set[str]:
+    raw = str(os.getenv("ASSETTRACK_DEMO_TOKENS") or "").strip()
+    if raw:
+        return {
+            token
+            for token in (part.strip().upper() for part in raw.split(","))
+            if token
+        }
+
+    legacy = str(os.getenv("ASSETTRACK_DEMO_TOKEN") or "").strip().upper()
+    return {legacy} if legacy else set()
+
+
+def _parse_demo_token(submitted_token: object) -> Optional[dict[str, object]]:
+    normalized = str(submitted_token or "").strip().upper()
+    if not normalized:
+        return None
+
+    match = re.fullmatch(r"([A-Z0-9-]+)\.(\d{8})\.EXP(\d{1,3})", normalized)
+    if not match:
+        return None
+
+    recipient_key, issued_on_raw, ttl_raw = match.groups()
+    ttl_days = int(ttl_raw)
+    if ttl_days <= 0:
+        return None
+
+    try:
+        invite_date = datetime.strptime(issued_on_raw, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+    today = datetime.now(timezone.utc).date()
+    expires_on = invite_date + timedelta(days=ttl_days)
+    return {
+        "normalized_token": normalized,
+        "recipient_key": recipient_key,
+        "invite_date": invite_date,
+        "ttl_days": ttl_days,
+        "expires_on": expires_on,
+        "is_expired": today >= expires_on,
+    }
+
+
 def _demo_token_is_valid(submitted_token: object) -> bool:
-    configured = str(os.getenv("ASSETTRACK_DEMO_TOKEN") or "").strip()
-    provided = str(submitted_token or "").strip()
-    return bool(configured) and bool(provided) and provided == configured
+    parsed = _parse_demo_token(submitted_token)
+    if parsed is None:
+        return False
+
+    configured = _configured_demo_tokens()
+    if not configured:
+        return False
+
+    normalized = str(parsed["normalized_token"])
+    return normalized in configured and not bool(parsed["is_expired"])
 
 
 def _normalize_demo_email(email: object) -> str:
