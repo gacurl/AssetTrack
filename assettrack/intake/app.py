@@ -128,6 +128,9 @@ DEMO_RECEIPT_COOLDOWN_SECONDS = 30
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = 5 * 60
 LOGIN_RATE_LIMIT_MAX_FAILURES = 5
 LOGIN_FAILURE_ATTEMPTS: dict[str, list[int]] = {}
+ADMIN_ROUTE_RATE_LIMIT_WINDOW_SECONDS = 60
+ADMIN_ROUTE_RATE_LIMIT_MAX_ACTIONS = 10
+ADMIN_ROUTE_ATTEMPTS: dict[str, list[int]] = {}
 
 
 @app.after_request
@@ -510,6 +513,51 @@ def _record_login_failure(rate_limit_key: str) -> None:
 
 def _clear_login_failures(rate_limit_key: str) -> None:
     LOGIN_FAILURE_ATTEMPTS.pop(rate_limit_key, None)
+
+
+def _admin_route_rate_limit_key() -> Optional[str]:
+    user = current_user()
+    endpoint = str(request.endpoint or "").strip()
+    if user is None or not endpoint:
+        return None
+    return f"{int(user['id'])}|{endpoint}"
+
+
+def _prune_admin_route_attempts(rate_limit_key: str, *, current_time: Optional[int] = None) -> list[int]:
+    now = now_seconds() if current_time is None else int(current_time)
+    attempts = ADMIN_ROUTE_ATTEMPTS.get(rate_limit_key, [])
+    window_start = now - ADMIN_ROUTE_RATE_LIMIT_WINDOW_SECONDS
+    pruned = [attempt for attempt in attempts if attempt > window_start]
+    if pruned:
+        ADMIN_ROUTE_ATTEMPTS[rate_limit_key] = pruned
+    else:
+        ADMIN_ROUTE_ATTEMPTS.pop(rate_limit_key, None)
+    return pruned
+
+
+def _consume_admin_route_rate_limit_slot() -> bool:
+    rate_limit_key = _admin_route_rate_limit_key()
+    if not rate_limit_key:
+        return True
+
+    attempts = _prune_admin_route_attempts(rate_limit_key)
+    if len(attempts) >= ADMIN_ROUTE_RATE_LIMIT_MAX_ACTIONS:
+        return False
+
+    attempts.append(now_seconds())
+    ADMIN_ROUTE_ATTEMPTS[rate_limit_key] = attempts
+    return True
+
+
+def _enforce_admin_route_rate_limit(*, html_redirect_endpoint: Optional[str] = None):
+    if _consume_admin_route_rate_limit_slot():
+        return None
+
+    message = "Too many requests. Wait and try again."
+    if html_redirect_endpoint:
+        flash(message, "error")
+        return redirect(url_for(html_redirect_endpoint))
+    return {"ok": False, "error": message}, 429
 
 
 def build_parsed_rows_from_queue() -> list[dict]:
@@ -6351,6 +6399,10 @@ def admin_human_report_pdf():
 @require_login
 @require_role("admin")
 def admin_users_create():
+    rate_limit_response = _enforce_admin_route_rate_limit(html_redirect_endpoint="admin_users")
+    if rate_limit_response is not None:
+        return rate_limit_response
+
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     role = (request.form.get("role") or "").strip().lower()
@@ -6372,6 +6424,10 @@ def admin_users_create():
 @require_login
 @require_role("admin")
 def admin_users_toggle_active(user_id: int):
+    rate_limit_response = _enforce_admin_route_rate_limit(html_redirect_endpoint="admin_users")
+    if rate_limit_response is not None:
+        return rate_limit_response
+
     target = get_user_by_id(user_id)
     if target is None:
         flash("User not found.", "error")
@@ -6395,6 +6451,10 @@ def admin_users_toggle_active(user_id: int):
 @require_login
 @require_role("admin")
 def admin_users_reset_password(user_id: int):
+    rate_limit_response = _enforce_admin_route_rate_limit(html_redirect_endpoint="admin_users")
+    if rate_limit_response is not None:
+        return rate_limit_response
+
     new_password = request.form.get("new_password") or ""
 
     try:
@@ -6411,6 +6471,10 @@ def admin_users_reset_password(user_id: int):
 @require_login
 @require_role("admin")
 def admin_users_set_role(user_id: int):
+    rate_limit_response = _enforce_admin_route_rate_limit(html_redirect_endpoint="admin_users")
+    if rate_limit_response is not None:
+        return rate_limit_response
+
     role = (request.form.get("role") or "").strip().lower()
 
     try:
@@ -7157,6 +7221,10 @@ def admin_correct_event():
     guard_result = _require_admin_for_api()
     if guard_result:
         return guard_result
+
+    rate_limit_response = _enforce_admin_route_rate_limit()
+    if rate_limit_response is not None:
+        return rate_limit_response
 
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
