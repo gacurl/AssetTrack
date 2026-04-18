@@ -131,6 +131,10 @@ DEMO_RECEIPT_COOLDOWN_SECONDS = 30
 def refresh_session_activity(response):
     if _should_refresh_session_activity():
         touch_session()
+    if current_user() is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 
