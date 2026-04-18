@@ -17,6 +17,7 @@ import os
 import re
 import sqlite3
 import smtplib
+import tempfile
 import time
 from email.message import EmailMessage
 from email.utils import getaddresses
@@ -57,6 +58,7 @@ from assettrack.auth import (
     require_role,
 )
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
+from assettrack.holder_import import HolderImportReport, import_holders_csv
 from assettrack.reference_data import (
     create_building,
     create_organization,
@@ -5891,6 +5893,53 @@ def admin_system():
         asset_count=asset_count,
         schema_warning=schema_warning,
     )
+
+
+@app.route("/admin/holders/import", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_holder_import():
+    report: HolderImportReport | None = None
+
+    if request.method == "POST":
+        upload = request.files.get("csv_file")
+        filename = str((upload.filename if upload is not None else "") or "").strip()
+        if upload is None or not filename:
+            flash("Choose a CSV file to import.", "error")
+            return render_template("admin_holder_import.html", report=None)
+
+        suffix = Path(filename).suffix or ".csv"
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                upload.save(handle)
+                temp_path = Path(handle.name)
+
+            report = import_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
+            summary = report.summary()
+            if report.errors:
+                flash(
+                    (
+                        f"Holder import failed. Processed {summary['processed']} row"
+                        f"{'' if summary['processed'] == 1 else 's'} with {summary['errors']} error"
+                        f"{'' if summary['errors'] == 1 else 's'}."
+                    ),
+                    "error",
+                )
+            else:
+                flash(
+                    (
+                        f"Holder import complete. Processed {summary['processed']} row"
+                        f"{'' if summary['processed'] == 1 else 's'}: created {summary['created']}, "
+                        f"updated {summary['updated']}."
+                    ),
+                    "success",
+                )
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
+    return render_template("admin_holder_import.html", report=report)
 
 
 def _load_admin_human_report_data(resolved_db_path: Path, *, include_retired_assets: bool = True) -> dict:

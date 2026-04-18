@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Import Holders{% endblock %}
+{% block page_heading %}Admin: Import Holders{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
+    .import-summary { margin: 0; }
+    .import-errors { margin: 0.75rem 0 0 1.25rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <p><a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Holder CSV Import</h2>
+    <p class="import-help">Upload a CSV with the existing holder import columns: <code>organization</code>, <code>name</code>, <code>email</code>.</p>
+    <form method="post" enctype="multipart/form-data">
+      <div class="row">
+        <label for="csv_file"><strong>CSV file</strong></label><br />
+        <input id="csv_file" type="file" name="csv_file" accept=".csv,text/csv" required />
+      </div>
+      <button type="submit">Import Holders</button>
+    </form>
+  </div>
+
+  {% if report is not none %}
+    <div class="card">
+      <h2>Import Result</h2>
+      <p class="import-summary">
+        <strong>Processed:</strong> {{ report.processed }}
+        &nbsp;|&nbsp;
+        <strong>Created:</strong> {{ report.created }}
+        &nbsp;|&nbsp;
+        <strong>Updated:</strong> {{ report.updated }}
+        &nbsp;|&nbsp;
+        <strong>Errors:</strong> {{ report.errors|length }}
+      </p>
+      {% if report.errors %}
+        <ul class="import-errors">
+          {% for error in report.errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
