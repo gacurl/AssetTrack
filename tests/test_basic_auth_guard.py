@@ -98,23 +98,32 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
 def test_demo_sample_receipt_form_is_hidden_without_valid_token(
     client_with_temp_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ASSETTRACK_DEMO_TOKEN", "demo-secret")
+    today = intake_app.datetime.now(intake_app.timezone.utc).date()
+    valid_token = f"DEMO.{today.strftime('%Y%m%d')}.EXP7"
+    expired_day = today - intake_app.timedelta(days=8)
+    expired_token = f"OLD.{expired_day.strftime('%Y%m%d')}.EXP7"
+    monkeypatch.setenv("ASSETTRACK_DEMO_TOKENS", f"{valid_token},{expired_token}")
 
     plain = client_with_temp_db.get("/demo")
     invalid = client_with_temp_db.get("/demo?token=wrong")
-    valid = client_with_temp_db.get("/demo?token=demo-secret")
+    expired = client_with_temp_db.get(f"/demo?token={expired_token}")
+    valid = client_with_temp_db.get(f"/demo?token={valid_token}")
 
     assert plain.status_code == 200
     assert invalid.status_code == 200
+    assert expired.status_code == 200
     assert valid.status_code == 200
     assert b"Send me a sample receipt" not in plain.data
     assert b"Send me a sample receipt" not in invalid.data
+    assert b"Send me a sample receipt" not in expired.data
     assert b"Send me a sample receipt" in valid.data
     assert b"Demo only. No real data." in valid.data
 
 
 def test_demo_sample_receipt_send_requires_valid_token(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ASSETTRACK_DEMO_TOKEN", "demo-secret")
+    today = intake_app.datetime.now(intake_app.timezone.utc).date()
+    valid_token = f"DEMO.{today.strftime('%Y%m%d')}.EXP7"
+    monkeypatch.setenv("ASSETTRACK_DEMO_TOKENS", valid_token)
 
     response = client_with_temp_db.post(
         "/demo/send-sample-receipt",
@@ -144,7 +153,9 @@ def test_demo_sample_receipt_send_uses_static_demo_content_without_db_writes(
         def send_message(self, message) -> None:
             captured["message"] = message
 
-    monkeypatch.setenv("ASSETTRACK_DEMO_TOKEN", "demo-secret")
+    today = intake_app.datetime.now(intake_app.timezone.utc).date()
+    valid_token = f"DEMO.{today.strftime('%Y%m%d')}.EXP7"
+    monkeypatch.setenv("ASSETTRACK_DEMO_TOKENS", valid_token)
     monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
     monkeypatch.setenv("ASSETTRACK_RECEIPT_FROM_EMAIL", "assettrack@example.org")
     monkeypatch.setattr(intake_app.smtplib, "SMTP", _FakeSMTP)
@@ -161,7 +172,7 @@ def test_demo_sample_receipt_send_uses_static_demo_content_without_db_writes(
 
     response = client_with_temp_db.post(
         "/demo/send-sample-receipt",
-        data={"token": "demo-secret", "email": "demo@example.org"},
+        data={"token": valid_token, "email": "demo@example.org"},
         follow_redirects=True,
     )
 
@@ -213,7 +224,9 @@ def test_demo_sample_receipt_send_is_rate_limited_by_session(
         def send_message(self, message) -> None:
             send_calls.append(str(message["To"]))
 
-    monkeypatch.setenv("ASSETTRACK_DEMO_TOKEN", "demo-secret")
+    today = intake_app.datetime.now(intake_app.timezone.utc).date()
+    valid_token = f"DEMO.{today.strftime('%Y%m%d')}.EXP7"
+    monkeypatch.setenv("ASSETTRACK_DEMO_TOKENS", valid_token)
     monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
     monkeypatch.setenv("ASSETTRACK_RECEIPT_FROM_EMAIL", "assettrack@example.org")
     monkeypatch.setattr(intake_app.smtplib, "SMTP", _FakeSMTP)
@@ -223,13 +236,28 @@ def test_demo_sample_receipt_send_is_rate_limited_by_session(
 
     response = client_with_temp_db.post(
         "/demo/send-sample-receipt",
-        data={"token": "demo-secret", "email": "demo@example.org"},
+        data={"token": valid_token, "email": "demo@example.org"},
         follow_redirects=True,
     )
 
     assert response.status_code == 200
     assert b"Demo send limit reached for this session." in response.data
     assert send_calls == []
+
+
+def test_demo_sample_receipt_send_rejects_expired_token(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expired_day = intake_app.datetime.now(intake_app.timezone.utc).date() - intake_app.timedelta(days=8)
+    expired_token = f"DEMO.{expired_day.strftime('%Y%m%d')}.EXP7"
+    monkeypatch.setenv("ASSETTRACK_DEMO_TOKENS", expired_token)
+
+    response = client_with_temp_db.post(
+        "/demo/send-sample-receipt",
+        data={"token": expired_token, "email": "demo@example.org"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_demo_route_does_not_unlock_protected_operational_pages(client_with_temp_db) -> None:
