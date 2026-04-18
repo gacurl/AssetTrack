@@ -1243,6 +1243,15 @@ def _build_admin_retire_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
     return view, errors
 
 
+def _lookup_retire_asset_matches(conn: sqlite3.Connection, asset_tag: str) -> tuple[list[dict], Optional[str]]:
+    matches, error_message, _ = _lookup_asset_for_verification(
+        conn,
+        asset_tag=asset_tag,
+        serial_number="",
+    )
+    return matches, error_message
+
+
 def _resolve_replacement_target_slot(
     conn: sqlite3.Connection,
     *,
@@ -6685,6 +6694,7 @@ def admin_retire_asset():
         "confirm_in_field": False,
     }
     asset_view: Optional[dict] = None
+    asset_matches: list[dict] = []
     error_message: Optional[str] = None
 
     if request.method == "POST":
@@ -6699,13 +6709,24 @@ def admin_retire_asset():
 
         conn = get_connection()
         try:
-            asset_view, blocking_errors = _build_admin_retire_asset_view(conn, form_state["asset_tag"])
             if action == "lookup":
                 if not form_state["asset_tag"]:
                     error_message = "asset_tag is required."
-                elif blocking_errors:
-                    error_message = "; ".join(blocking_errors)
+                else:
+                    try:
+                        exact_asset = _find_asset_for_scan_tag(conn, form_state["asset_tag"])
+                    except ValueError as exc:
+                        exact_asset = None
+                        error_message = str(exc)
+
+                    if exact_asset is not None:
+                        asset_view, blocking_errors = _build_admin_retire_asset_view(conn, form_state["asset_tag"])
+                        if blocking_errors:
+                            error_message = "; ".join(blocking_errors)
+                    elif error_message is None:
+                        asset_matches, error_message = _lookup_retire_asset_matches(conn, form_state["asset_tag"])
             elif action == "retire":
+                asset_view, blocking_errors = _build_admin_retire_asset_view(conn, form_state["asset_tag"])
                 errors: list[str] = []
                 if not form_state["asset_tag"]:
                     errors.append("asset_tag is required.")
@@ -6782,6 +6803,7 @@ def admin_retire_asset():
         "admin_retire_asset.html",
         form=form_state,
         asset=asset_view,
+        asset_matches=asset_matches,
         error_message=error_message,
         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
     )

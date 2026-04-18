@@ -7,6 +7,20 @@
 {% block extra_head %}
   <style>
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    .search-actions {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0.25rem;
+    }
+    .search-clear {
+      display: inline-flex;
+      align-items: center;
+      color: var(--color-text-muted);
+      font-weight: 600;
+    }
+    .results-table code { white-space: nowrap; }
     input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
     textarea { min-height: 120px; }
     .warn { color: #8a1f11; font-weight: 700; }
@@ -46,20 +60,73 @@
   {% endif %}
 
   <div class="card">
-    <h2>1) Lookup Asset</h2>
+    <h2>Find Asset</h2>
+    <p class="muted">Enter a full or partial asset tag. Exact matches load directly. Partial matches require you to select one asset before retiring.</p>
     <form method="post" action="{{ url_for('admin_retire_asset') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
         <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
         <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
       </div>
-      <button type="submit">Lookup Asset</button>
+      <div class="search-actions">
+        <button type="submit">Search</button>
+        {% if form.asset_tag %}
+          <a class="search-clear" href="{{ url_for('admin_retire_asset') }}">Clear</a>
+        {% endif %}
+      </div>
     </form>
   </div>
 
+  {% if asset_matches and not asset %}
+    <div class="card">
+      <h2>Select Asset</h2>
+      <p class="muted">{{ asset_matches|length }} matches found. Select one asset to load its current state before retiring.</p>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Serial number</th>
+            <th>Current state</th>
+            <th>Current holder</th>
+            <th>Home case</th>
+            <th>Home slot</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for match in asset_matches %}
+            <tr>
+              <td><code>{{ match.asset_tag }}</code></td>
+              <td>{{ match.serial_number or "Not recorded" }}</td>
+              <td>
+                <span class="state-badge{% if asset_is_terminal(match.location_type) %} terminal{% endif %}">{{ asset_state_label(match.location_type) }}</span>
+              </td>
+              <td>{{ match.holder_label or "Not assigned" }}</td>
+              <td>{{ match.home_case_name or "Not assigned" }}</td>
+              <td>
+                {% if match.home_slot_position is not none %}
+                  Slot {{ match.home_slot_position }}
+                {% else %}
+                  Not assigned
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('admin_retire_asset') }}">
+                  <input type="hidden" name="action" value="lookup" />
+                  <input type="hidden" name="asset_tag" value="{{ match.asset_tag }}" />
+                  <button type="submit">Select</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
   {% if asset %}
     <div class="card">
-      <h2>2) Current Asset State</h2>
+      <h2>Current Asset State</h2>
       <div class="grid">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
         <div><strong>location_type:</strong> <span class="state-badge{% if asset_is_terminal(asset.location_type) %} terminal{% endif %}">{{ asset_state_label(asset.location_type) }}</span></div>
@@ -80,7 +147,7 @@
     </div>
 
     <div class="card">
-      <h2>3) Retire Asset</h2>
+      <h2>Retire Asset</h2>
       <p class="warn">Retirement is terminal. This action marks the asset as DISPOSED.</p>
       <form method="post" action="{{ url_for('admin_retire_asset') }}">
         <input type="hidden" name="action" value="retire" />
