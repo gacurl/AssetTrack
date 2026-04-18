@@ -1,7 +1,3 @@
-.page.page-wide {
-  max-width: 1320px;
-}
-
 .actions {
   display: flex;
   gap: 0.5rem;
