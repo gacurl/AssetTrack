@@ -55,6 +55,9 @@ def test_nonexistent_user_login_fails(client_with_temp_db) -> None:
 def test_login_screen_renders_theme_toggle_without_persistence_storage(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/")
     assert response.status_code == 200
+    assert response.headers.get("Cache-Control") != "no-store"
+    assert response.headers.get("Pragma") != "no-cache"
+    assert response.headers.get("Expires") != "0"
     assert b'id="theme-toggle"' in response.data
     assert b"assettrack_theme" in response.data
     assert b"theme-toggle-icon" in response.data
@@ -320,6 +323,18 @@ def test_protected_route_can_still_return_json_forbidden_when_json_is_requested(
     assert response.json == {"ok": False, "error": "Forbidden"}
 
 
+def test_authenticated_json_response_sets_no_store_headers(client_with_temp_db) -> None:
+    create_user("admin", "admin-pass", "admin", True)
+    _login(client_with_temp_db, "admin", "admin-pass")
+
+    response = client_with_temp_db.get("/preview/validate?json=1")
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["Expires"] == "0"
+
+
 def test_unknown_route_renders_friendly_404_page(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/missing-page")
 
@@ -342,6 +357,9 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
 
     dashboard_response = client_with_temp_db.get("/dashboard")
     assert dashboard_response.status_code == 200
+    assert dashboard_response.headers["Cache-Control"] == "no-store"
+    assert dashboard_response.headers["Pragma"] == "no-cache"
+    assert dashboard_response.headers["Expires"] == "0"
     assert b'<html lang="en" data-theme="dark">' in dashboard_response.data
     assert b'aria-pressed="true"' in dashboard_response.data
     assert b'aria-label="Switch to light mode"' in dashboard_response.data
@@ -355,6 +373,19 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
     assert b'aria-label="Switch to light mode"' in asset_search_response.data
     assert "\u2600\ufe0f".encode("utf-8") in asset_search_response.data
     assert b"Light mode" in asset_search_response.data
+
+
+def test_authenticated_file_download_sets_no_store_headers(client_with_temp_db) -> None:
+    create_user("admin", "admin-pass", "admin", True)
+    _login(client_with_temp_db, "admin", "admin-pass")
+
+    response = client_with_temp_db.get("/admin/report/pdf")
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["Expires"] == "0"
+    assert response.headers["Content-Type"] == "application/pdf"
 
 
 def test_inactive_user_login_fails(client_with_temp_db) -> None:
