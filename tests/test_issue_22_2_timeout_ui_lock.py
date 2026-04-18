@@ -49,9 +49,11 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def _login_with_timeout(client, *, role: str = "admin") -> int:
     user_id = create_test_user(username=f"{role}-timeout-user", password="op-pass", role=role)
+    now = intake_app.now_seconds()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
-        sess["last_seen"] = intake_app.now_seconds()
+        sess["last_seen"] = now
+        sess["session_started_at"] = now
     return user_id
 
 

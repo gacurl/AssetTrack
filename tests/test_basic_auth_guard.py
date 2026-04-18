@@ -32,6 +32,11 @@ def test_active_user_login_succeeds(client_with_temp_db) -> None:
     response = _login(client_with_temp_db, "operator", "op-pass")
     assert response.status_code == 302
     assert (response.headers.get("Location") or "").endswith("/dashboard")
+    with client_with_temp_db.session_transaction() as sess:
+        assert "user_id" in sess
+        assert "last_seen" in sess
+        assert "session_started_at" in sess
+        assert sess["session_started_at"] == sess["last_seen"]
 
 
 def test_wrong_password_login_fails(client_with_temp_db) -> None:
@@ -357,6 +362,29 @@ def test_inactive_user_login_fails(client_with_temp_db) -> None:
     response = _login(client_with_temp_db, "inactive", "op-pass")
     assert response.status_code == 403
     assert b"Access denied" in response.data
+
+
+def test_logout_clears_auth_keys_and_preserves_workflow_state(client_with_temp_db) -> None:
+    create_user("operator", "op-pass", "operator", True)
+    _login(client_with_temp_db, "operator", "op-pass")
+    with client_with_temp_db.session_transaction() as sess:
+        sess["holder_id"] = 41
+        sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
+
+    response = client_with_temp_db.get("/logout")
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/")
+    with client_with_temp_db.session_transaction() as sess:
+        assert "user_id" not in sess
+        assert "last_seen" not in sess
+        assert "session_started_at" not in sess
+        assert sess["holder_id"] == 41
+        assert sess["issue_mode"] is True
+        assert sess["issue_building"] == "HQ North"
+        assert sess["issue_room"] == "210"
 
 
 def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:

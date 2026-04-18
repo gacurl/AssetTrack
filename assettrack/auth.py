@@ -2,10 +2,46 @@
 from __future__ import annotations
 
 from functools import wraps
+import time
 
 from flask import g, render_template, request, session
 
 from assettrack.users import ALLOWED_ROLES, get_user_by_id
+
+SESSION_IDLE_TIMEOUT_SECONDS = 20 * 60
+SESSION_ABSOLUTE_TIMEOUT_SECONDS = 60 * 60
+AUTH_SESSION_KEYS = ("user_id", "last_seen", "session_started_at")
+
+
+def now_seconds() -> int:
+    return int(time.time())
+
+
+def begin_auth_session(user_id: int) -> None:
+    started_at = now_seconds()
+    session["user_id"] = int(user_id)
+    session["last_seen"] = started_at
+    session["session_started_at"] = started_at
+
+
+def clear_auth_session() -> None:
+    for key in AUTH_SESSION_KEYS:
+        session.pop(key, None)
+
+
+def _session_timing_valid() -> bool:
+    try:
+        last_seen = int(session["last_seen"])
+        session_started_at = int(session["session_started_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    current = now_seconds()
+    if current - last_seen > SESSION_IDLE_TIMEOUT_SECONDS:
+        return False
+    if current - session_started_at > SESSION_ABSOLUTE_TIMEOUT_SECONDS:
+        return False
+    return True
 
 
 def _prefers_json_response() -> bool:
@@ -29,16 +65,21 @@ def current_user() -> dict | None:
         return g.current_user
 
     user_id = session.get("user_id")
+    if user_id is not None and not _session_timing_valid():
+        clear_auth_session()
+        g.current_user = None
+        return None
+
     user = get_user_by_id(user_id)
     if user is None:
-        session.pop("user_id", None)
+        clear_auth_session()
         g.current_user = None
         return None
 
     role = str(user.get("role") or "").strip().lower()
     active = int(user.get("active") or 0) == 1
     if role not in ALLOWED_ROLES or not active:
-        session.pop("user_id", None)
+        clear_auth_session()
         g.current_user = None
         return None
 

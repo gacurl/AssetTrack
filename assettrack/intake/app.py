@@ -47,7 +47,14 @@ from assettrack.ingest.validator import validate_rows
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 from assettrack.intake.scan import Scan
 from assettrack.intake.to_ingest import scan_to_ingest_row
-from assettrack.auth import current_user, require_login, require_role
+from assettrack.auth import (
+    SESSION_IDLE_TIMEOUT_SECONDS,
+    begin_auth_session,
+    clear_auth_session,
+    current_user,
+    require_login,
+    require_role,
+)
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
 from assettrack.reference_data import (
     create_building,
@@ -81,7 +88,7 @@ bootstrap_db(db_module.DB_PATH)
 # In-memory only: wiped on restart
 SCAN_QUEUE: list[Scan] = []
 
-INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", "300"))  # default 5 min
+INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", str(SESSION_IDLE_TIMEOUT_SECONDS)))
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
@@ -445,8 +452,7 @@ def is_authed() -> bool:
 def set_authed(value: bool) -> None:
     if value:
         return
-    session.pop("user_id", None)
-    session.pop("last_seen", None)
+    clear_auth_session()
 
 
 def auth_ok(submitted: str | None) -> bool:
@@ -3547,8 +3553,7 @@ def intake():
         session.pop("user_id", None)
         return render_template("splash.html", error="Access denied"), 403
 
-    session["user_id"] = int(user["id"])
-    touch_session()
+    begin_auth_session(int(user["id"]))
     return redirect("/dashboard")
 
 
@@ -3663,14 +3668,13 @@ def bootstrap_admin():
     except sqlite3.IntegrityError:
         return render_template("bootstrap_admin.html", error="Username already exists."), 400
 
-    session["user_id"] = int(user["id"])
-    touch_session()
+    begin_auth_session(int(user["id"]))
     return redirect("/dashboard")
 
 
 @app.get("/logout")
 def logout():
-    session.pop("user_id", None)
+    clear_auth_session()
     return redirect("/")
 
 
