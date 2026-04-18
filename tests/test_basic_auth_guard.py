@@ -18,6 +18,7 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
     conn = db.get_connection()
     conn.close()
+    intake_app.LOGIN_FAILURE_ATTEMPTS.clear()
     intake_app.app.testing = True
     client = intake_app.app.test_client()
     return client
@@ -50,6 +51,67 @@ def test_nonexistent_user_login_fails(client_with_temp_db) -> None:
     response = _login(client_with_temp_db, "missing", "pw")
     assert response.status_code == 403
     assert b"Invalid login" in response.data
+
+
+def test_failed_login_attempts_accumulate_and_sixth_is_blocked(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_user("operator", "op-pass", "operator", True)
+    monkeypatch.setattr(intake_app, "now_seconds", lambda: 1000)
+
+    for _ in range(5):
+        response = _login(client_with_temp_db, "operator", "wrong")
+        assert response.status_code == 403
+        assert b"Invalid login" in response.data
+
+    limited = _login(client_with_temp_db, "operator", "wrong")
+
+    assert limited.status_code == 403
+    assert b"Too many login attempts. Wait and try again." in limited.data
+
+
+def test_old_login_failures_outside_window_do_not_count(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_user("operator", "op-pass", "operator", True)
+
+    monkeypatch.setattr(intake_app, "now_seconds", lambda: 1000)
+    for _ in range(5):
+        response = _login(client_with_temp_db, "operator", "wrong")
+        assert response.status_code == 403
+
+    monkeypatch.setattr(
+        intake_app,
+        "now_seconds",
+        lambda: 1000 + intake_app.LOGIN_RATE_LIMIT_WINDOW_SECONDS + 1,
+    )
+    response = _login(client_with_temp_db, "operator", "wrong")
+
+    assert response.status_code == 403
+    assert b"Invalid login" in response.data
+    assert b"Too many login attempts. Wait and try again." not in response.data
+
+
+def test_successful_login_clears_failure_history(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    create_user("operator", "op-pass", "operator", True)
+    monkeypatch.setattr(intake_app, "now_seconds", lambda: 1000)
+
+    for _ in range(4):
+        response = _login(client_with_temp_db, "operator", "wrong")
+        assert response.status_code == 403
+
+    success = _login(client_with_temp_db, "operator", "op-pass")
+    assert success.status_code == 302
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess.pop("user_id", None)
+        sess.pop("last_seen", None)
+        sess.pop("session_started_at", None)
+
+    retry = _login(client_with_temp_db, "operator", "wrong")
+    assert retry.status_code == 403
+    assert b"Invalid login" in retry.data
+    assert b"Too many login attempts. Wait and try again." not in retry.data
 
 
 def test_login_screen_renders_theme_toggle_without_persistence_storage(client_with_temp_db) -> None:
@@ -416,6 +478,31 @@ def test_logout_clears_auth_keys_and_preserves_workflow_state(client_with_temp_d
         assert sess["issue_mode"] is True
         assert sess["issue_building"] == "HQ North"
         assert sess["issue_room"] == "210"
+
+
+def test_authenticated_post_root_queue_action_is_not_rate_limited(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = create_user("operator", "op-pass", "operator", True)
+    monkeypatch.setattr(intake_app, "now_seconds", lambda: 1000)
+    monkeypatch.setattr(auth, "now_seconds", lambda: 1000)
+
+    for _ in range(5):
+        response = _login(client_with_temp_db, "operator", "wrong")
+        assert response.status_code == 403
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["user_id"] = int(created["id"])
+        sess["last_seen"] = 1000
+        sess["session_started_at"] = 1000
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"action": "clear", "return_to": "/add-assets"},
+    )
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/add-assets")
 
 
 def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:

@@ -125,6 +125,9 @@ DEMO_AUDIT = [
 ]
 DEMO_RECEIPT_SEND_LIMIT = 2
 DEMO_RECEIPT_COOLDOWN_SECONDS = 30
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = 5 * 60
+LOGIN_RATE_LIMIT_MAX_FAILURES = 5
+LOGIN_FAILURE_ATTEMPTS: dict[str, list[int]] = {}
 
 
 @app.after_request
@@ -472,6 +475,41 @@ def seconds_since_last_seen() -> Optional[int]:
     if last_seen is None:
         return None
     return max(0, now_seconds() - int(last_seen))
+
+
+def _login_rate_limit_key() -> str:
+    remote_addr = str(request.remote_addr or "unknown").strip() or "unknown"
+    username = (request.form.get("username") or "").strip().lower()
+    if username:
+        return f"{remote_addr}|{username}"
+    return remote_addr
+
+
+def _prune_login_failures(rate_limit_key: str, *, current_time: Optional[int] = None) -> list[int]:
+    now = now_seconds() if current_time is None else int(current_time)
+    attempts = LOGIN_FAILURE_ATTEMPTS.get(rate_limit_key, [])
+    window_start = now - LOGIN_RATE_LIMIT_WINDOW_SECONDS
+    pruned = [attempt for attempt in attempts if attempt > window_start]
+    if pruned:
+        LOGIN_FAILURE_ATTEMPTS[rate_limit_key] = pruned
+    else:
+        LOGIN_FAILURE_ATTEMPTS.pop(rate_limit_key, None)
+    return pruned
+
+
+def _login_is_rate_limited(rate_limit_key: str) -> bool:
+    attempts = _prune_login_failures(rate_limit_key)
+    return len(attempts) >= LOGIN_RATE_LIMIT_MAX_FAILURES
+
+
+def _record_login_failure(rate_limit_key: str) -> None:
+    attempts = _prune_login_failures(rate_limit_key)
+    attempts.append(now_seconds())
+    LOGIN_FAILURE_ATTEMPTS[rate_limit_key] = attempts
+
+
+def _clear_login_failures(rate_limit_key: str) -> None:
+    LOGIN_FAILURE_ATTEMPTS.pop(rate_limit_key, None)
 
 
 def build_parsed_rows_from_queue() -> list[dict]:
@@ -3547,16 +3585,23 @@ def intake():
 
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
+    login_rate_limit_key = _login_rate_limit_key()
+    if _login_is_rate_limited(login_rate_limit_key):
+        return render_template("splash.html", error="Too many login attempts. Wait and try again."), 403
+
     user = get_user_by_username(username)
     if user is None or not verify_password(user, password):
+        _record_login_failure(login_rate_limit_key)
         return render_template("splash.html", error="Invalid login"), 403
 
     role = str(user.get("role") or "").strip().lower()
     active = int(user.get("active") or 0) == 1
     if role not in {"admin", "operator"} or not active:
         session.pop("user_id", None)
+        _record_login_failure(login_rate_limit_key)
         return render_template("splash.html", error="Access denied"), 403
 
+    _clear_login_failures(login_rate_limit_key)
     begin_auth_session(int(user["id"]))
     return redirect("/dashboard")
 
