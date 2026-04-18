@@ -6,12 +6,6 @@
 
 {% block extra_head %}
   <style>
-    .report-actions {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      margin-bottom: 1rem;
-    }
     .report-priority {
       display: grid;
       gap: 0.9rem;
@@ -45,18 +39,6 @@
     .report-priority-links .nav-link:focus-visible {
       outline-offset: 1px;
     }
-    .report-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 0.75rem;
-    }
-    .report-stat {
-      display: block;
-      padding: 0.85rem;
-      border: 1px solid var(--color-surface);
-      border-radius: 10px;
-      background: var(--color-surface-soft);
-    }
     .report-stat-link {
       color: inherit;
       text-decoration: none;
@@ -72,37 +54,10 @@
       outline: 2px solid var(--color-primary);
       outline-offset: 2px;
     }
-    .report-stat strong {
-      display: block;
-      font-size: 1.35rem;
-      margin-top: 0.25rem;
-    }
     .report-stat-action {
       display: block;
       margin-top: 0.65rem;
       width: fit-content;
-    }
-    .card h2 {
-      margin-top: 0;
-    }
-    .table-wrap {
-      overflow-x: auto;
-    }
-    .state-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.24rem 0.58rem;
-      border-radius: 999px;
-      font-weight: 700;
-      line-height: 1.2;
-      background: var(--color-surface-soft);
-      color: var(--color-text);
-    }
-    .state-badge.terminal {
-      background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-bg));
-      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-surface));
-      color: var(--color-danger);
-      letter-spacing: 0.01em;
     }
     details.report-section {
       margin-top: 1rem;
@@ -166,15 +121,8 @@
       text-underline-offset: 0.16em;
     }
     @media print {
-      .page-tools,
-      .top-nav,
-      .report-actions,
       details.report-section summary {
         display: none !important;
-      }
-      .card {
-        break-inside: avoid;
-        box-shadow: none;
       }
     }
   </style>
