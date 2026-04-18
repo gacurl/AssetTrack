@@ -275,6 +275,37 @@
       background: var(--color-surface-bg);
       color: var(--color-text);
     }
+    .demo-email-form button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      min-width: 15rem;
+    }
+    .demo-email-form button[disabled] {
+      opacity: 0.72;
+      cursor: wait;
+    }
+    .demo-email-form button.is-submitting {
+      background: color-mix(in srgb, var(--color-primary) 85%, var(--color-text));
+      border-color: color-mix(in srgb, var(--color-primary) 85%, var(--color-text));
+    }
+    .demo-send-spinner {
+      width: 0.95rem;
+      height: 0.95rem;
+      border: 2px solid rgba(255, 255, 255, 0.38);
+      border-top-color: #fff;
+      border-radius: 999px;
+      animation: demo-send-spin 0.75s linear infinite;
+    }
+    .demo-send-spinner[hidden] {
+      display: none;
+    }
+    @keyframes demo-send-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
     .demo-email-privacy {
       margin: -0.15rem 0 0 0;
       color: var(--color-text-muted);
@@ -360,10 +391,13 @@
         <p><strong>Send me a sample receipt</strong></p>
         <p class="muted">Demo only. No real data. Session limit: {{ demo_send_limit }} sends.</p>
       </div>
-      <form class="demo-email-form" method="post" action="{{ url_for('demo_send_sample_receipt') }}">
+      <form class="demo-email-form" method="post" action="{{ url_for('demo_send_sample_receipt') }}" data-demo-send-form>
         <input type="hidden" name="token" value="{{ demo_token }}" />
         <input type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
-        <button type="submit">Send me a sample receipt</button>
+        <button type="submit" data-demo-send-button>
+          <span data-demo-send-label>Send me a sample receipt</span>
+          <span class="demo-send-spinner" data-demo-send-spinner hidden aria-hidden="true"></span>
+        </button>
       </form>
       <p class="demo-email-privacy">Demo only. No real data. Email is not stored.</p>
     </section>
@@ -502,4 +536,38 @@
     <strong>Safety note:</strong>
     <p>This page shows sample holder, receipt, and event data only. It does not expose operational records, and it cannot submit changes into the custody system.</p>
   </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    const demoSendForm = document.querySelector("[data-demo-send-form]");
+
+    if (demoSendForm) {
+      const submitButton = demoSendForm.querySelector("[data-demo-send-button]");
+      const label = demoSendForm.querySelector("[data-demo-send-label]");
+      const spinner = demoSendForm.querySelector("[data-demo-send-spinner]");
+
+      demoSendForm.addEventListener("submit", (event) => {
+        if (!submitButton) {
+          return;
+        }
+        if (demoSendForm.dataset.submitting === "true") {
+          event.preventDefault();
+          return;
+        }
+
+        demoSendForm.dataset.submitting = "true";
+        submitButton.disabled = true;
+        submitButton.classList.add("is-submitting");
+        submitButton.setAttribute("aria-disabled", "true");
+
+        if (label) {
+          label.textContent = "Sending...";
+        }
+        if (spinner) {
+          spinner.hidden = false;
+        }
+      });
+    }
+  </script>
 {% endblock %}
