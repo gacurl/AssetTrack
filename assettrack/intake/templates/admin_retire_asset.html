@@ -6,21 +6,39 @@
 
 {% block extra_head %}
   <style>
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    .search-actions {
-      display: flex;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-top: 0.25rem;
-    }
-    .search-clear {
-      display: inline-flex;
-      align-items: center;
-      color: var(--color-text-muted);
-      font-weight: 600;
-    }
-    .results-table code { white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+
+.asset-retire-lookup {
+  width: 100%;
+}
+.asset-retire-lookup .search-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  width: 100%;
+}
+.asset-retire-lookup .search-field {
+  min-width: 0;
+}
+.asset-retire-lookup .search-field .form-input {
+  display: block;
+  max-width: none;
+}
+
+.search-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.results-table code { white-space: nowrap; }
     input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
     textarea { min-height: 120px; }
     .warn { color: #8a1f11; font-weight: 700; }
@@ -60,20 +78,30 @@
   {% endif %}
 
   <div class="card">
-    <h2>Find Asset</h2>
-    <p class="muted">Enter a full or partial asset tag. Exact matches load directly. Partial matches require you to select one asset before retiring.</p>
-    <form method="post" action="{{ url_for('admin_retire_asset') }}">
-      <input type="hidden" name="action" value="lookup" />
-      <div class="row">
-        <label for="asset_tag"><strong>asset_tag</strong> (required)</label><br />
-        <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
+  <h2>Find Asset</h2>
+  <p class="muted">
+    Enter a full or partial asset tag. Exact matches load directly.
+    Partial matches require you to select one asset before retiring.
+  </p>
+
+  <form class="asset-retire-lookup" method="post" action="{{ url_for('admin_retire_asset') }}">
+    <input type="hidden" name="action" value="lookup" />
+
+    <div class="search-grid">
+      <div class="row form-group search-field">
+        <label class="form-label" for="asset_tag"><strong>Asset tag</strong></label>
+        <input class="form-input" type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
       </div>
-      <div class="search-actions">
-        <button type="submit">Search</button>
-        {% if form.asset_tag %}
-          <a class="search-clear" href="{{ url_for('admin_retire_asset') }}">Clear</a>
-        {% endif %}
-      </div>
+    </div>
+
+    <div class="search-actions">
+      <button type="submit">Search</button>
+      {% if form.asset_tag %}
+        <a class="search-clear" href="{{ url_for('admin_retire_asset') }}">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
     </form>
   </div>
 
