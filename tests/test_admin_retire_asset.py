@@ -198,6 +198,39 @@ class AdminRetireAssetTests(unittest.TestCase):
         payload = json.loads(event["payload"])
         self.assertEqual(payload["failure_type"], "LOST")
 
+    def test_partial_lookup_requires_explicit_selection_before_retire(self) -> None:
+        self._insert_asset("RET-210", location_type="STORAGE")
+        self._insert_asset("RET-211", location_type="STORAGE")
+
+        response = self.client.post(
+            "/admin/assets/retire",
+            data={
+                "action": "lookup",
+                "asset_tag": "RET-21",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Select Asset", response.data)
+        self.assertIn(b"RET-210", response.data)
+        self.assertIn(b"RET-211", response.data)
+        self.assertNotIn(b"Current Asset State", response.data)
+        self.assertNotIn(b'Retirement is terminal. This action marks the asset as DISPOSED.', response.data)
+        self.assertIn(b">Select<", response.data)
+
+        selected = self.client.post(
+            "/admin/assets/retire",
+            data={
+                "action": "lookup",
+                "asset_tag": "RET-210",
+            },
+        )
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn(b"Current Asset State", selected.data)
+        self.assertIn(b"Retire Asset", selected.data)
+        self.assertIn(b"RET-210", selected.data)
+        self.assertNotIn(b"RET-211", selected.data)
+
     def test_retired_assets_are_blocked_from_issue_and_return(self) -> None:
         self._insert_slot(20, "CASE-B", 2, current_asset_tag=None)
         self._insert_asset("RET-300", location_type="DISPOSED", holder_id=None, home_slot_id=20)
