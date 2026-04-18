@@ -70,6 +70,8 @@ def test_add_assets_and_preview_render_timeout_lock_targets(client_with_temp_db)
     assert preview.status_code == 200
     assert b'id="timeout-lock-panel"' in preview.data
     assert b'id="timeout-lock-state">Active<' in preview.data
+    assert b"20 minutes idle / 1 hour absolute" in preview.data
+    assert b"0 seconds ago" in preview.data
     assert b'class="timeout-countdown"' in preview.data
     assert b'remainingSeconds <= 10 && remainingSeconds > 0' in preview.data
     assert b'classList.add("timeout-warning")' in preview.data
@@ -94,6 +96,7 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     issue_queue = client_with_temp_db.get("/issue")
     assert issue_queue.status_code == 200
     assert b'id="timeout-lock-panel"' in issue_queue.data
+    assert b"20 minutes idle / 1 hour absolute" in issue_queue.data
     assert b"Open Issue Assets Preview / Confirm" in issue_queue.data
     assert issue_queue.data.count(b"data-timeout-lock-target") >= 4
 
