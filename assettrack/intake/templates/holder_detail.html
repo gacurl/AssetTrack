@@ -107,10 +107,32 @@
     .holder-detail-item {
       color: var(--color-text-muted);
     }
+    .holder-status-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      background: var(--color-primary-soft);
+      color: var(--color-primary);
+    }
+    .holder-status-chip.inactive {
+      background: #fde9e7;
+      color: #8a2d2d;
+    }
   </style>
 {% endblock %}
 
 {% block content %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   <div class="page-header-bar">
     <nav class="page-header-nav" aria-label="Holder navigation">
       {% if return_to == url_for('human_report') %}
@@ -120,13 +142,17 @@
     </nav>
     <div class="page-header-actions" aria-label="Holder actions">
       {% set passive_return_target = url_for('holder_detail', holder_id=holder.id, return_to=return_to) %}
-      <form method="post" action="{{ url_for('holders_select') }}">
-        <input type="hidden" name="holder_id" value="{{ holder.id }}" />
-        {% if return_to and return_to != url_for('human_report') %}
-          <input type="hidden" name="return_to" value="{{ return_to }}" />
-        {% endif %}
-        <button type="submit">Select Holder</button>
-      </form>
+      {% if holder.get("is_active", 1) %}
+        <form method="post" action="{{ url_for('holders_select') }}">
+          <input type="hidden" name="holder_id" value="{{ holder.id }}" />
+          {% if return_to and return_to != url_for('human_report') %}
+            <input type="hidden" name="return_to" value="{{ return_to }}" />
+          {% endif %}
+          <button type="submit">Select Holder</button>
+        </form>
+      {% else %}
+        <span class="holder-status-chip inactive">Inactive holder</span>
+      {% endif %}
       {% if return_to == url_for('human_report') %}
         <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id, return_to=passive_return_target) }}">Edit Holder</a>
       {% elif return_to %}
@@ -134,12 +160,25 @@
       {% else %}
         <a class="chip" href="{{ url_for('holders_edit', holder_id=holder.id) }}">Edit Holder</a>
       {% endif %}
+      {% if authenticated_role == 'admin' %}
+        <form method="post" action="{{ url_for('holders_toggle_active', holder_id=holder.id) }}">
+          <input type="hidden" name="is_active" value="{{ 0 if holder.get('is_active', 1) else 1 }}" />
+          <input type="hidden" name="return_to" value="{{ request.full_path.rstrip('?') }}" />
+          <button type="submit">{{ "Deactivate Holder" if holder.get("is_active", 1) else "Reactivate Holder" }}</button>
+        </form>
+      {% endif %}
     </div>
   </div>
 
   <section class="holder-identity" aria-label="Holder identity">
     <div class="holder-kicker">{{ holder_display_type(holder) }}</div>
     <div class="holder-context">
+      <div class="holder-context-item">
+        <strong>Status:</strong>
+        <span class="holder-status-chip {% if not holder.get('is_active', 1) %}inactive{% endif %}">
+          {{ "Active" if holder.get("is_active", 1) else "Inactive" }}
+        </span>
+      </div>
       {% if holder.organization %}
         <div class="holder-context-item"><strong>Organization:</strong> {{ holder.organization }}</div>
       {% endif %}

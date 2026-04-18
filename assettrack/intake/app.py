@@ -57,7 +57,7 @@ from assettrack.auth import (
     require_login,
     require_role,
 )
-from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
+from assettrack.holders import create_holder, get_holder, list_holders, search_holders, set_holder_active, update_holder
 from assettrack.holder_import import HolderImportReport, import_holders_csv
 from assettrack.reference_data import (
     create_building,
@@ -2247,15 +2247,27 @@ def _retire_admin_asset_in_tx(
     }
 
 
-def _selected_holder_from_session() -> Optional[dict]:
+def _holder_is_active(holder: Optional[dict]) -> bool:
+    if holder is None:
+        return False
+    return int(holder.get("is_active") or 0) == 1
+
+
+def _selected_holder_from_session(*, require_active: bool = False) -> Optional[dict]:
     holder_id = session.get("holder_id")
     if holder_id is None:
         return None
 
     holder = get_holder(holder_id)
-    if holder is None:
+    if holder is None or (require_active and not _holder_is_active(holder)):
         session.pop("holder_id", None)
+        return None
     return holder
+
+
+def _holder_selection_requires_active_filter(return_to: Optional[str]) -> bool:
+    normalized = str(return_to or "").strip()
+    return normalized.startswith("/issue")
 
 
 def _issue_location_form_from_session() -> dict[str, str]:
@@ -3506,7 +3518,7 @@ def intake():
 
         if scan_text:
             if return_to_path == "/issue":
-                selected_holder = _selected_holder_from_session()
+                selected_holder = _selected_holder_from_session(require_active=True)
                 issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
                     selected_holder,
                     _issue_location_form_from_session(),
@@ -3985,7 +3997,7 @@ def preview():
         valid=is_valid,
         validation=validation,
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
-        selected_holder=_selected_holder_from_session(),
+        selected_holder=_selected_holder_from_session(require_active=bool(session.get("issue_mode"))),
         issue_mode=bool(session.get("issue_mode")),
         last_seen_age_seconds=seconds_since_last_seen(),
         timeout_seconds=INTAKE_TIMEOUT_SECONDS,
@@ -4131,7 +4143,7 @@ def preview_commit():
 
     # Issue commit mode
 
-    holder = _selected_holder_from_session()
+    holder = _selected_holder_from_session(require_active=True)
     if holder is None:
         if wants_json():
             return {
@@ -4205,7 +4217,7 @@ def issue():
     if session.get("last_seen") is None:
         touch_session()
 
-    selected_holder = _selected_holder_from_session()
+    selected_holder = _selected_holder_from_session(require_active=True)
     if selected_holder is None:
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("holders_search", return_to=url_for("issue")))
@@ -4273,7 +4285,7 @@ def issue_location_update():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("add_assets"))
 
-    selected_holder = _selected_holder_from_session()
+    selected_holder = _selected_holder_from_session(require_active=True)
     if selected_holder is None:
         flash("Select a holder before issuing assets.", "error")
         return redirect(url_for("holders_search", return_to=url_for("issue")))
@@ -4305,7 +4317,7 @@ def issue_preview():
         flash("Use the Issue workflow before opening Issue Assets Preview.", "error")
         return redirect(url_for("issue"))
 
-    selected_holder = _selected_holder_from_session()
+    selected_holder = _selected_holder_from_session(require_active=True)
     issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
         selected_holder,
         _issue_location_form_from_session(),
@@ -4375,7 +4387,7 @@ def issue_commit():
         preview_response = issue_preview()
         return preview_response, 400
 
-    holder = _selected_holder_from_session()
+    holder = _selected_holder_from_session(require_active=True)
     if holder is None:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "Select a holder before issuing assets."}, 400
@@ -4615,14 +4627,16 @@ def holders_search():
 
     query = (request.args.get("q") or "").strip()
     return_to = _safe_local_return_to(request.args.get("return_to") or "")
-    results = search_holders(query) if query else list_holders()
+    active_only = _holder_selection_requires_active_filter(return_to)
+    results = search_holders(query, active_only=active_only) if query else list_holders(active_only=active_only)
 
     return render_template(
         "holders_search.html",
         query=query,
         return_to=return_to,
         results=results,
-        selected_holder=_selected_holder_from_session(),
+        selected_holder=_selected_holder_from_session(require_active=active_only),
+        selection_active_only=active_only,
     )
 
 
@@ -5819,25 +5833,31 @@ def holders_select():
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
-    return_to = (request.form.get("return_to") or "").strip()
+    return_to = _safe_local_return_to(request.form.get("return_to") or request.args.get("return_to") or "")
     holder_id_raw = (request.form.get("holder_id") or "").strip()
     if not holder_id_raw:
         flash("Select a holder first.", "error")
-        if return_to.startswith("/") and not return_to.startswith("//"):
+        if return_to is not None:
             return redirect(url_for("holders_search", return_to=return_to))
         return redirect(url_for("holders_search"))
 
     holder = get_holder(holder_id_raw)
     if holder is None:
         flash("Selected holder not found.", "error")
-        if return_to.startswith("/") and not return_to.startswith("//"):
+        if return_to is not None:
+            return redirect(url_for("holders_search", return_to=return_to))
+        return redirect(url_for("holders_search"))
+    if not _holder_is_active(holder):
+        session.pop("holder_id", None)
+        flash("Inactive holders cannot be selected for assignment.", "error")
+        if return_to is not None:
             return redirect(url_for("holders_search", return_to=return_to))
         return redirect(url_for("holders_search"))
 
     session["holder_id"] = holder["id"]
     touch_session()
     flash(f"Selected holder: {_holder_display_name(holder)}", "success")
-    if return_to.startswith("/") and not return_to.startswith("//"):
+    if return_to is not None:
         return redirect(return_to)
     return redirect(url_for("holders_search"))
 
@@ -5854,6 +5874,29 @@ def holders_clear():
     touch_session()
     flash("Cleared holder selection.", "success")
     return redirect(url_for("holders_search"))
+
+
+@app.post("/holders/<int:holder_id>/toggle-active")
+@require_login
+@require_role("admin")
+def holders_toggle_active(holder_id: int):
+    return_to = _safe_local_return_to(request.form.get("return_to") or "")
+    requested = request.form.get("is_active")
+    next_active = _is_truthy(requested)
+
+    try:
+        updated = set_holder_active(holder_id, next_active)
+    except ValueError as exc:
+        flash(str(exc), "error")
+    else:
+        state = "active" if _holder_is_active(updated) else "inactive"
+        flash(f"Holder { _holder_display_name(updated) } is now {state}.", "success")
+        if not _holder_is_active(updated) and session.get("holder_id") == int(updated["id"]):
+            session.pop("holder_id", None)
+
+    if return_to is not None:
+        return redirect(return_to)
+    return redirect(url_for("holder_detail", holder_id=holder_id))
 
 
 @app.get("/admin/users")

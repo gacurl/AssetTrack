@@ -47,7 +47,7 @@ def _ensure_unique_holder_email(
     raise ValueError("email already exists")
 
 
-def search_holders(query: str, limit: int = 20) -> list[dict]:
+def search_holders(query: str, limit: int = 20, *, active_only: bool = False) -> list[dict]:
     q = (query or "").strip()
     if not q:
         return []
@@ -59,14 +59,18 @@ def search_holders(query: str, limit: int = 20) -> list[dict]:
 
     conn = get_connection()
     try:
+        where_clauses = ["(name LIKE ? OR identifier LIKE ? OR organization LIKE ?)"]
+        params: list[object] = [pattern, pattern, pattern]
+        if active_only:
+            where_clauses.append("COALESCE(is_active, 1) = 1")
         cursor = conn.execute(
-            """
+            f"""
             SELECT * FROM holders
-            WHERE name LIKE ? OR identifier LIKE ? OR organization LIKE ?
+            WHERE {' AND '.join(where_clauses)}
             ORDER BY name ASC, id ASC
             LIMIT ?;
             """,
-            (pattern, pattern, pattern, limit),
+            (*params, limit),
         )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -74,16 +78,18 @@ def search_holders(query: str, limit: int = 20) -> list[dict]:
         conn.close()
 
 
-def list_holders() -> list[dict]:
+def list_holders(*, active_only: bool = False) -> list[dict]:
     conn = get_connection()
     try:
+        where_sql = "WHERE COALESCE(h.is_active, 1) = 1" if active_only else ""
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 h.id,
                 h.holder_type,
                 h.name,
                 h.organization,
+                h.is_active,
                 h.identifier,
                 h.email,
                 h.contact_info,
@@ -91,7 +97,8 @@ def list_holders() -> list[dict]:
             FROM holders h
             LEFT JOIN assets a
               ON a.current_holder_id = h.id
-            GROUP BY h.id, h.holder_type, h.name, h.organization, h.identifier, h.email, h.contact_info
+            {where_sql}
+            GROUP BY h.id, h.holder_type, h.name, h.organization, h.is_active, h.identifier, h.email, h.contact_info
             ORDER BY h.name COLLATE NOCASE ASC, h.id ASC;
             """
         ).fetchall()
@@ -233,6 +240,40 @@ def update_holder(
                 now_iso,
                 normalized_id,
             ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("holder not found")
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT * FROM holders
+            WHERE id = ?;
+            """,
+            (normalized_id,),
+        ).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def set_holder_active(holder_id: int, is_active: bool) -> dict:
+    try:
+        normalized_id = int(holder_id)
+    except (TypeError, ValueError) as e:
+        raise ValueError("holder_id is required") from e
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    normalized_active = 1 if bool(is_active) else 0
+
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE holders
+            SET is_active = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            (normalized_active, now_iso, normalized_id),
         )
         if cursor.rowcount != 1:
             raise ValueError("holder not found")

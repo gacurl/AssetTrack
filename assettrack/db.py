@@ -172,6 +172,8 @@ def bootstrap_db(db_path: Path) -> bool:
     Returns True when first-run bootstrap was performed.
     """
     initialized = initialize_if_missing_or_empty(db_path)
+    if not initialized:
+        initialize_schema(db_path)
     assert_schema_present(db_path)
     return initialized
 
@@ -414,6 +416,7 @@ def _create_schema(conn: sqlite3.Connection):
             name TEXT NOT NULL,
             organization TEXT NULL,
             organization_id INTEGER NULL REFERENCES organizations(id),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
             identifier TEXT NULL,
             email TEXT NULL,
             contact_info TEXT NULL,
@@ -512,6 +515,13 @@ def _create_schema(conn: sqlite3.Connection):
             """
             ALTER TABLE holders
             ADD COLUMN email TEXT NULL;
+            """
+        )
+    if _table_exists(conn, "holders") and not _column_exists(conn, "holders", "is_active"):
+        cursor.execute(
+            """
+            ALTER TABLE holders
+            ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
             """
         )
 
