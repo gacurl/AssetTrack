@@ -70,8 +70,8 @@
             <td>{{ user.username }}</td>
             <td>{{ user.role }}</td>
             <td>{{ "yes" if user.active else "no" }}</td>
-            <td><code>{{ user.created_at }}</code></td>
-            <td><code>{{ user.updated_at }}</code></td>
+            <td>{{ user.created_at_display }}</td>
+            <td>{{ user.updated_at_display }}</td>
             <td>
               <form class="inline-form" method="post" action="{{ url_for('admin_users_toggle_active', user_id=user.id) }}">
                 <input type="hidden" name="active" value="{{ 0 if user.active else 1 }}" />
