@@ -362,6 +362,125 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Bravo Holder", response.data)
         self.assertIn(b"Search by person name, group, organization, or identifier", response.data)
 
+    def test_inactive_holder_is_hidden_from_issue_selection_search(self) -> None:
+        organization_id = self._create_org("Issue Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Inactive Issue Holder", "organization_id": str(organization_id), "email": "inactive-issue@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Inactive Issue Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        admin_id = create_test_user(username="admin-holder-toggle", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        toggle_response = self.client.post(
+            f"/holders/{holder_id}/toggle-active",
+            data={"is_active": "0", "return_to": f"/holders/{holder_id}"},
+            follow_redirects=True,
+        )
+        self.assertEqual(toggle_response.status_code, 200)
+        self.assertIn(b"is now inactive", toggle_response.data)
+
+        operator_id = create_test_user(username="operator-holder-filter", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+        response = self.client.get("/holders?return_to=/issue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Inactive holders are hidden during assignment selection.", response.data)
+        self.assertNotIn(b"Inactive Issue Holder", response.data)
+
+    def test_inactive_holder_cannot_be_selected_but_detail_still_renders(self) -> None:
+        organization_id = self._create_org("Issue Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Inactive Select Holder", "organization_id": str(organization_id), "email": "inactive-select@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Inactive Select Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        admin_id = create_test_user(username="admin-inactive-select", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        self.client.post(
+            f"/holders/{holder_id}/toggle-active",
+            data={"is_active": "0", "return_to": f"/holders/{holder_id}"},
+        )
+
+        operator_id = create_test_user(username="operator-inactive-select", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        select_response = self.client.post(
+            "/holders/select",
+            data={"holder_id": str(holder_id), "return_to": "/issue"},
+            follow_redirects=True,
+        )
+        self.assertEqual(select_response.status_code, 200)
+        self.assertIn(b"Inactive holders cannot be selected for assignment.", select_response.data)
+
+        detail_response = self.client.get(f"/holders/{holder_id}")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn(b"Inactive holder", detail_response.data)
+        self.assertIn(b"Status:</strong>", detail_response.data)
+
+    def test_operator_cannot_toggle_holder_active_state(self) -> None:
+        organization_id = self._create_org("Ops Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Protected Holder", "organization_id": str(organization_id), "email": "protected@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Protected Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+
+        response = self.client.post(
+            f"/holders/{int(holder_row['id'])}/toggle-active",
+            data={"is_active": "0"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_issue_redirects_back_to_holder_selection_when_selected_holder_becomes_inactive(self) -> None:
+        organization_id = self._create_org("Issue Org")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Workflow Holder", "organization_id": str(organization_id), "email": "workflow-inactive@example.org"},
+        )
+        holder_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Workflow Holder",),
+        ).fetchone()
+        self.assertIsNotNone(holder_row)
+        holder_id = int(holder_row["id"])
+
+        with self.client.session_transaction() as sess:
+            sess["holder_id"] = holder_id
+
+        admin_id = create_test_user(username="admin-issue-inactive", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        self.client.post(
+            f"/holders/{holder_id}/toggle-active",
+            data={"is_active": "0", "return_to": f"/holders/{holder_id}"},
+        )
+
+        operator_id = create_test_user(username="operator-issue-inactive", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+        with self.client.session_transaction() as sess:
+            sess["holder_id"] = holder_id
+
+        response = self.client.get("/issue")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue((response.headers["Location"]).endswith("/holders?return_to=/issue"))
+
     def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
         organization_id = self._create_org("Org Detail")
         self.client.post(

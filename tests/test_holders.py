@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import assettrack.db as db
-from assettrack.holders import create_holder, get_holder, list_holders, search_holders, update_holder
+from assettrack.holders import create_holder, get_holder, list_holders, search_holders, set_holder_active, update_holder
 
 
 class HoldersTests(unittest.TestCase):
@@ -33,10 +33,10 @@ class HoldersTests(unittest.TestCase):
         cursor = self.conn.execute(
             """
             INSERT INTO holders (
-                holder_type, name, organization, organization_id, identifier, contact_info, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                holder_type, name, organization, organization_id, is_active, identifier, contact_info, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
-            (holder_type, name, organization, organization_id, identifier, contact_info, now, now),
+            (holder_type, name, organization, organization_id, 1, identifier, contact_info, now, now),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
@@ -93,6 +93,19 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual(len(by_organization), 1)
         self.assertEqual(by_organization[0]["name"], "Bravo Org")
 
+    def test_search_holders_active_only_excludes_inactive_rows(self) -> None:
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        active_id = self._insert_holder("Person", "Active User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        inactive_id = self._insert_holder("Person", "Inactive User", "Ad Hoc", ad_hoc_id, "I-001", None)
+        set_holder_active(inactive_id, False)
+
+        rows = search_holders("User", active_only=True)
+
+        self.assertEqual([row["name"] for row in rows], ["Active User"])
+        fetched_inactive = get_holder(inactive_id)
+        self.assertIsNotNone(fetched_inactive)
+        self.assertEqual(int(fetched_inactive["is_active"]), 0)
+
     def test_list_holders_includes_asset_count(self) -> None:
         ad_hoc_id = self._insert_organization("Ad Hoc")
         alpha_id = self._insert_holder("Person", "Alpha User", "Ad Hoc", ad_hoc_id, "A-001", None)
@@ -112,6 +125,28 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual([row["name"] for row in rows], ["Alpha User", "Bravo Org"])
         self.assertEqual(int(rows[0]["asset_count"]), 2)
         self.assertEqual(int(rows[1]["asset_count"]), 0)
+
+    def test_list_holders_active_only_excludes_inactive_rows(self) -> None:
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        active_id = self._insert_holder("Person", "Alpha User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        inactive_id = self._insert_holder("Person", "Bravo User", "Ad Hoc", ad_hoc_id, "B-001", None)
+        set_holder_active(inactive_id, False)
+
+        rows = list_holders(active_only=True)
+
+        self.assertEqual([row["name"] for row in rows], ["Alpha User"])
+        self.assertEqual(int(rows[0]["id"]), active_id)
+
+    def test_set_holder_active_toggles_flag_without_removing_holder(self) -> None:
+        organization_id = self._insert_organization("Support Org")
+        created = create_holder("Stable Holder", organization_id=organization_id, email="stable@example.org")
+
+        updated = set_holder_active(int(created["id"]), False)
+        fetched = get_holder(int(created["id"]))
+
+        self.assertEqual(int(updated["is_active"]), 0)
+        self.assertIsNotNone(fetched)
+        self.assertEqual(int(fetched["is_active"]), 0)
 
     def test_create_and_update_holder_organization(self) -> None:
         alpha_org_id = self._insert_organization("Alpha Org")

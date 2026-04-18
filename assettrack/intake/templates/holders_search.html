@@ -15,6 +15,18 @@
       font-size: 1.2rem;
       font-weight: 700;
     }
+    .selected-holder-link,
+    .holder-name-link {
+      color: var(--color-primary);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.16em;
+    }
+    .selected-holder-link:hover,
+    .selected-holder-link:focus-visible,
+    .holder-name-link:hover,
+    .holder-name-link:focus-visible {
+      color: color-mix(in srgb, var(--color-primary) 82%, var(--color-text));
+    }
     .selected-holder-subtle {
       margin: 0.22rem 0 0 0;
       color: var(--color-text-muted);
@@ -26,6 +38,34 @@
       margin-top: 0.65rem;
       color: var(--color-text-muted);
       font-size: 0.94rem;
+    }
+    .holder-status {
+      font-weight: 700;
+    }
+    .holder-status.inactive {
+      color: #8a2d2d;
+    }
+    .holder-select-form {
+      margin: 0;
+    }
+    .holder-select-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 8.75rem;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+      transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+    .holder-select-button:hover,
+    .holder-select-button:focus-visible {
+      background: color-mix(in srgb, var(--color-primary) 88%, black);
+      border-color: color-mix(in srgb, var(--color-primary) 88%, black);
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+    }
+    .holder-select-button:active {
+      transform: translateY(1px);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
     }
   </style>
 {% endblock %}
@@ -67,13 +107,22 @@
       />
       <button type="submit">Search</button>
     </form>
+    {% if selection_active_only %}
+      <p class="muted" style="margin: 0.75rem 0 0 0;">Inactive holders are hidden during assignment selection.</p>
+    {% endif %}
   </div>
 
   <div class="card">
     <h2>Selected Holder</h2>
     {% if selected_holder %}
       <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Current selection</p>
-      <p class="selected-holder-name">{{ holder_display_name(selected_holder) }}</p>
+      <p class="selected-holder-name">
+        {% if return_to %}
+          <a class="selected-holder-link" href="{{ url_for('holder_detail', holder_id=selected_holder['id'], return_to=return_to) }}">{{ holder_display_name(selected_holder) }}</a>
+        {% else %}
+          <a class="selected-holder-link" href="{{ url_for('holder_detail', holder_id=selected_holder['id']) }}">{{ holder_display_name(selected_holder) }}</a>
+        {% endif %}
+      </p>
       {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
         <p class="selected-holder-subtle">{{ selected_holder["organization"] }}</p>
       {% endif %}
@@ -106,6 +155,7 @@
             <th style="width: 220px;">Name</th>
             <th style="width: 200px;">Organization</th>
             <th style="width: 220px;">Email</th>
+            <th style="width: 120px;">Status</th>
             <th style="width: 100px;">Assets</th>
             <th style="width: 120px;">Edit</th>
             <th style="width: 120px;">Select</th>
@@ -117,13 +167,18 @@
               <td>{{ holder_display_type(h) }}</td>
               <td>
                 {% if return_to %}
-                  <a href="{{ url_for('holder_detail', holder_id=h['id'], return_to=return_to) }}">{{ holder_display_name(h) }}</a>
+                  <a class="holder-name-link" href="{{ url_for('holder_detail', holder_id=h['id'], return_to=return_to) }}">{{ holder_display_name(h) }}</a>
                 {% else %}
-                  <a href="{{ url_for('holder_detail', holder_id=h['id']) }}">{{ holder_display_name(h) }}</a>
+                  <a class="holder-name-link" href="{{ url_for('holder_detail', holder_id=h['id']) }}">{{ holder_display_name(h) }}</a>
                 {% endif %}
               </td>
               <td>{{ h["organization"] or "" }}</td>
               <td>{{ h["email"] or "" }}</td>
+              <td>
+                <span class="holder-status {% if not h.get('is_active', 1) %}inactive{% endif %}">
+                  {{ "Active" if h.get("is_active", 1) else "Inactive" }}
+                </span>
+              </td>
               <td>{{ h.get("asset_count", "") }}</td>
               <td>
                 {% if return_to %}
@@ -133,13 +188,17 @@
                 {% endif %}
               </td>
               <td>
-                <form method="post" action="{{ url_for('holders_select') }}">
-                  <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
-                  {% if return_to %}
-                    <input type="hidden" name="return_to" value="{{ return_to }}" />
-                  {% endif %}
-                  <button type="submit">Select</button>
-                </form>
+                {% if h.get("is_active", 1) %}
+                  <form class="holder-select-form" method="post" action="{{ url_for('holders_select', return_to=return_to) if return_to else url_for('holders_select') }}">
+                    <input type="hidden" name="holder_id" value="{{ h['id'] }}" />
+                    {% if return_to %}
+                      <input type="hidden" name="return_to" value="{{ return_to }}" />
+                    {% endif %}
+                    <button class="holder-select-button" type="submit">{{ "Select for Issue" if return_to == url_for('issue') else "Select" }}</button>
+                  </form>
+                {% else %}
+                  <span class="muted">Inactive</span>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}

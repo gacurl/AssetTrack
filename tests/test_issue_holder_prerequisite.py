@@ -6,7 +6,7 @@ import pytest
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from tests.auth_test_utils import create_test_user
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -30,9 +30,7 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_issue_requires_holder_selection_before_queue_access(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-prereq", password="op-pass", role="operator")
-
-    with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
+    login_session(client_with_temp_db, operator_id)
 
     response = client_with_temp_db.get("/issue")
 
@@ -43,9 +41,7 @@ def test_issue_requires_holder_selection_before_queue_access(client_with_temp_db
 
 def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-return", password="op-pass", role="operator")
-
-    with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
+    login_session(client_with_temp_db, operator_id)
 
     issue_redirect = client_with_temp_db.get("/issue")
     assert issue_redirect.status_code == 302
@@ -66,9 +62,7 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
 
 def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_holder(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-holders-issue-nav", password="op-pass", role="operator")
-
-    with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
+    login_session(client_with_temp_db, operator_id)
 
     holders_page = client_with_temp_db.get("/holders")
     assert holders_page.status_code == 200
@@ -91,11 +85,48 @@ def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_hol
     assert b"Enable issue mode before using Issue Assets." not in issue_page.data
 
 
+def test_holders_issue_selection_page_uses_issue_specific_action_label(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-issue-action-label", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.get("/holders?return_to=/issue")
+
+    assert response.status_code == 200
+    assert b"Select for Issue" in response.data
+    assert b'class="holder-select-button"' in response.data
+    assert b'href="/holders/1?return_to=/issue"' in response.data
+
+
+def test_holders_issue_selection_page_links_selected_holder_with_return_to(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-selected-holder-link", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+    with client_with_temp_db.session_transaction() as sess:
+        sess["holder_id"] = 1
+
+    response = client_with_temp_db.get("/holders?return_to=/issue")
+
+    assert response.status_code == 200
+    assert b'class="selected-holder-link"' in response.data
+    assert b'href="/holders/1?return_to=/issue"' in response.data
+
+
+def test_holder_select_accepts_return_to_from_action_url_for_issue_flow(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-return-query", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.post(
+        "/holders/select?return_to=/issue",
+        data={"holder_id": "1"},
+    )
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/issue")
+
+
 def test_issue_preview_without_issue_mode_redirects_to_issue_entry(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-issue-preview-redirect", password="op-pass", role="operator")
-
+    login_session(client_with_temp_db, operator_id)
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = False
 
@@ -107,9 +138,8 @@ def test_issue_preview_without_issue_mode_redirects_to_issue_entry(client_with_t
 
 def test_issue_with_selected_holder_still_loads_normally(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-selected", password="op-pass", role="operator")
-
+    login_session(client_with_temp_db, operator_id)
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
 
     response = client_with_temp_db.get("/issue")
@@ -121,9 +151,8 @@ def test_issue_with_selected_holder_still_loads_normally(client_with_temp_db) ->
 
 def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-holder-display", password="op-pass", role="operator")
-
+    login_session(client_with_temp_db, operator_id)
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
 
     response = client_with_temp_db.get("/issue")
@@ -149,8 +178,8 @@ def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) 
     conn.commit()
     conn.close()
 
+    login_session(client_with_temp_db, operator_id)
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 2
 
     response = client_with_temp_db.get("/issue")
