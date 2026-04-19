@@ -75,7 +75,7 @@
             <td>
               <form class="inline-form" method="post" action="{{ url_for('admin_users_toggle_active', user_id=user.id) }}">
                 <input type="hidden" name="active" value="{{ 0 if user.active else 1 }}" />
-                <button type="submit">{{ "Disable" if user.active else "Enable" }}</button>
+                <button{% if user.active %} class="warn-button"{% endif %} type="submit">{{ "Disable" if user.active else "Enable" }}</button>
               </form>
 
               <form class="inline-form" method="post" action="{{ url_for('admin_users_set_role', user_id=user.id) }}">
@@ -88,7 +88,7 @@
 
               <form class="inline-form" method="post" action="{{ url_for('admin_users_reset_password', user_id=user.id) }}">
                 <input type="password" name="new_password" placeholder="New password" required />
-                <button type="submit">Reset Password</button>
+                <button class="warn-button" type="submit">Reset Password</button>
               </form>
             </td>
           </tr>

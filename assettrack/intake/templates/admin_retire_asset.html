@@ -141,7 +141,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card warn-card">
       <h2>Retire Asset</h2>
       <p class="warn">Retirement is terminal. This action marks the asset as DISPOSED.</p>
       <form method="post" action="{{ url_for('admin_retire_asset') }}">
@@ -175,7 +175,7 @@
           </div>
         {% endif %}
 
-        <button type="submit">Retire Asset</button>
+        <button class="warn-button" type="submit">Retire Asset</button>
       </form>
     </div>
   {% endif %}

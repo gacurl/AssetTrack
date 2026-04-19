@@ -178,6 +178,29 @@
   gap: 0.5rem;
 }
 
+.warn-card {
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-surface));
+  border-left-width: 6px;
+  border-left-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-primary));
+  background: var(--color-surface-bg);
+}
+
+.warn-card h2 {
+  color: color-mix(in srgb, var(--color-accent) 46%, var(--color-text));
+}
+
+button.warn-button {
+  background: color-mix(in srgb, var(--color-accent) 78%, var(--color-primary));
+  border-color: color-mix(in srgb, var(--color-accent) 78%, var(--color-primary));
+  color: #fff;
+}
+
+button.warn-button:hover,
+button.warn-button:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
+  border-color: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
+}
+
 .admin-maintenance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));

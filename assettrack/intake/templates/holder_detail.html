@@ -164,7 +164,7 @@
         <form method="post" action="{{ url_for('holders_toggle_active', holder_id=holder.id) }}">
           <input type="hidden" name="is_active" value="{{ 0 if holder.get('is_active', 1) else 1 }}" />
           <input type="hidden" name="return_to" value="{{ request.full_path.rstrip('?') }}" />
-          <button type="submit">{{ "Deactivate Holder" if holder.get("is_active", 1) else "Reactivate Holder" }}</button>
+          <button{% if holder.get('is_active', 1) %} class="warn-button"{% endif %} type="submit">{{ "Deactivate Holder" if holder.get("is_active", 1) else "Reactivate Holder" }}</button>
         </form>
       {% endif %}
     </div>
