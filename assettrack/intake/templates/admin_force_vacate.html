@@ -53,7 +53,7 @@
   {% endif %}
 
   {% if slot %}
-    <div class="card">
+    <div class="card warn-card">
       <h2>Force Vacate Confirmation</h2>
       <p class="warn">Use only when you physically verified the slot is empty and database state is wrong.</p>
 
@@ -87,7 +87,7 @@
           <label for="confirm_empty"><strong>I physically verified this slot is empty.</strong></label>
         </div>
 
-        <button type="submit">Force Vacate Slot</button>
+        <button class="warn-button" type="submit">Force Vacate Slot</button>
       </form>
     </div>
   {% endif %}

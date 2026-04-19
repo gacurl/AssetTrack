@@ -62,7 +62,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card warn-card">
       <h2>3) Replacement + Failure Details</h2>
       <p class="warn">This is one atomic operation: retire failed asset, create replacement, assign replacement to target slot.</p>
       <form method="post" action="{{ url_for('admin_replace_asset') }}">
@@ -128,7 +128,7 @@
           </label>
         </div>
 
-        <button type="submit">Replace Asset</button>
+        <button class="warn-button" type="submit">Replace Asset</button>
       </form>
     </div>
   {% endif %}
