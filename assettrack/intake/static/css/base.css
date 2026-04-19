@@ -210,6 +210,21 @@
   font-size: 1rem;
 }
 
+.search-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
 .page.report-page .card h2 {
   margin-top: 0;
 }
