@@ -122,8 +122,11 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
         self.assertIn(b"CASE-LIVE", response.data)
-        self.assertIn(b"Add to queue", response.data)
-        self.assertIn(b"Review batch", response.data)
+        self.assertIn(b"Stage Asset Intake", response.data)
+        self.assertIn(b"scans are staged in a queue first", response.data)
+        self.assertIn(b"Inventory records are written only after you review and commit the batch", response.data)
+        self.assertIn(b"Stage in queue", response.data)
+        self.assertIn(b"Review staged batch", response.data)
         self.assertNotIn(b"Add to database", response.data)
 
     def test_add_assets_empty_scan_submission_shows_validation_message(self) -> None:
@@ -149,7 +152,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Queue is empty. Add at least one asset to the queue before reviewing the batch.", response.data)
-        self.assertIn(b"No assets are queued yet.", response.data)
+        self.assertIn(b"No assets are staged yet.", response.data)
 
     def test_scans_keep_equipment_type_captured_at_scan_time(self) -> None:
         intake_app.SCAN_QUEUE.clear()

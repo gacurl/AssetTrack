@@ -269,7 +269,7 @@
           <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
           <a class="chip {% if request.path.startswith('/assets/search') %}active{% endif %}" href="{{ url_for('asset_search') }}">Asset Search</a>
           {% if authenticated_role == 'admin' %}
-            <a class="chip {% if request.path.startswith('/add-assets') %}active{% endif %}" href="{{ url_for('add_assets') }}">Add Assets</a>
+            <a class="chip {% if request.path.startswith('/add-assets') %}active{% endif %}" href="{{ url_for('add_assets') }}">Stage Assets</a>
             <a class="chip {% if request.path.startswith('/admin/users') %}active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
             <a class="chip {% if request.path.startswith('/admin/system') %}active{% endif %}" href="{{ url_for('admin_system') }}">Admin Tools</a>
           {% endif %}

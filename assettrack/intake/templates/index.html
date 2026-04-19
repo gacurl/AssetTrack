@@ -1,8 +1,8 @@
 <!-- assettrack/intake/templates/index.html -->
 {% extends "base.html" %}
 
-{% block title %}AssetTrack — Add Assets{% endblock %}
-{% block page_heading %}Add Assets{% endblock %}
+{% block title %}AssetTrack — Stage Asset Intake{% endblock %}
+{% block page_heading %}Stage Asset Intake{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -80,8 +80,9 @@
   {% endwith %}
 
   <div class="card">
-    <p><strong>How to use:</strong> click the box once, then scan. The scanner “types” and hits Enter.</p>
-    <p><a href="{{ url_for('preview') }}" data-timeout-lock-target>Preview batch</a></p>
+    <p><strong>What this does:</strong> scans are staged in a queue first. Inventory records are written only after you review and commit the batch.</p>
+    <p><strong>How to use:</strong> click the scan box once, then scan. The scanner “types” and hits Enter.</p>
+    <p><a href="{{ url_for('preview') }}" data-timeout-lock-target>Open batch preview</a></p>
     <p><a href="{{ url_for('return_queue') }}">Return Assets</a></p>
 
     {% if auth_enabled and not authed %}
@@ -92,7 +93,7 @@
     {% else %}
       <form id="intake-form" class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
-          <label for="equipment_type"><strong>Equipment type</strong> (required to create new assets)</label><br />
+          <label for="equipment_type"><strong>Equipment type</strong> (used when commit creates new inventory records)</label><br />
           <input
             type="text"
             id="equipment_type"
@@ -107,7 +108,7 @@
         {% if authenticated_role == 'admin' %}
           <div class="grid">
             <div class="row">
-              <label for="case_name"><strong>Case</strong> (optional per scanned asset)</label><br />
+              <label for="case_name"><strong>Case</strong> (optional staging detail)</label><br />
               <select id="case_name" name="case_name" data-timeout-lock-target>
                 <option value="">Unassigned</option>
                 {% for case_name in case_options %}
@@ -116,7 +117,7 @@
               </select>
             </div>
             <div class="row">
-              <label for="slot_id"><strong>Slot</strong> (optional per scanned asset)</label><br />
+              <label for="slot_id"><strong>Slot</strong> (optional staging detail)</label><br />
               <select id="slot_id" name="slot_id" data-timeout-lock-target>
                 <option value="">Unassigned</option>
                 {% for slot in slot_options %}
@@ -134,28 +135,28 @@
             type="text"
             id="scan-input"
             name="scan_text"
-            placeholder="Scan here..."
+            placeholder="Scan or enter asset tag"
             autofocus
             autocomplete="off"
             data-timeout-lock-target
           />
-          <button id="submit-scan" type="submit" data-timeout-lock-target>Add to queue</button>
+          <button id="submit-scan" type="submit" data-timeout-lock-target>Stage in queue</button>
           <button id="clear-queue" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
         </div>
       </form>
     {% endif %}
     <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
-      <button id="review-batch" type="submit" data-timeout-lock-target>Review batch</button>
+      <button id="review-batch" type="submit" data-timeout-lock-target>Review staged batch</button>
     </form>
   </div>
 
   <div class="card">
-    <h2>Latest scan</h2>
+    <h2>Latest staged scan</h2>
     <p><code>{{ latest }}</code></p>
   </div>
 
   <div class="card">
-    <h2 id="queue-section">Queue ({{ queue_len }})</h2>
+    <h2 id="queue-section">Staged queue ({{ queue_len }})</h2>
     {% if queue %}
       <ul id="queue-list" class="queue-list" role="list">
         {% for s in queue %}
@@ -181,7 +182,7 @@
         {% endfor %}
       </ul>
     {% else %}
-      <p class="queue-empty">No assets are queued yet. Scan or enter an asset tag, then add it to the queue for review.</p>
+      <p class="queue-empty">No assets are staged yet. Scan or enter an asset tag, then stage it in the queue for review.</p>
     {% endif %}
   </div>
 {% endblock %}
