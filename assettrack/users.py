@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import secrets
+import string
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from assettrack.db import get_connection
 
 ALLOWED_ROLES = {"admin", "operator"}
+TEMP_PASSWORD_HASH_PREFIX = "assettrack-temp-password:"
+TEMP_PASSWORD_LENGTH = 20
 
 
 def _now_iso() -> str:
@@ -21,6 +25,32 @@ def _password_hash(password: str) -> str:
     if not password_hash:
         raise ValueError("password hash generation failed")
     return password_hash
+
+
+def _stored_password_hash(user: dict | None) -> str:
+    password_hash = str((user or {}).get("password_hash") or "")
+    if password_hash.startswith(TEMP_PASSWORD_HASH_PREFIX):
+        return password_hash[len(TEMP_PASSWORD_HASH_PREFIX) :]
+    return password_hash
+
+
+def is_temporary_password(user: dict | None) -> bool:
+    password_hash = str((user or {}).get("password_hash") or "")
+    return password_hash.startswith(TEMP_PASSWORD_HASH_PREFIX)
+
+
+def generate_temporary_password() -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+    required = [
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.digits),
+        secrets.choice("!@#$%^&*()-_=+"),
+    ]
+    remaining = [secrets.choice(alphabet) for _ in range(TEMP_PASSWORD_LENGTH - len(required))]
+    password_chars = required + remaining
+    secrets.SystemRandom().shuffle(password_chars)
+    return "".join(password_chars)
 
 
 def _validate_new_password(username: str, current_password: str, new_password: str) -> None:
@@ -225,9 +255,10 @@ def set_user_role(user_id: int, role: str) -> dict:
         conn.close()
 
 
-def reset_user_password(user_id: int, new_password: str) -> dict:
+def reset_user_password(user_id: int) -> dict:
     normalized_user_id = int(user_id)
-    password_hash = _password_hash(new_password)
+    temporary_password = generate_temporary_password()
+    password_hash = f"{TEMP_PASSWORD_HASH_PREFIX}{_password_hash(temporary_password)}"
     now_iso = _now_iso()
 
     conn = get_connection()
@@ -244,7 +275,7 @@ def reset_user_password(user_id: int, new_password: str) -> dict:
             raise ValueError("User not found.")
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?;", (normalized_user_id,)).fetchone()
-        return dict(row)
+        return {"user": dict(row), "temporary_password": temporary_password}
     finally:
         conn.close()
 
@@ -283,9 +314,14 @@ def change_own_password(user_id: int, current_password: str, new_password: str) 
 def verify_password(user: dict | None, password: str) -> bool:
     if not user or not password:
         return False
-    password_hash = str(user.get("password_hash") or "")
+    
+    password_hash = _stored_password_hash(user)
     if not password_hash:
         return False
+    
+    if password_hash.startswith(TEMP_PASSWORD_HASH_PREFIX):
+        password_hash = password_hash[len(TEMP_PASSWORD_HASH_PREFIX):]
+    
     try:
         return check_password_hash(password_hash, password)
     except ValueError:

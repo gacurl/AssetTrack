@@ -1,6 +1,7 @@
 # file: tests/test_admin_user_management.py
 from __future__ import annotations
 
+from html import unescape
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 import assettrack.auth as auth
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from assettrack.users import get_user_by_id, get_user_by_username, verify_password
+from assettrack.users import get_user_by_id, get_user_by_username, is_temporary_password, verify_password
 from tests.auth_test_utils import create_test_user, login_session
 
 
@@ -18,6 +19,7 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn = db.get_connection()
     conn.close()
     intake_app.ADMIN_ROUTE_ATTEMPTS.clear()
+    intake_app.LOGIN_FAILURE_ATTEMPTS.clear()
     intake_app.app.testing = True
     return intake_app.app.test_client()
 
@@ -114,7 +116,7 @@ def test_admin_cannot_deactivate_last_active_admin(client_with_temp_db) -> None:
 
 
 
-def test_admin_can_reset_password_and_new_password_allows_login(client_with_temp_db) -> None:
+def test_admin_can_reset_password_and_generated_temp_password_forces_change(client_with_temp_db) -> None:
     admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
     target_username = "operator-a"
     target_user_id = create_test_user(username=target_username, password="old-pass", role="operator")
@@ -122,22 +124,98 @@ def test_admin_can_reset_password_and_new_password_allows_login(client_with_temp
 
     response = client_with_temp_db.post(
         f"/admin/users/{target_user_id}/reset-password",
-        data={"new_password": "new-pass-123"},
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert b"Temporary password for operator-a" in response.data
+    assert response.headers["Cache-Control"] == "no-store, max-age=0"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["Expires"] == "0"
+    assert "X-AssetTrack-Sensitive-Reveal" not in response.headers
+    assert b"This password is shown once. Copy it now; it will not be shown again." in response.data
+
+    updated = get_user_by_id(target_user_id)
+    assert updated is not None
+    assert is_temporary_password(updated)
+    assert updated["role"] == "operator"
+    assert int(updated["active"]) == 1
+    assert not verify_password(updated, "old-pass")
+
+    response_text = response.get_data(as_text=True)
+    marker = "<code>"
+    start = response_text.index(marker) + len(marker)
+    end = response_text.index("</code>", start)
+    temporary_password = unescape(response_text[start:end])
 
     client_with_temp_db.get("/logout")
 
     old_login = client_with_temp_db.post("/", data={"username": target_username, "password": "old-pass"})
     assert old_login.status_code == 403
 
-    new_login = client_with_temp_db.post("/", data={"username": target_username, "password": "new-pass-123"})
+    temp_login = client_with_temp_db.post("/", data={"username": target_username, "password": temporary_password})
+    assert temp_login.status_code == 302
+    assert (temp_login.headers.get("Location") or "").endswith("/dashboard")
+
+    blocked_dashboard = client_with_temp_db.get("/dashboard")
+    assert blocked_dashboard.status_code == 302
+    assert (blocked_dashboard.headers.get("Location") or "").endswith("/account/change-password")
+
+    blocked_holders = client_with_temp_db.get("/holders")
+    assert blocked_holders.status_code == 302
+    assert (blocked_holders.headers.get("Location") or "").endswith("/account/change-password")
+
+    password_change = client_with_temp_db.post(
+        "/account/change-password",
+        data={
+            "current_password": temporary_password,
+            "new_password": "NewPassword456",
+            "confirm_new_password": "NewPassword456",
+        },
+    )
+    assert password_change.status_code == 302
+    assert (password_change.headers.get("Location") or "").endswith("/dashboard")
+
+    changed = get_user_by_id(target_user_id)
+    assert changed is not None
+    assert not is_temporary_password(changed)
+    assert verify_password(changed, "NewPassword456")
+    assert not verify_password(changed, temporary_password)
+    assert changed["role"] == "operator"
+    assert int(changed["active"]) == 1
+
+    dashboard = client_with_temp_db.get("/dashboard")
+    assert dashboard.status_code == 200
+
+    client_with_temp_db.get("/logout")
+    temp_login_after_change = client_with_temp_db.post(
+        "/", data={"username": target_username, "password": temporary_password}
+    )
+    new_login = client_with_temp_db.post("/", data={"username": target_username, "password": "NewPassword456"})
+    assert temp_login_after_change.status_code == 403
     assert new_login.status_code == 302
+
+
+def test_admin_temp_password_is_not_revealed_after_reset_response(client_with_temp_db) -> None:
+    admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+    target_user_id = create_test_user(username="operator-a", password="old-pass", role="operator")
+    login_session(client_with_temp_db, admin_user_id)
+
+    reset_response = client_with_temp_db.post(f"/admin/users/{target_user_id}/reset-password")
+    assert reset_response.status_code == 200
+    assert b"Temporary password for operator-a" in reset_response.data
+    response_text = reset_response.get_data(as_text=True)
+    marker = "<code>"
+    start = response_text.index(marker) + len(marker)
+    end = response_text.index("</code>", start)
+    temporary_password = unescape(response_text[start:end])
+
+    users_response = client_with_temp_db.get("/admin/users")
+
+    assert users_response.status_code == 200
+    assert temporary_password.encode("utf-8") not in users_response.data
     updated = get_user_by_id(target_user_id)
     assert updated is not None
-    assert verify_password(updated, "new-pass-123")
-    assert str(updated["password_hash"]).startswith("scrypt:")
+    assert temporary_password not in str(updated["password_hash"])
 
 
 def test_admin_can_change_role_and_persists(client_with_temp_db) -> None:

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone, date, timedelta
 
-from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -75,6 +75,7 @@ from assettrack.users import (
     create_user,
     get_user_by_id,
     get_user_by_username,
+    is_temporary_password,
     list_users,
     reset_user_password,
     set_user_active,
@@ -141,10 +142,28 @@ def refresh_session_activity(response):
     if _should_refresh_session_activity():
         touch_session()
     if current_user() is not None:
-        response.headers["Cache-Control"] = "no-store"
+        if response.headers.pop("X-AssetTrack-Sensitive-Reveal", None) == "1":
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+@app.before_request
+def enforce_required_password_change():
+    endpoint = str(request.endpoint or "").strip()
+    if endpoint in {"account_change_password", "account_change_password_submit", "logout", "static"}:
+        return None
+
+    user = current_user()
+    if user is None or not is_temporary_password(user):
+        return None
+
+    if _prefers_json_error_response():
+        return {"ok": False, "error": "Password change required"}, 403
+    return redirect(url_for("account_change_password"))
 
 
 @app.context_processor
@@ -153,6 +172,7 @@ def inject_auth_user():
     return {
         "authenticated_user": user,
         "authenticated_role": None if user is None else user.get("role"),
+        "password_change_required": is_temporary_password(user),
         "case_status_summary": _case_status_summary,
         "asset_state_label": _asset_state_label,
         "asset_is_terminal": _is_terminal_location_type,
@@ -3841,6 +3861,7 @@ def account_change_password_submit():
     if user is None:
         return {"ok": False, "error": "Forbidden"}, 403
 
+    password_was_temporary = is_temporary_password(user)
     current_password = request.form.get("current_password") or ""
     new_password = request.form.get("new_password") or ""
     confirm_new_password = request.form.get("confirm_new_password") or ""
@@ -3856,6 +3877,8 @@ def account_change_password_submit():
         return redirect(url_for("account_change_password"))
 
     flash("Password updated.", "success")
+    if password_was_temporary:
+        return redirect(url_for("dashboard"))
     return redirect(url_for("account_change_password"))
 
 
@@ -5925,11 +5948,15 @@ def holders_toggle_active(holder_id: int):
 @require_login
 @require_role("admin")
 def admin_users():
+    return render_template("admin_users.html", **_admin_users_context())
+
+
+def _admin_users_context(**extra_context):
     users = list_users()
     for user in users:
         user["created_at_display"] = _receipt_display_timestamp(user.get("created_at"))
         user["updated_at_display"] = _receipt_display_timestamp(user.get("updated_at"))
-    return render_template("admin_users.html", users=users)
+    return {"users": users, **extra_context}
 
 
 @app.get("/admin/system")
@@ -6592,16 +6619,23 @@ def admin_users_reset_password(user_id: int):
     if rate_limit_response is not None:
         return rate_limit_response
 
-    new_password = request.form.get("new_password") or ""
-
     try:
-        updated = reset_user_password(user_id, new_password)
+        reset_result = reset_user_password(user_id)
     except ValueError as e:
         flash(str(e), "error")
+        return redirect(url_for("admin_users"))
     else:
+        updated = reset_result["user"]
         flash(f"Password reset for {updated['username']}.", "success")
-
-    return redirect(url_for("admin_users"))
+        response = make_response(render_template(
+            "admin_users.html",
+            **_admin_users_context(
+                temporary_password=reset_result["temporary_password"],
+                temporary_password_username=updated["username"],
+            ),
+        ))
+        response.headers["X-AssetTrack-Sensitive-Reveal"] = "1"
+        return response
 
 
 @app.post("/admin/users/<int:user_id>/set-role")
