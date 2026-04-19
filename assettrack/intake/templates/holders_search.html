@@ -45,6 +45,27 @@
     .holder-status.inactive {
       color: #8a2d2d;
     }
+    .holder-status-filter {
+      display: flex;
+      align-items: end;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.85rem;
+    }
+    .holder-status-filter label {
+      display: grid;
+      gap: 0.25rem;
+      font-weight: 700;
+    }
+    .holder-status-filter select {
+      min-width: 10rem;
+      min-height: 2.5rem;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    .holder-row-inactive {
+      background: var(--color-accent-soft);
+    }
     .holder-select-form {
       margin: 0;
     }
@@ -89,12 +110,19 @@
         <a class="chip" href="{{ url_for('holders_new') }}">Add Holder</a>
       {% endif %}
       {% if query %}
-        <a class="chip" href="{{ url_for('holders_search', return_to=return_to) }}">Clear Search</a>
+        {% if return_to %}
+          <a class="chip" href="{{ url_for('holders_search', return_to=return_to, status=status_filter) }}">Clear Search</a>
+        {% else %}
+          <a class="chip" href="{{ url_for('holders_search', status=status_filter) }}">Clear Search</a>
+        {% endif %}
       {% endif %}
     </div>
     <form method="get" action="{{ url_for('holders_search') }}">
       {% if return_to %}
         <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
+      {% if not selection_active_only %}
+        <input type="hidden" name="status" value="{{ status_filter }}" />
       {% endif %}
       <label for="q"><strong>Search by person name, group, organization, or identifier</strong></label><br />
       <input
@@ -107,6 +135,22 @@
       />
       <button type="submit">Search</button>
     </form>
+    {% if not selection_active_only %}
+      <form class="holder-status-filter" method="get" action="{{ url_for('holders_search') }}">
+        {% if query %}
+          <input type="hidden" name="q" value="{{ query }}" />
+        {% endif %}
+        <label for="status">
+          Holder status
+          <select id="status" name="status">
+            <option value="all" {% if status_filter == "all" %}selected{% endif %}>All holders</option>
+            <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active only</option>
+            <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive only</option>
+          </select>
+        </label>
+        <button type="submit">Apply Filter</button>
+      </form>
+    {% endif %}
     {% if selection_active_only %}
       <p class="muted" style="margin: 0.75rem 0 0 0;">Inactive holders are hidden during assignment selection.</p>
     {% endif %}
@@ -163,7 +207,7 @@
         </thead>
         <tbody>
           {% for h in results %}
-            <tr>
+            <tr class="{% if not h.get('is_active', 1) %}holder-row-inactive{% endif %}">
               <td>{{ holder_display_type(h) }}</td>
               <td>
                 {% if return_to %}

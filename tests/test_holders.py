@@ -137,6 +137,30 @@ class HoldersTests(unittest.TestCase):
         self.assertEqual([row["name"] for row in rows], ["Alpha User"])
         self.assertEqual(int(rows[0]["id"]), active_id)
 
+    def test_list_holders_status_filter_can_show_only_inactive_rows(self) -> None:
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        self._insert_holder("Person", "Active User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        inactive_id = self._insert_holder("Person", "Inactive User", "Ad Hoc", ad_hoc_id, "I-001", None)
+        set_holder_active(inactive_id, False)
+
+        rows = list_holders(status="inactive")
+
+        self.assertEqual([row["name"] for row in rows], ["Inactive User"])
+        self.assertEqual(int(rows[0]["id"]), inactive_id)
+        self.assertEqual(int(rows[0]["is_active"]), 0)
+
+    def test_search_holders_status_filter_can_show_inactive_rows(self) -> None:
+        ad_hoc_id = self._insert_organization("Ad Hoc")
+        self._insert_holder("Person", "Active User", "Ad Hoc", ad_hoc_id, "A-001", None)
+        inactive_id = self._insert_holder("Person", "Inactive User", "Ad Hoc", ad_hoc_id, "I-001", None)
+        set_holder_active(inactive_id, False)
+
+        rows = search_holders("User", status="inactive")
+
+        self.assertEqual([row["name"] for row in rows], ["Inactive User"])
+        self.assertEqual(int(rows[0]["id"]), inactive_id)
+        self.assertEqual(int(rows[0]["is_active"]), 0)
+
     def test_set_holder_active_toggles_flag_without_removing_holder(self) -> None:
         organization_id = self._insert_organization("Support Org")
         created = create_holder("Stable Holder", organization_id=organization_id, email="stable@example.org")

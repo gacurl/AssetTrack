@@ -2270,6 +2270,13 @@ def _holder_selection_requires_active_filter(return_to: Optional[str]) -> bool:
     return normalized.startswith("/issue")
 
 
+def _holder_directory_status_filter(value: object) -> str:
+    normalized = str(value or "all").strip().lower()
+    if normalized in {"active", "inactive"}:
+        return normalized
+    return "all"
+
+
 def _issue_location_form_from_session() -> dict[str, str]:
     return {
         "building": str(session.get("issue_building") or "").strip(),
@@ -4628,7 +4635,12 @@ def holders_search():
     query = (request.args.get("q") or "").strip()
     return_to = _safe_local_return_to(request.args.get("return_to") or "")
     active_only = _holder_selection_requires_active_filter(return_to)
-    results = search_holders(query, active_only=active_only) if query else list_holders(active_only=active_only)
+    status_filter = "active" if active_only else _holder_directory_status_filter(request.args.get("status"))
+    results = (
+        search_holders(query, active_only=active_only, status=status_filter)
+        if query
+        else list_holders(active_only=active_only, status=status_filter)
+    )
 
     return render_template(
         "holders_search.html",
@@ -4637,6 +4649,7 @@ def holders_search():
         results=results,
         selected_holder=_selected_holder_from_session(require_active=active_only),
         selection_active_only=active_only,
+        status_filter=status_filter,
     )
 
 
