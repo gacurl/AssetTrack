@@ -4,12 +4,6 @@
 {% block title %}Admin Edit Asset{% endblock %}
 {% block page_heading %}Admin: Edit Asset{% endblock %}
 
-{% block extra_head %}
-  <style>
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-  </style>
-{% endblock %}
-
 {% block content %}
   <div class="actions">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
@@ -55,7 +49,7 @@
       <form method="post" action="{{ url_for('admin_edit_asset') }}">
         <input type="hidden" name="action" value="update" />
         <input type="hidden" name="lookup_asset_tag" value="{{ form.lookup_asset_tag or asset.asset_tag }}" />
-        <div class="grid">
+        <div class="admin-maintenance-grid">
           <div class="row form-group">
             <label class="form-label" for="asset_tag"><strong>asset_tag</strong></label>
             <input class="form-input" type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" readonly />

@@ -7,7 +7,6 @@
 
 {% block extra_head %}
   <style>
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     input[type="text"], select { width: 100%; max-width: none; padding: 0.6rem; font-size: 1rem; }
     .hidden { display: none; }
   </style>
@@ -33,7 +32,7 @@
     <h2>New Asset</h2>
     <p class="muted">Fill in the required fields below. Asset type defaults to Laptop.</p>
     <form method="post" action="{{ url_for('admin_new_asset') }}">
-      <div class="grid">
+      <div class="admin-maintenance-grid">
         <div class="row">
           <label for="asset_tag"><strong>Asset tag</strong> (required)</label><br />
           <input type="text" id="asset_tag" name="asset_tag" value="{{ form.asset_tag or '' }}" required autofocus />
@@ -78,7 +77,7 @@
         </div>
       </div>
 
-      <div class="grid">
+      <div class="admin-maintenance-grid">
         <div class="row">
           <label for="case_name"><strong>Case</strong> (optional)</label><br />
           <select id="case_name" name="case_name">

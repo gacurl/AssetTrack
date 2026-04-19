@@ -3,11 +3,10 @@
 
 {% block title %}Admin Replace Asset{% endblock %}
 {% block page_heading %}Admin: Replace Failed Asset{% endblock %}
+{% block page_class %} admin-maintenance-wide-fields{% endblock %}
 
 {% block extra_head %}
   <style>
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
     textarea { min-height: 100px; }
   </style>
 {% endblock %}
@@ -42,7 +41,7 @@
   {% if failed_asset %}
     <div class="card">
       <h2>2) Failed Asset + Target Slot</h2>
-      <div class="grid">
+      <div class="admin-maintenance-grid">
         <div><strong>asset_tag:</strong> <code>{{ failed_asset.asset_tag }}</code></div>
         <div><strong>location_type:</strong> <code>{{ failed_asset.location_type }}</code></div>
         <div><strong>manufacturer:</strong> {{ failed_asset.manufacturer or "" }}</div>
@@ -70,7 +69,7 @@
         <input type="hidden" name="action" value="replace" />
         <input type="hidden" name="failed_asset_tag" value="{{ failed_asset.asset_tag }}" />
 
-        <div class="grid">
+        <div class="admin-maintenance-grid">
           <div class="row">
             <label for="failure_type"><strong>failure_type</strong> (required)</label><br />
             <select id="failure_type" name="failure_type" required>
