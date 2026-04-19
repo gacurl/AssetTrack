@@ -102,6 +102,98 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Edit Asset", response.data)
 
+    def test_exact_lookup_loads_edit_form_directly(self) -> None:
+        self._insert_asset(
+            "AT-EXACT-EDIT-1",
+            serial_number="SER-EXACT-EDIT-1",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "lookup",
+                "lookup_asset_tag": "AT-EXACT-EDIT-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Edit Asset", response.data)
+        self.assertIn(b"AT-EXACT-EDIT-1", response.data)
+        self.assertIn(b"Save Asset", response.data)
+        self.assertNotIn(b"Select Asset", response.data)
+
+    def test_partial_lookup_requires_explicit_selection_before_edit(self) -> None:
+        self._insert_asset(
+            "AT-PART-EDIT-100",
+            serial_number="SER-PART-EDIT-100",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+        self._insert_asset(
+            "AT-PART-EDIT-101",
+            serial_number="SER-PART-EDIT-101",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "lookup",
+                "lookup_asset_tag": "AT-PART-EDIT-10",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Select Asset", response.data)
+        self.assertIn(b"AT-PART-EDIT-100", response.data)
+        self.assertIn(b"AT-PART-EDIT-101", response.data)
+        self.assertNotIn(b"Save Asset", response.data)
+        self.assertIn(b">Select<", response.data)
+
+        selected = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "lookup",
+                "lookup_asset_tag": "AT-PART-EDIT-100",
+            },
+        )
+
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn(b"Edit Asset", selected.data)
+        self.assertIn(b"Save Asset", selected.data)
+        self.assertIn(b"AT-PART-EDIT-100", selected.data)
+        self.assertNotIn(b"AT-PART-EDIT-101", selected.data)
+
+    def test_partial_query_string_does_not_load_edit_form_directly(self) -> None:
+        self._insert_asset(
+            "AT-QUERY-EDIT-100",
+            serial_number="SER-QUERY-EDIT-100",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+        self._insert_asset(
+            "AT-QUERY-EDIT-101",
+            serial_number="SER-QUERY-EDIT-101",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.get("/admin/assets/edit?asset_tag=AT-QUERY-EDIT-10")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Select Asset", response.data)
+        self.assertIn(b"AT-QUERY-EDIT-100", response.data)
+        self.assertIn(b"AT-QUERY-EDIT-101", response.data)
+        self.assertNotIn(b"Save Asset", response.data)
+
     def test_edit_asset_ui_marks_retired_assets_as_not_in_service(self) -> None:
         self._insert_asset(
             "AT-RET-EDIT-1",

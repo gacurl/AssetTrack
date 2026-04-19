@@ -1444,6 +1444,15 @@ def _lookup_retire_asset_matches(conn: sqlite3.Connection, asset_tag: str) -> tu
     return matches, error_message
 
 
+def _lookup_admin_edit_asset_matches(conn: sqlite3.Connection, asset_tag: str) -> tuple[list[dict], Optional[str]]:
+    matches, error_message, _ = _lookup_asset_for_verification(
+        conn,
+        asset_tag=asset_tag,
+        serial_number="",
+    )
+    return matches, error_message
+
+
 def _resolve_replacement_target_slot(
     conn: sqlite3.Connection,
     *,
@@ -6752,6 +6761,7 @@ def admin_edit_asset():
         "slot_id": "",
     }
     asset_view: Optional[dict] = None
+    asset_matches: list[dict] = []
     error_message: Optional[str] = None
 
     conn = get_connection()
@@ -6760,34 +6770,14 @@ def admin_edit_asset():
         case_options = _slot_case_options(slot_options)
 
         if form_state["lookup_asset_tag"]:
-            asset_view, blocking_errors = _build_admin_edit_asset_view(conn, form_state["lookup_asset_tag"])
-            if asset_view:
-                selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
-                form_state.update(
-                    {
-                        "asset_tag": asset_view["asset_tag"],
-                        "serial_number": asset_view["serial_number"],
-                        "manufacturer": asset_view["manufacturer"],
-                        "equipment_type": asset_view["equipment_type"],
-                        "building": asset_view["building"],
-                        "room": asset_view["room"],
-                        "model": asset_view["model"],
-                        "model_code": asset_view["model_code"],
-                        "notes": asset_view["notes"],
-                        "case_name": "" if selected_home_slot is None else str(selected_home_slot["case_name"]),
-                        "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
-                    }
-                )
-            elif blocking_errors:
-                error_message = "; ".join(blocking_errors)
+            try:
+                exact_asset = _find_asset_for_scan_tag(conn, form_state["lookup_asset_tag"])
+            except ValueError as exc:
+                exact_asset = None
+                error_message = str(exc)
 
-        if request.method == "POST":
-            action = (request.form.get("action") or "lookup").strip().lower()
-            lookup_asset_tag = (request.form.get("lookup_asset_tag") or "").strip().upper()
-            form_state["lookup_asset_tag"] = lookup_asset_tag
-
-            if action == "lookup":
-                asset_view, blocking_errors = _build_admin_edit_asset_view(conn, lookup_asset_tag)
+            if exact_asset is not None:
+                asset_view, blocking_errors = _build_admin_edit_asset_view(conn, form_state["lookup_asset_tag"])
                 if asset_view:
                     selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
                     form_state.update(
@@ -6805,10 +6795,49 @@ def admin_edit_asset():
                             "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
                         }
                     )
-                elif not lookup_asset_tag:
-                    error_message = "asset_tag is required."
                 elif blocking_errors:
                     error_message = "; ".join(blocking_errors)
+            elif error_message is None:
+                asset_matches, error_message = _lookup_admin_edit_asset_matches(conn, form_state["lookup_asset_tag"])
+
+        if request.method == "POST":
+            action = (request.form.get("action") or "lookup").strip().lower()
+            lookup_asset_tag = (request.form.get("lookup_asset_tag") or "").strip().upper()
+            form_state["lookup_asset_tag"] = lookup_asset_tag
+
+            if action == "lookup":
+                if not lookup_asset_tag:
+                    error_message = "asset_tag is required."
+                else:
+                    try:
+                        exact_asset = _find_asset_for_scan_tag(conn, lookup_asset_tag)
+                    except ValueError as exc:
+                        exact_asset = None
+                        error_message = str(exc)
+
+                    if exact_asset is not None:
+                        asset_view, blocking_errors = _build_admin_edit_asset_view(conn, lookup_asset_tag)
+                        if asset_view:
+                            selected_home_slot = asset_view["home_slot"] or asset_view["current_slot"]
+                            form_state.update(
+                                {
+                                    "asset_tag": asset_view["asset_tag"],
+                                    "serial_number": asset_view["serial_number"],
+                                    "manufacturer": asset_view["manufacturer"],
+                                    "equipment_type": asset_view["equipment_type"],
+                                    "building": asset_view["building"],
+                                    "room": asset_view["room"],
+                                    "model": asset_view["model"],
+                                    "model_code": asset_view["model_code"],
+                                    "notes": asset_view["notes"],
+                                    "case_name": "" if selected_home_slot is None else str(selected_home_slot["case_name"]),
+                                    "slot_id": "" if selected_home_slot is None else str(selected_home_slot["slot_id"]),
+                                }
+                            )
+                        elif blocking_errors:
+                            error_message = "; ".join(blocking_errors)
+                    elif error_message is None:
+                        asset_matches, error_message = _lookup_admin_edit_asset_matches(conn, lookup_asset_tag)
             elif action == "update":
                 form_state.update(
                     {
@@ -6832,6 +6861,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6862,6 +6892,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6891,6 +6922,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6902,6 +6934,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6921,6 +6954,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6969,6 +7003,7 @@ def admin_edit_asset():
                         "admin_edit_asset.html",
                         form=form_state,
                         asset=asset_view,
+                        asset_matches=asset_matches,
                         error_message=error_message,
                         slot_options=slot_options,
                         case_options=case_options,
@@ -6988,6 +7023,7 @@ def admin_edit_asset():
         "admin_edit_asset.html",
         form=form_state,
         asset=asset_view,
+        asset_matches=asset_matches,
         error_message=error_message,
         slot_options=slot_options,
         case_options=case_options,

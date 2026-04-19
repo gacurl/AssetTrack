@@ -42,6 +42,53 @@
     </form>
   </div>
 
+  {% if asset_matches and not asset %}
+    <div class="card">
+      <h2>Select Asset</h2>
+      <p class="muted">{{ asset_matches|length }} matches found. Select one asset before loading the edit form.</p>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Serial number</th>
+            <th>Current state</th>
+            <th>Current holder</th>
+            <th>Home case</th>
+            <th>Home slot</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for match in asset_matches %}
+            <tr>
+              <td><code>{{ match.asset_tag }}</code></td>
+              <td>{{ match.serial_number or "Not recorded" }}</td>
+              <td>
+                <span class="state-badge{% if asset_is_terminal(match.location_type) %} terminal{% endif %}">{{ asset_state_label(match.location_type) }}</span>
+              </td>
+              <td>{{ match.holder_label or "Not assigned" }}</td>
+              <td>{{ match.home_case_name or "Not assigned" }}</td>
+              <td>
+                {% if match.home_slot_position is not none %}
+                  Slot {{ match.home_slot_position }}
+                {% else %}
+                  Not assigned
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('admin_edit_asset') }}">
+                  <input type="hidden" name="action" value="lookup" />
+                  <input type="hidden" name="lookup_asset_tag" value="{{ match.asset_tag }}" />
+                  <button type="submit">Select</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
   {% if asset %}
     <div class="card">
       <h2>Edit Asset</h2>
