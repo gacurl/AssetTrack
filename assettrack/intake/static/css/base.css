@@ -167,6 +167,17 @@
   letter-spacing: 0.01em;
 }
 
+.warn {
+  color: #8a1f11;
+  font-weight: 700;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .page.report-page .card h2 {
   margin-top: 0;
 }
