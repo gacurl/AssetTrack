@@ -362,6 +362,46 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Bravo Holder", response.data)
         self.assertIn(b"Search by person name, group, organization, or identifier", response.data)
 
+    def test_holders_directory_status_filter_shows_all_active_and_inactive(self) -> None:
+        organization_id = self._create_org("Ad Hoc")
+        self.client.post(
+            "/holders/new",
+            data={"name": "Active Directory Holder", "organization_id": str(organization_id), "email": "active-dir@example.org"},
+        )
+        self.client.post(
+            "/holders/new",
+            data={"name": "Inactive Directory Holder", "organization_id": str(organization_id), "email": "inactive-dir@example.org"},
+        )
+        inactive_row = self.conn.execute(
+            "SELECT id FROM holders WHERE name = ?;",
+            ("Inactive Directory Holder",),
+        ).fetchone()
+        self.assertIsNotNone(inactive_row)
+        inactive_id = int(inactive_row["id"])
+        self.conn.execute("UPDATE holders SET is_active = 0 WHERE id = ?;", (inactive_id,))
+        self.conn.commit()
+
+        all_response = self.client.get("/holders")
+        self.assertEqual(all_response.status_code, 200)
+        self.assertIn(b"Active Directory Holder", all_response.data)
+        self.assertIn(b"Inactive Directory Holder", all_response.data)
+        self.assertIn(b"Inactive", all_response.data)
+        self.assertIn(b"Holder status", all_response.data)
+
+        active_response = self.client.get("/holders?status=active")
+        self.assertEqual(active_response.status_code, 200)
+        self.assertIn(b"Active Directory Holder", active_response.data)
+        self.assertNotIn(b"Inactive Directory Holder", active_response.data)
+
+        inactive_response = self.client.get("/holders?status=inactive")
+        self.assertEqual(inactive_response.status_code, 200)
+        self.assertNotIn(b"Active Directory Holder", inactive_response.data)
+        self.assertIn(b"Inactive Directory Holder", inactive_response.data)
+
+        detail_response = self.client.get(f"/holders/{inactive_id}")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn(b"Inactive holder", detail_response.data)
+
     def test_inactive_holder_is_hidden_from_issue_selection_search(self) -> None:
         organization_id = self._create_org("Issue Org")
         self.client.post(

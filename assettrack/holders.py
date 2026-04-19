@@ -47,7 +47,21 @@ def _ensure_unique_holder_email(
     raise ValueError("email already exists")
 
 
-def search_holders(query: str, limit: int = 20, *, active_only: bool = False) -> list[dict]:
+def _holder_status_where_clause(status: str, *, column: str = "is_active") -> str:
+    if status == "active":
+        return f"COALESCE({column}, 1) = 1"
+    if status == "inactive":
+        return f"COALESCE({column}, 1) = 0"
+    return ""
+
+
+def search_holders(
+    query: str,
+    limit: int = 20,
+    *,
+    active_only: bool = False,
+    status: str = "all",
+) -> list[dict]:
     q = (query or "").strip()
     if not q:
         return []
@@ -59,10 +73,12 @@ def search_holders(query: str, limit: int = 20, *, active_only: bool = False) ->
 
     conn = get_connection()
     try:
+        normalized_status = "active" if active_only else str(status or "all").strip().lower()
         where_clauses = ["(name LIKE ? OR identifier LIKE ? OR organization LIKE ?)"]
         params: list[object] = [pattern, pattern, pattern]
-        if active_only:
-            where_clauses.append("COALESCE(is_active, 1) = 1")
+        status_clause = _holder_status_where_clause(normalized_status)
+        if status_clause:
+            where_clauses.append(status_clause)
         cursor = conn.execute(
             f"""
             SELECT * FROM holders
@@ -78,10 +94,12 @@ def search_holders(query: str, limit: int = 20, *, active_only: bool = False) ->
         conn.close()
 
 
-def list_holders(*, active_only: bool = False) -> list[dict]:
+def list_holders(*, active_only: bool = False, status: str = "all") -> list[dict]:
     conn = get_connection()
     try:
-        where_sql = "WHERE COALESCE(h.is_active, 1) = 1" if active_only else ""
+        normalized_status = "active" if active_only else str(status or "all").strip().lower()
+        status_clause = _holder_status_where_clause(normalized_status, column="h.is_active")
+        where_sql = f"WHERE {status_clause}" if status_clause else ""
         rows = conn.execute(
             f"""
             SELECT
