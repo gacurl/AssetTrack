@@ -23,6 +23,14 @@
     {% endif %}
   {% endwith %}
 
+  {% if temporary_password %}
+    <div class="flash success" role="status">
+      <strong>Temporary password for {{ temporary_password_username }}:</strong>
+      <code>{{ temporary_password }}</code>
+      <p class="muted">This password is shown once. Copy it now; it will not be shown again. Give it to the user through a trusted local channel.</p>
+    </div>
+  {% endif %}
+
   <div class="card">
     <h2>Create User</h2>
     <form method="post" action="{{ url_for('admin_users_create') }}">
@@ -87,8 +95,7 @@
               </form>
 
               <form class="inline-form" method="post" action="{{ url_for('admin_users_reset_password', user_id=user.id) }}">
-                <input type="password" name="new_password" placeholder="New password" required />
-                <button class="warn-button" type="submit">Reset Password</button>
+                <button class="warn-button" type="submit">Generate Temp Password</button>
               </form>
             </td>
           </tr>
