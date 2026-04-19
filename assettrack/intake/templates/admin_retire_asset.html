@@ -41,24 +41,6 @@
 .results-table code { white-space: nowrap; }
     input[type="text"], select, textarea { width: 100%; max-width: 640px; padding: 0.6rem; font-size: 1rem; }
     textarea { min-height: 120px; }
-    .warn { color: #8a1f11; font-weight: 700; }
-    .check { display: flex; align-items: center; gap: 0.5rem; }
-    .state-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.24rem 0.58rem;
-      border-radius: 999px;
-      font-weight: 700;
-      line-height: 1.2;
-      background: var(--color-surface-soft);
-      color: var(--color-text);
-    }
-    .state-badge.terminal {
-      background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface-bg));
-      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, var(--color-surface));
-      color: var(--color-danger);
-      letter-spacing: 0.01em;
-    }
   </style>
 {% endblock %}
 
