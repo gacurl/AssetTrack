@@ -6632,6 +6632,7 @@ def admin_users_reset_password(user_id: int):
             **_admin_users_context(
                 temporary_password=reset_result["temporary_password"],
                 temporary_password_username=updated["username"],
+                temporary_password_user_active=int(updated.get("active") or 0) == 1,
             ),
         ))
         response.headers["X-AssetTrack-Sensitive-Reveal"] = "1"
