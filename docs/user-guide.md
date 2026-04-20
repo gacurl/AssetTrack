@@ -1,305 +1,262 @@
-# AssetTrack Operator Manual
+# AssetTrack User Manual
 
-Version: Milestone 13 Baseline  
-Audience: Field Operators and Supervisors  
+## 1. What AssetTrack Is
 
----
+**What this does**  
+AssetTrack tracks who has each asset. It stages scans first, then commits changes with a receipt and audit record.
 
-## 1. Purpose of This System
+**Do this**
+1. Use AssetTrack when assets are issued or returned.
+2. Scan assets into a queue.
+3. Review the preview.
+4. Commit only when correct.
 
-AssetTrack is an offline-first asset accountability system designed to:
+**What happens next**  
+The system records custody changes and creates a receipt. The scan queue clears after commit.
 
-- Track physical assets in storage
-- Track assets issued to individuals (custody)
-- Enforce disciplined, atomic state transitions
-- Maintain an append-only audit trail
-
-The system is intentionally strict.  
-If an action is blocked, it is blocked for a reason.
-
----
-
-## 2. Mental Model: Storage vs Custody
-
-There are only two primary active states:
-
-### STORAGE
-- Asset is physically in storage.
-- Asset occupies a specific slot.
-- Asset has no active holder.
-
-### IN_CUSTODY
-- Asset is issued to a holder.
-- Asset is not in a slot.
-- Asset has an active holder.
-
-Terminal states (Retired / Disposed) remove assets from operational circulation.
-
-The system enforces this model consistently.
+**Watch for**
+- Scanning alone does nothing. You must commit.
+- Preview is required before commit.
 
 ---
 
-## 3. Roles and Permissions
+## 2. Logging In
 
-### Operator
-- Logs in via splash screen.
-- Can stage assets.
-- Can preview workflows.
-- Can initiate issue and return flows.
+**What this does**  
+Logs you into AssetTrack as an active user.
 
-### Supervisor
-- Required for commit operations.
-- Required for admin actions.
-- Authenticated via HTTP Basic credentials (configured separately from login session).
-- Can create, retire, replace assets.
-- Can assign, move, or force-vacate slots.
-- Can correct events (append-only corrections).
+**Do this**
+1. Open AssetTrack.
+2. Enter your username.
+3. Enter your password.
+4. Click **Login**.
 
-Supervisor actions are explicitly protected.
+**What happens next**  
+- Valid login → Dashboard  
+- Invalid login → Error message  
+- Disabled user → Access denied  
 
----
-
-## 4. Logging In
-
-1. Navigate to `/`
-2. Enter login credentials.
-3. Successful login redirects to `/dashboard`.
-
-If unauthenticated, all protected routes redirect to `/`.
-
-### Locking the System
-- `/lock` clears session authentication.
-- `/logout` clears session and redirects to `/`.
+**Watch for**
+- Too many attempts → temporary lockout  
+- Temp password users are forced to change password first  
 
 ---
 
-## 5. Dashboard Overview
+## 3. Logging Out
 
-The dashboard provides:
+**What this does**  
+Ends your session.
 
-- Summary view of assets
-- Holder drill-down
-- Case drill-down
-- Slot visibility
+**Do this**
+1. Click **Logout** in the top navigation.
 
-Dashboard routes:
-- `/dashboard`
-- `/dashboard/holders`
-- `/dashboard/cases`
+**What happens next**  
+You return to the login screen.
 
-Dashboard is read-only.
+**Watch for**
+- Logging out does not undo committed actions
 
 ---
 
-## 6. Intake Workflow (Scan → Preview → Commit)
+## 4. Password Reset
 
-### Step 1 — Staging (Scan Queue)
+**What this does**  
+Admin creates a temporary password. User must change it before normal use.
 
-- Scanned assets are staged in memory.
-- Staging queue is NOT database-backed.
-- Restarting the application clears the queue.
+**Admin steps**
+1. Go to **Users**
+2. Click **Generate Temp Password**
+3. Copy the password immediately
+4. Give it to the user (in person or secure channel)
 
-This queue must be committed to persist.
+**User steps**
+1. Log in with the temp password
+2. You will be forced to change password
+3. Enter new password
+4. Click **Update Password**
 
----
+**What happens next**  
+- Temp password works once  
+- New password replaces it  
+- Normal access resumes  
 
-### Step 2 — Preview
-
-Navigate to `/preview`.
-
-The preview page shows:
-- Staged rows
-- Validation results
-- Blocking errors (if any)
-
-Commit is not allowed until:
-- At least one row is staged
-- Validation passes
-- Confirmation checkbox is checked
-- Required contextual inputs are present
-
----
-
-### Step 3 — Commit (Normal Ingest Mode)
-
-On successful commit:
-- Batch is written atomically.
-- Events are recorded.
-- Queue is cleared.
-- Holder selection cleared.
-- Redirect to `/`.
-
-On failure:
-- Errors are displayed.
-- No partial writes occur.
+**Watch for**
+- Temp password is shown once only  
+- Disabled users still cannot log in  
 
 ---
 
-## 7. Issuing Assets (Issue)
+## 5. Issue Workflow
 
-Issue moves assets from STORAGE to IN_CUSTODY.
+**What this does**  
+Moves assets from storage to a holder.
 
-### Preconditions
+**Do this**
+1. Click **Issue**
+2. Select a holder (if prompted)
+3. Set building and room
+4. Click **Save current location**
+5. Click the scan box
+6. Scan asset tag or case barcode
+7. Review validation summary
+8. Click **Preview / Confirm**
+9. Confirm both checkboxes
+10. Click **Commit Issue**
 
-- Operator logged in.
-- Supervisor authentication provided.
-- Holder selected.
-- Queue contains valid asset tags.
-- Asset is in STORAGE.
-- Asset is slotted.
-- Asset is not retired/disposed.
-- Confirmation checkbox checked.
+**What happens next**  
+- Assets move to **IN_CUSTODY**  
+- Events are recorded  
+- Receipt is created  
+- Queue clears  
 
-### Blocking Conditions
-
-- Unknown asset tag.
-- Asset not in STORAGE.
-- Asset not slotted.
-- Retired/disposed asset.
-- No holder selected.
-- Empty queue.
-
-### On Successful Issue
-
-- `location_type` → IN_CUSTODY
-- `current_holder_id` set
-- Slot vacated
-- ISSUE event logged
-- Queue cleared
-- Holder cleared
-- Redirect to `/`
+**Watch for**
+- You cannot scan until holder and location are set  
+- Only valid assets will commit  
 
 ---
 
-## 8. Returning Assets (Return)
+## 6. Return Workflow
 
-Return moves assets from IN_CUSTODY to STORAGE.
+**What this does**  
+Moves assets from a holder back to storage.
 
-### Preconditions
+**Do this**
+1. Click **Return**
+2. Click the scan box
+3. Scan asset tag or case barcode
+4. Review validation summary
+5. Click **Preview / Confirm**
+6. Confirm both checkboxes
+7. Click **Commit Return**
 
-- Operator logged in.
-- Supervisor authentication provided.
-- Asset in IN_CUSTODY.
-- Asset not retired/disposed.
-- Asset has a home slot.
-- Home slot is empty.
-- Confirmation checkbox checked.
+**What happens next**  
+- Assets return to **STORAGE**  
+- Holder is cleared  
+- Receipt is created  
+- Queue clears  
 
-### Blocking Conditions
-
-- Asset not in custody.
-- Home slot occupied.
-- Missing home slot mapping.
-- Unknown asset tag.
-- Empty queue.
-
-### On Successful Return
-
-- `location_type` → STORAGE
-- `current_holder_id` cleared
-- Slot reoccupied
-- RETURN event logged
-- Queue cleared
-- Redirect to `/return`
+**Watch for**
+- Asset must be in custody  
+- Home slot must be available  
 
 ---
 
-## 9. Blocking Conditions Explained
+## 7. Case Barcode Scanning
 
-The system blocks actions when:
+**What this does**  
+Adds multiple assets at once.
 
-- Asset state conflicts with requested transition.
-- Required contextual data is missing.
-- Supervisor authentication fails.
-- Validation errors exist.
-- Confirmation checkbox not checked.
+**Do this**
+1. Scan a case barcode during Issue or Return
 
-Blocking is intentional and protects data integrity.
+**What happens next**  
+- Matching assets are added to the queue  
+- Already queued assets are skipped  
 
----
-
-## 10. Supervisor Actions
-
-Supervisor-only routes include:
-
-- Create asset
-- Retire asset
-- Replace asset
-- Assign slot
-- Move slot
-- Force-vacate slot
-- Correct events
-
-These actions:
-- Require HTTP Basic credentials.
-- Use atomic transactions.
-- Append audit events.
-- Never modify history in place.
-
-### Event Corrections
-
-Event corrections:
-- Insert a new correction row.
-- Reference the superseded event.
-- Do not delete or rewrite prior events.
-
-Audit trail remains intact.
+**Watch for**
+- Empty case → nothing added  
+- Ambiguous match → rejected  
 
 ---
 
-## 11. Data Safety & Persistence
+## 8. Receipts
 
-### Queue Persistence
-- Scan queue is memory-only.
-- Restarting clears staged items.
+**What this does**  
+Shows what was committed and creates a record.
 
-### Database Persistence
-- SQLite database stored at configured path.
-- In Docker, persisted via mounted volume.
-- Survives container restart and rebuild (with volume).
+**Do this**
+1. Click **Receipts**
+2. Search by asset, holder, or location
+3. Open a receipt
+4. Review summary sections
+5. Click **Download PDF** if needed
 
-### Irreversible Actions
-- Retire/Dispose transitions.
-- Event corrections (append-only).
-- Slot force-vacate operations.
+**What happens next**  
+You see a snapshot of the transaction. PDF download is available.
 
----
-
-## 12. Common Errors & Recovery
-
-| Scenario | Likely Cause | Action |
-|----------|--------------|--------|
-| Asset cannot be issued | Not in STORAGE | Return asset first |
-| Asset cannot be returned | Not in IN_CUSTODY | Verify custody state |
-| Home slot occupied | Slot conflict | Supervisor intervention required |
-| Commit button blocked | Confirmation not checked | Check confirmation |
-| 401/503 on commit | Supervisor auth missing | Verify admin credentials |
+**Watch for**
+- Receipts are created only after commit  
+- Search uses stored receipt data  
 
 ---
 
-## 13. Guardrails (What the System Will Not Allow)
+## 9. Sending Email Receipt
 
-- Partial commits.
-- Silent state changes.
-- Editing historical events.
-- Issuing retired assets.
-- Returning non-custody assets.
-- Double-slot occupancy.
-- Double-custody state.
+**What this does**  
+Emails a receipt PDF.
 
-If the system blocks an action, investigate state mismatch.
+**Do this**
+1. Open a receipt
+2. Click **Send Receipt Email** (Queued)
+3. Or click **Retry Send** (Failed)
 
----
+**What happens next**  
+- Success → status = Sent  
+- Failure → status = Failed  
 
-## 14. Operational Discipline Rules
-
-1. Always review preview before commit.
-2. Never ignore blocking warnings.
-3. Use Supervisor actions sparingly.
-4. Treat force-vacate as corrective, not routine.
-5. Restarting clears queue — commit before restarting.
-6. Corrections append; they do not erase.
+**Watch for**
+- Missing email → cannot send  
+- “Sent” means handed off, not guaranteed delivery  
 
 ---
 
-End of Manual  
+## 10. Holders
+
+**What this does**  
+Defines who can receive assets.
+
+**Do this**
+1. Click **Holders**
+2. Search for a person or group
+3. Click a holder
+4. Click **Select for Issue**
+
+**What happens next**  
+Holder is stored for the Issue workflow.
+
+**Watch for**
+- Only active holders can be selected  
+
+---
+
+## 11. Admin Users
+
+**What this does**  
+Manage system users.
+
+**Do this**
+1. Click **Users**
+2. Create user (username, password, role)
+3. Click **Enable / Disable**
+4. Click **Set Role**
+5. Click **Generate Temp Password**
+
+**What happens next**  
+Changes apply immediately.
+
+**Watch for**
+- **Active — can log in**  
+- **Disabled — cannot log in**  
+- Reset does NOT enable a user  
+
+---
+
+## 12. Common Fixes
+
+**What this does**  
+Quick answers when something doesn’t work.
+
+**Do this**
+- Temp password fails → user may be disabled  
+- Cannot scan → set holder + location first  
+- No receipt → commit not completed  
+- Return blocked → asset not in custody or slot occupied  
+- Issue blocked → asset not in storage  
+- Email failed → check recipient or SMTP  
+
+**What happens next**  
+Fix the condition, then retry the action.
+
+**Watch for**
+- Queue is staging only  
+- Commit is the actual change  
