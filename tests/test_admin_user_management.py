@@ -47,10 +47,25 @@ def test_admin_can_view_user_table(client_with_temp_db) -> None:
     assert response.status_code == 200
     assert b"Admin: Users" in response.data
     assert b"operator-a" in response.data
+    assert b"Account State" in response.data
+    assert b"Active &mdash; can log in" in response.data
     assert b"Apr 5, 2026 at 13:15 UTC" in response.data
     assert b"Apr 6, 2026 at 09:45 UTC" in response.data
     assert b"2026-04-05T13:15:00+00:00" not in response.data
     assert b"2026-04-06T09:45:00+00:00" not in response.data
+
+
+def test_admin_users_page_explains_disabled_user_login_state(client_with_temp_db) -> None:
+    admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+    create_test_user(username="disabled-operator", password="op-pass", role="operator", active=False)
+    login_session(client_with_temp_db, admin_user_id)
+
+    response = client_with_temp_db.get("/admin/users")
+
+    assert response.status_code == 200
+    assert b"disabled-operator" in response.data
+    assert b"Disabled &mdash; cannot log in" in response.data
+    assert b"A temp password will not allow login until this user is enabled." in response.data
 
 
 def test_admin_users_page_formats_microsecond_timestamps(client_with_temp_db) -> None:
@@ -216,6 +231,29 @@ def test_admin_temp_password_is_not_revealed_after_reset_response(client_with_te
     updated = get_user_by_id(target_user_id)
     assert updated is not None
     assert temporary_password not in str(updated["password_hash"])
+
+
+def test_disabled_user_reset_explains_enablement_is_still_required(client_with_temp_db) -> None:
+    admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+    target_user_id = create_test_user(
+        username="disabled-operator",
+        password="old-pass",
+        role="operator",
+        active=False,
+    )
+    login_session(client_with_temp_db, admin_user_id)
+
+    response = client_with_temp_db.post(f"/admin/users/{target_user_id}/reset-password")
+
+    assert response.status_code == 200
+    assert b"Temporary password for disabled-operator" in response.data
+    assert b"This account is disabled. Enable the user before they can log in with the temporary password." in response.data
+    assert b"Disabled &mdash; cannot log in" in response.data
+    assert b"A temp password will not allow login until this user is enabled." in response.data
+    updated = get_user_by_id(target_user_id)
+    assert updated is not None
+    assert is_temporary_password(updated)
+    assert int(updated["active"]) == 0
 
 
 def test_admin_can_change_role_and_persists(client_with_temp_db) -> None:
