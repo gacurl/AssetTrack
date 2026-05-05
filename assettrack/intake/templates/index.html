@@ -10,6 +10,12 @@
     .queue-ts { color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text)); font-size: 0.9rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     .queue-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 0.8rem; }
+    .secondary-actions {
+      margin-top: 0.8rem;
+      font-size: 0.95rem;
+      color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
+    }
+    .secondary-actions a { color: inherit; }
     .queue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; }
     .queue-row {
       display: flex;
@@ -82,8 +88,6 @@
   <div class="card">
     <p><strong>What this does:</strong> scans are staged in a queue first. Inventory records are written only after you review and commit the batch.</p>
     <p><strong>How to use:</strong> click the scan box once, then scan. The scanner “types” and hits Enter.</p>
-    <p><a href="{{ url_for('preview') }}" data-timeout-lock-target>Open batch preview</a></p>
-    <p><a href="{{ url_for('return_queue') }}">Return Assets</a></p>
 
     {% if auth_enabled and not authed %}
       <form method="post">
@@ -148,6 +152,7 @@
     <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
       <button id="review-batch" type="submit" data-timeout-lock-target>Review staged batch</button>
     </form>
+    <p class="secondary-actions">Other workflow: <a href="{{ url_for('return_queue') }}">Return Assets</a></p>
   </div>
 
   <div class="card">
