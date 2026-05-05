@@ -159,10 +159,9 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
 
     assert response.status_code == 200
     assert b"Issuing Assets" in response.data
-    assert b"Selected holder" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Org" in response.data
-    assert b"Queued:</strong> 0 assets" in response.data
+    assert b"0 assets queued" in response.data
 
 
 def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) -> None:
@@ -186,6 +185,5 @@ def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) 
 
     assert response.status_code == 200
     assert b"Issuing Assets" in response.data
-    assert b"Selected holder" in response.data
     assert b"Maintenance Team" in response.data
     assert b"Maintenance Team (Maintenance Team)" not in response.data

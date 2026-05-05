@@ -1,22 +1,26 @@
 <!-- file: assettrack/intake/templates/_workflow_context_banner.html -->
 <div class="card workflow-banner">
   <h2>{{ workflow_banner_title }}</h2>
-  {% if selected_holder %}
-    <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Selected holder</p>
-    <p style="margin: 0; font-size: 1.15rem; font-weight: 700;">{{ holder_display_name(selected_holder) }}</p>
-    {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
-      <p class="muted" style="margin: 0.2rem 0 0 0;">{{ selected_holder["organization"] }}</p>
+  <p class="workflow-summary" style="margin: 0;">
+    {% if selected_holder %}
+      <strong>{{ holder_display_name(selected_holder) }}</strong>
+      {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+        ({{ selected_holder["organization"] }})
+      {% endif %}
+      {% if workflow_banner_destination or workflow_banner_outcome or workflow_banner_queued_count is not none %}
+        &nbsp;|&nbsp;
+      {% endif %}
     {% endif %}
-  {% endif %}
-  <p class="workflow-summary" style="margin: {% if selected_holder %}0.75rem{% else %}0{% endif %} 0 0 0;">
     {% if workflow_banner_destination %}
-      <strong>Home location:</strong> {{ workflow_banner_destination }}
-      {% if workflow_banner_outcome or not workflow_banner_outcome and workflow_banner_queued_count is not none %}<br />{% endif %}
+      Home location: {{ workflow_banner_destination }}
+      {% if workflow_banner_outcome or workflow_banner_queued_count is not none %}
+        &nbsp;|&nbsp;
+      {% endif %}
     {% endif %}
     {% if workflow_banner_outcome %}
-      <strong>Status:</strong> {{ workflow_banner_outcome }}
-    {% else %}
-      <strong>Queued:</strong> {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %}
+      {{ workflow_banner_outcome }}
+    {% elif workflow_banner_queued_count is not none %}
+      {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %} queued
     {% endif %}
   </p>
 </div>
