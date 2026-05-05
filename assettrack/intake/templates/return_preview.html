@@ -33,13 +33,6 @@
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Batch Return Needs Review{% else %}Confirm This Return Batch{% endif %}</h2>
-    <p>
-      {% if blocking_issues %}
-        This batch cannot be returned yet. Review the blocked items below before committing.
-      {% else %}
-        You are confirming the full return batch below. Commit Return is the next step.
-      {% endif %}
-    </p>
   </div>
 
   <div class="card workflow-card">
@@ -56,11 +49,6 @@
         <span class="pill good">ready</span>
       {% endif %}
     </p>
-    {% if blocking_issues %}
-      <p class="workflow-summary">{{ ready_count }} ready, {{ blocked_count }} blocked. Blocked items stay listed below and must be fixed before this batch can be returned.</p>
-    {% else %}
-      <p class="workflow-summary">All {{ ready_count }} queued assets are ready. Commit Return will confirm this batch and place the assets back into storage.</p>
-    {% endif %}
 
     {% if blocking_issues %}
       <ul><template>

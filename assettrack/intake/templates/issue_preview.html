@@ -50,13 +50,6 @@
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Review Before Issuing{% else %}Ready to Issue{% endif %}</h2>
-    <p>
-      {% if blocking_issues %}
-        Check the issues below before you commit this issue batch.
-      {% else %}
-        Review the listed assets below. Commit Issue is the next step.
-      {% endif %}
-    </p>
   </div>
 
   <div class="card workflow-card">
@@ -129,8 +122,6 @@
           <li>{{ issue }}</li>
         {% endfor %}
       </template></ul>
-    {% else %}
-      <p>No blocking issues detected. Batch will commit atomically.</p>
     {% endif %}
   </div>
 

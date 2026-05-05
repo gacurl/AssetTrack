@@ -164,7 +164,6 @@
 
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Scan returns" }}</h2>
-    <p>Click the box once, then scan. The scanner "types" and hits Enter.</p>
     {% if issue_location_form is defined and not issue_location_ready %}
       <div class="flash error">
         <strong>Scanning is blocked.</strong> Set the current building and current room / area above, then scan again.
@@ -219,8 +218,6 @@
           <p class="validation-message">{{ issue }}</p>
         {% endfor %}
       </div>
-    {% elif queued_count > 0 %}
-      <div class="flash success">Ready for preview. No blocking issues found.</div>
     {% endif %}
   </div>
 

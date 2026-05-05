@@ -123,13 +123,13 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'name="slot_id"', response.data)
         self.assertIn(b"CASE-LIVE", response.data)
         self.assertIn(b"Stage Asset Intake", response.data)
-        self.assertIn(b"scans are staged in a queue first", response.data)
-        self.assertIn(b"Inventory records are written only after you review and commit the batch", response.data)
         self.assertIn(b"Stage in queue", response.data)
         self.assertIn(b"Review staged batch", response.data)
         self.assertIn(b"Other workflow:", response.data)
         self.assertIn(b"Return Assets", response.data)
         self.assertNotIn(b"Open batch preview", response.data)
+        self.assertNotIn(b"What this does:", response.data)
+        self.assertNotIn(b"How to use:", response.data)
         self.assertNotIn(b"Add to database", response.data)
 
     def test_add_assets_empty_scan_submission_shows_validation_message(self) -> None:

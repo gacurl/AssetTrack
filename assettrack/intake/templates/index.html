@@ -86,9 +86,6 @@
   {% endwith %}
 
   <div class="card">
-    <p><strong>What this does:</strong> scans are staged in a queue first. Inventory records are written only after you review and commit the batch.</p>
-    <p><strong>How to use:</strong> click the scan box once, then scan. The scanner “types” and hits Enter.</p>
-
     {% if auth_enabled and not authed %}
       <form method="post">
         <input type="password" name="access_code" placeholder="Access code" autofocus />
