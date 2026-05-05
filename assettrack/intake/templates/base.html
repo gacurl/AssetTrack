@@ -1,16 +1,22 @@
 <!-- file: assettrack/intake/templates/base.html -->
-<!doctype html>
 {% set current_theme = "dark" if request.cookies.get("assettrack_theme") == "dark" else "light" %}
 {% set theme = current_theme | default("light") %}
 {% set is_dark = theme == "dark" %}
+
 {% if is_dark %}
+  {% set html_theme_attr = ' data-theme="dark"' %}
   {% set theme_aria_pressed = "true" %}
   {% set theme_aria_label = "Switch to light mode" %}
+  {% set theme_icon = "☀️" %}
+  {% set theme_text = "Light mode" %}
 {% else %}
+  {% set html_theme_attr = "" %}
   {% set theme_aria_pressed = "false" %}
   {% set theme_aria_label = "Switch to dark mode" %}
+  {% set theme_icon = "🌙" %}
+  {% set theme_text = "Dark mode" %}
 {% endif %}
-<html lang="en"{% if is_dark %} data-theme="dark"{% endif %}>
+<html lang="en"{{ html_theme_attr | safe }}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -25,15 +31,10 @@
           type="button"
           class="theme-toggle"
           id="theme-toggle"
-          aria-pressed="{{ theme_aria_pressed }}"
           aria-label="{{ theme_aria_label }}"
         >
-          <span class="theme-toggle-icon" aria-hidden="true">
-            {% if is_dark %}☀️{% else %}🌙{% endif %}
-          </span>
-          <span class="theme-toggle-text">
-            {% if is_dark %}Light mode{% else %}Dark mode{% endif %}
-          </span>
+          <span class="theme-toggle-icon" aria-hidden="true">{{ theme_icon }}</span>
+          <span class="theme-toggle-text">{{ theme_text }}</span>
         </button>
       </div>
       {% set heading = self.page_heading() | trim %}
