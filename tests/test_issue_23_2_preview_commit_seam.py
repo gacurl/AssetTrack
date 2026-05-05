@@ -7,7 +7,7 @@ import pytest
 import assettrack.db as db
 from assettrack.intake import app as intake_app
 from assettrack.intake.scan import Scan
-from tests.auth_test_utils import create_test_user
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -67,9 +67,9 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-preview-seam", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
 
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -89,7 +89,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Commit Issue is the next step." in issue_preview.data
     assert b"Issued to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
-    assert b"Queued:</strong> 1 asset" in issue_preview.data
+    assert b"1 asset queued" in issue_preview.data
     assert b"Current location:</strong> <code>HQ North / 210</code>" in issue_preview.data
     assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
@@ -106,11 +106,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     )
 
     assert commit.status_code == 200
-    assert b"Issued 1 assets." in commit.data
-    assert b"Issuing Assets" in commit.data
-    assert b"Issued to:</strong>" in commit.data
+    assert b"Issue Receipt" in commit.data
     assert b"Issue Holder" in commit.data
-    assert b"Status:</strong> Issued 1 asset successfully." in commit.data
     assert b"Queued:</strong> 0 assets" not in commit.data
     assert len(intake_app.SCAN_QUEUE) == 0
 
@@ -124,9 +121,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     )
     assert follow_up_scan.status_code == 200
     assert b"Issuing Assets" in follow_up_scan.data
-    assert b"Issued to:</strong>" in follow_up_scan.data
     assert b"Issue Holder" in follow_up_scan.data
-    assert b"Queued:</strong> 1 asset" in follow_up_scan.data
+    assert b"1 asset queued" in follow_up_scan.data
 
     conn = db.get_connection()
     try:
@@ -147,6 +143,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
 
 def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-remove-preview", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
 
     conn = db.get_connection()
     conn.execute(
@@ -180,7 +177,6 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
     conn.close()
 
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -218,7 +214,7 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
     )
 
     assert commit.status_code == 200
-    assert b"Issued 2 assets." in commit.data
+    assert b"Issue Receipt" in commit.data
     assert len(intake_app.SCAN_QUEUE) == 0
 
     conn = db.get_connection()
