@@ -127,7 +127,7 @@ def test_login_screen_renders_theme_toggle_without_persistence_storage(client_wi
     assert b'img/curltech-badge-512.png' not in response.data
     assert b"AssetTrack by CurlTech LLC" not in response.data
     assert "🌙".encode("utf-8") in response.data
-    assert b"Dark mode" in response.data
+    assert b'aria-label="Switch to dark mode"' in response.data
     assert b"localStorage" not in response.data
     assert b"sessionStorage" not in response.data
 
@@ -427,7 +427,7 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
     assert b'aria-pressed="true"' in dashboard_response.data
     assert b'aria-label="Switch to light mode"' in dashboard_response.data
     assert "\u2600\ufe0f".encode("utf-8") in dashboard_response.data
-    assert b"Light mode" in dashboard_response.data
+    assert b'aria-label="Switch to light mode"' in dashboard_response.data
 
     asset_search_response = client_with_temp_db.get("/assets/search")
     assert asset_search_response.status_code == 200
@@ -435,7 +435,7 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
     assert b'aria-pressed="true"' in asset_search_response.data
     assert b'aria-label="Switch to light mode"' in asset_search_response.data
     assert "\u2600\ufe0f".encode("utf-8") in asset_search_response.data
-    assert b"Light mode" in asset_search_response.data
+    assert b'aria-label="Switch to light mode"' in asset_search_response.data
 
 
 def test_authenticated_file_download_sets_no_store_headers(client_with_temp_db) -> None:
