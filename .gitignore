@@ -39,6 +39,7 @@ data/*.db
 
 # Backups
 data/backups/
+data/*.backup-*
 
 # ----------------------------
 # Raw import files (Excel, CSV)
