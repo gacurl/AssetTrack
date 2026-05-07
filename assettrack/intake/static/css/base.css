@@ -472,6 +472,17 @@ button.theme-toggle:hover {
   box-shadow: 0 1px 2px rgba(29, 53, 87, 0.04);
 }
 
+.page-footer {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-surface);
+}
+
+.page-session-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .flash {
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-surface);
@@ -548,6 +559,17 @@ button {
   border: 1px solid var(--color-surface);
   border-radius: 10px;
   background: var(--color-primary-soft);
+}
+
+.page-session-footer .timeout-panel {
+  width: 100%;
+  max-width: 32rem;
+  margin: 0;
+  background: var(--color-surface-bg);
+}
+
+.timeout-panel p {
+  margin: 0;
 }
 
 .timeout-panel.locked {

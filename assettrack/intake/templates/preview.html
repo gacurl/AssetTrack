@@ -16,8 +16,6 @@
     <a href="{{ url_for('dashboard') }}">← Back to dashboard</a>
   </div>
 
-  {% include "_timeout_status.html" %}
-
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
