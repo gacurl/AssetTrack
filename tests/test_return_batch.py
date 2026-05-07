@@ -85,6 +85,9 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(render.status_code, 200)
         self.assertIn(b"Return", render.data)
         self.assertIn(b">Return<", render.data)
+        self.assertIn(b"Add to Queue", render.data)
+        self.assertIn(b"Scan or enter asset tag", render.data)
+        self.assertIn(b"Add to queue", render.data)
         self.assertIn(b"Home location: Home slots", render.data)
         self.assertIn(b"1 asset queued", render.data)
 
@@ -236,6 +239,21 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNone(receipt_row["sent_at"])
         self.assertIsNone(receipt_row["last_attempt_at"])
         self.assertIsNone(receipt_row["last_error"])
+
+    def test_return_queue_and_preview_empty_states_show_next_step_guidance(self) -> None:
+        render = self.client.get("/return")
+        self.assertEqual(render.status_code, 200)
+        self.assertIn(
+            b"No assets queued yet. Scan or enter an asset tag, then add it to the queue.",
+            render.data,
+        )
+
+        preview_render = self.client.get("/return/preview")
+        self.assertEqual(preview_render.status_code, 200)
+        self.assertIn(
+            b"No assets queued. Return to the queue and scan or enter an asset tag.",
+            preview_render.data,
+        )
 
     def test_return_commit_restores_slot_occupancy_after_issue_path_removal(self) -> None:
         self._insert_holder(5, "Return Holder Five")
