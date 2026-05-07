@@ -87,7 +87,9 @@
   {% endfor %}
   {% set jump_to_scan_href = "#scan-input" %}
   {% set jump_to_queue_href = "#queue-section" %}
-  <p><a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+  <nav class="workflow-local-nav" aria-label="Workflow navigation">
+    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </nav>
 
   {% if message_ns.global_messages %}
     {% for category, message in message_ns.global_messages %}
@@ -109,7 +111,7 @@
   {% endif %}
 
   {% if issue_location_form is defined %}
-    <p><a class="nav-link" href="{{ jump_to_scan_href }}">Jump to scan</a></p>
+    <p><a class="nav-link" href="{{ jump_to_scan_href }}">Jump to Scan</a></p>
   {% endif %}
 
   {% if issue_location_form is defined %}
@@ -173,7 +175,7 @@
       {% endfor %}
     {% endif %}
     {% if queue_len > 0 %}
-      <p><a class="nav-link" href="{{ jump_to_queue_href }}">Jump to queue</a></p>
+      <p><a class="nav-link" href="{{ jump_to_queue_href }}">Jump to Queue</a></p>
     {% endif %}
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">

@@ -12,9 +12,9 @@
 {% endblock %}
 
 {% block content %}
-  <div class="row">
-    <a href="{{ url_for('dashboard') }}">← Back to dashboard</a>
-  </div>
+  <nav class="workflow-local-nav" aria-label="Workflow navigation">
+    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}

@@ -30,8 +30,8 @@
 {% endblock %}
 
 {% block content %}
-  <nav class="actions" aria-label="Issue preview navigation">
-    <a class="nav-link" href="{{ url_for('preview') }}">Back to batch preview</a>
+  <nav class="workflow-local-nav" aria-label="Workflow navigation">
+    <a class="nav-link" href="{{ url_for('preview') }}">Back to Batch Preview</a>
   </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
