@@ -4286,10 +4286,10 @@ def issue():
 
     return render_template(
         "return_queue.html",
-        page_title="Issue Assets",
-        page_heading="Issue Assets",
-        scan_heading="Scan issues",
-        workflow_banner_title="Issuing Assets",
+        page_title="Issue",
+        page_heading="Issue",
+        scan_heading="Scan",
+        workflow_banner_title="Issue",
         workflow_banner_queued_count=len(asset_tags),
         workflow_banner_outcome=workflow_banner_outcome,
         return_to=url_for("issue"),
@@ -4370,7 +4370,7 @@ def issue_preview():
         "issue_preview.html",
         issue_mode=issue_mode,
         selected_holder=selected_holder,
-        workflow_banner_title="Confirm Issue",
+        workflow_banner_title="Issue Preview",
         workflow_banner_queued_count=len(asset_tags),
         queued_count=len(asset_tags),
         assets=issue_preview_state["assets"],
@@ -4516,7 +4516,7 @@ def return_queue():
 
     return render_template(
         "return_queue.html",
-        workflow_banner_title="Returning Assets",
+        workflow_banner_title="Return",
         workflow_banner_destination="Home slots",
         workflow_banner_queued_count=len(asset_tags),
         queued_count=len(asset_tags),
@@ -4545,7 +4545,7 @@ def return_preview():
 
     return render_template(
         "return_preview.html",
-        workflow_banner_title="Confirm Return",
+        workflow_banner_title="Return Preview",
         workflow_banner_destination="Home slots",
         workflow_banner_queued_count=len(asset_tags),
         queued_count=len(asset_tags),

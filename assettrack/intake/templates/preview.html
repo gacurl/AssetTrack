@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block title %}AssetTrack Preview{% endblock %}
-{% block page_heading %}Batch Preview{% endblock %}
+{% block page_heading %}Preview{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -40,7 +40,7 @@
   </div>
 
   <div class="card">
-    <h2>Parsed rows</h2>
+    <h2>Rows</h2>
     <table>
       <thead>
         <tr>
@@ -91,7 +91,7 @@
   </div>
 
   <div class="card">
-    <h2>Mode</h2>
+    <h2>Issue Mode</h2>
 
     <form method="post" action="{{ url_for('preview_mode') }}" style="margin-top: 10px;">
       <label>

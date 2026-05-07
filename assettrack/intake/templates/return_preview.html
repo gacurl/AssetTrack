@@ -1,8 +1,8 @@
 <!-- file: assettrack/intake/templates/return_preview.html -->
 {% extends "base.html" %}
 
-{% block title %}Return Assets — Preview{% endblock %}
-{% block page_heading %}Return Assets — Preview / Confirm{% endblock %}
+{% block title %}Return Preview{% endblock %}
+{% block page_heading %}Return Preview{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -30,7 +30,7 @@
   {% endif %}
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
-    <h2>{% if blocking_issues %}Batch Return Needs Review{% else %}Confirm This Return Batch{% endif %}</h2>
+    <h2>{% if blocking_issues %}Needs Review{% else %}Ready to Return{% endif %}</h2>
   </div>
 
   {% if blocking_issues %}
@@ -45,7 +45,7 @@
   {% endif %}
 
   <div class="card workflow-card">
-    <h2>Items to Be Returned</h2>
+    <h2>Assets</h2>
 
     {% if preview_rows %}
       <table class="workflow-table">
@@ -104,7 +104,7 @@
   </div>
 
   <div class="card workflow-card">
-    <h2>Confirm Return</h2>
+    <h2>Commit</h2>
 
     {% if not blocking_issues %}
       <form method="post" action="{{ url_for('return_commit') }}">

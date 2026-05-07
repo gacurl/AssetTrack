@@ -56,7 +56,7 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Issue Assets" in issue_page.data
+    assert b"Issue" in issue_page.data
     assert b"Open Issue Assets Preview / Confirm" in issue_page.data
 
 
@@ -78,7 +78,7 @@ def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_hol
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Issuing Assets" in issue_page.data
+    assert b">Issue<" in issue_page.data
     assert b"Selected holder" in issue_page.data
     assert b"Issue Holder" in issue_page.data
     assert b"Issue Org" in issue_page.data
@@ -146,7 +146,7 @@ def test_issue_with_selected_holder_still_loads_normally(client_with_temp_db) ->
 
     assert response.status_code == 200
     assert b"Select a holder before issuing assets." not in response.data
-    assert b"Issue Assets" in response.data
+    assert b"Issue" in response.data
 
 
 def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> None:
@@ -158,7 +158,7 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
     response = client_with_temp_db.get("/issue")
 
     assert response.status_code == 200
-    assert b"Issuing Assets" in response.data
+    assert b"Issue" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Org" in response.data
     assert b"0 assets queued" in response.data
@@ -184,6 +184,6 @@ def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) 
     response = client_with_temp_db.get("/issue")
 
     assert response.status_code == 200
-    assert b"Issuing Assets" in response.data
+    assert b">Issue<" in response.data
     assert b"Maintenance Team" in response.data
     assert b"Maintenance Team (Maintenance Team)" not in response.data

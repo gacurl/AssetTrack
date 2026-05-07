@@ -1,8 +1,8 @@
 <!-- assettrack/intake/templates/issue_preview.html -->
 {% extends "base.html" %}
 
-{% block title %}Issue Assets Preview{% endblock %}
-{% block page_heading %}Issue Assets — Preview / Confirm{% endblock %}
+{% block title %}Issue Preview{% endblock %}
+{% block page_heading %}Issue Preview{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -47,11 +47,11 @@
   {% endif %}
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
-    <h2>{% if blocking_issues %}Review Before Issuing{% else %}Ready to Issue{% endif %}</h2>
+    <h2>{% if blocking_issues %}Needs Review{% else %}Ready to Issue{% endif %}</h2>
   </div>
 
   <div class="card workflow-card">
-    <h2>Selected Holder</h2>
+    <h2>Holder</h2>
     {% if selected_holder %}
       <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Ready to issue to</p>
       <p class="holder-name">{{ holder_display_name(selected_holder) }}</p>
@@ -111,7 +111,7 @@
   {% endif %}
 
   <div class="card workflow-card">
-    <h2>Items to Be Issued</h2>
+    <h2>Assets</h2>
 
     {% if assets %}
       <table class="workflow-table">
@@ -175,7 +175,7 @@
   </div>
 
   <div class="card workflow-card">
-    <h2>Confirm Commit</h2>
+    <h2>Commit</h2>
     <form method="post" action="{{ url_for('issue_commit') }}">
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
