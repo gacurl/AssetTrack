@@ -198,7 +198,7 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
     assert remove.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DDC4CY002645", "DDC4CY002647"]
     assert b"Queue (2)" in remove.data
-    assert b"Queued assets:</strong> 2" in remove.data
+    assert b"Blocked Items" not in remove.data
 
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200

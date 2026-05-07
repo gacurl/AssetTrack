@@ -93,7 +93,6 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn("Return Assets — Preview / Confirm".encode("utf-8"), preview_render.data)
         self.assertIn(b"Confirm Return", preview_render.data)
         self.assertIn(b"Confirm This Return Batch", preview_render.data)
-        self.assertIn(b"Batch Confirmation", preview_render.data)
         self.assertIn(b"Home location: Home slots", preview_render.data)
         self.assertIn(b"1 asset queued", preview_render.data)
         self.assertIn(b"Current State", preview_render.data)

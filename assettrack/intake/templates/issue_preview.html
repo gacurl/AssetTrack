@@ -101,29 +101,16 @@
     </div>
   </div>
 
-  <div class="card workflow-card">
-    <h2>Validation Summary</h2>
-    <p class="workflow-summary">
-      <strong>Queued assets:</strong> {{ queued_count }}
-      &nbsp;|&nbsp;
-      <strong>Ready to commit:</strong> {{ ready_count }}
-      &nbsp;|&nbsp;
-      <strong>Status:</strong>
-      {% if blocking_issues %}
-        <span class="pill bad">blocked</span>
-      {% else %}
-        <span class="pill good">ready</span>
-      {% endif %}
-    </p>
-
-    {% if blocking_issues %}
+  {% if blocking_issues %}
+    <div class="card workflow-card">
+      <h2>Blocked Items</h2>
       <ul><template>
         {% for issue in blocking_issues %}
           <li>{{ issue }}</li>
         {% endfor %}
       </template></ul>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
   <div class="card workflow-card">
     <h2>Items to Be Issued</h2>
