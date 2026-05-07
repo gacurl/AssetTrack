@@ -449,14 +449,17 @@ a:hover {
 button.theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.75rem;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
   border: 1px solid var(--color-surface);
   border-radius: 999px;
   background: var(--color-surface-bg);
   color: var(--color-text);
   font: inherit;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 button.theme-toggle:hover {
@@ -465,6 +468,7 @@ button.theme-toggle:hover {
 
 .theme-toggle-icon {
   line-height: 1;
+  font-size: 1rem;
 }
 
 .chip {

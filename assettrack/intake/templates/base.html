@@ -8,13 +8,11 @@
   {% set theme_aria_pressed = "true" %}
   {% set theme_aria_label = "Switch to light mode" %}
   {% set theme_icon = "☀️" %}
-  {% set theme_text = "Light mode" %}
 {% else %}
   {% set html_theme_attr = "" %}
   {% set theme_aria_pressed = "false" %}
   {% set theme_aria_label = "Switch to dark mode" %}
   {% set theme_icon = "🌙" %}
-  {% set theme_text = "Dark mode" %}
 {% endif %}
 <html lang="en"{{ html_theme_attr | safe }}>
   <head>
@@ -35,7 +33,6 @@
           aria-pressed="{{ theme_aria_pressed }}"
         >
           <span class="theme-toggle-icon" aria-hidden="true">{{ theme_icon }}</span>
-          <span class="theme-toggle-text">{{ theme_text }}</span>
         </button>
       </div>
       {% set heading = self.page_heading() | trim %}
@@ -85,12 +82,8 @@
         function syncThemeToggle() {
           const isDark = root.dataset.theme === "dark";
           const icon = themeToggle.querySelector(".theme-toggle-icon");
-          const text = themeToggle.querySelector(".theme-toggle-text");
           if (icon) {
             icon.textContent = isDark ? "☀️" : "🌙";
-          }
-          if (text) {
-            text.textContent = isDark ? "Light mode" : "Dark mode";
           }
           themeToggle.setAttribute("aria-pressed", isDark ? "true" : "false");
           themeToggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
