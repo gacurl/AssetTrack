@@ -4294,7 +4294,7 @@ def issue():
         workflow_banner_outcome=workflow_banner_outcome,
         return_to=url_for("issue"),
         preview_url=url_for("issue_preview"),
-        preview_label="Open Issue Assets Preview / Confirm",
+        preview_label="Open Issue Preview",
         auth_enabled=auth_enabled(),
         authed=is_authed(),
         last_seen_age_seconds=seconds_since_last_seen(),
@@ -4454,7 +4454,7 @@ def issue_commit():
     if not asset_tags:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "No assets in the queue to issue."}, 400
-        flash("No assets in the queue to issue..", "error")
+        flash("No assets in the queue to issue.", "error")
         return redirect(url_for("issue_preview"))
 
     responsibility_ack = {

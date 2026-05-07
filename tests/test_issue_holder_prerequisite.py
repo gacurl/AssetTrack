@@ -57,7 +57,7 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
     assert b"Issue" in issue_page.data
-    assert b"Open Issue Assets Preview / Confirm" in issue_page.data
+    assert b"Open Issue Preview" in issue_page.data
 
 
 def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_holder(client_with_temp_db) -> None:

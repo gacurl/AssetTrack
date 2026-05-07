@@ -84,7 +84,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
 
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200
-    assert b"Confirm Issue" in issue_preview.data
+    assert b"Issue Preview" in issue_preview.data
     assert b"Ready to Issue" in issue_preview.data
     assert b"Issued to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
@@ -119,7 +119,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
         follow_redirects=True,
     )
     assert follow_up_scan.status_code == 200
-    assert b"Issuing Assets" in follow_up_scan.data
+    assert b">Issue<" in follow_up_scan.data
     assert b"Issue Holder" in follow_up_scan.data
     assert b"1 asset queued" in follow_up_scan.data
 
