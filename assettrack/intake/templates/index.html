@@ -63,9 +63,7 @@
       margin: 0;
     }
     .secondary-actions {
-      margin: 1.1rem 0 0 0;
-      padding-top: 0.85rem;
-      border-top: 1px solid var(--color-surface);
+      margin: 0 0 0.85rem 0;
       font-size: 0.9rem;
       color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
     }
@@ -121,6 +119,8 @@
 {% endblock %}
 
 {% block content %}
+  <p class="secondary-actions"><a href="{{ url_for('return_queue') }}">Back to Return</a></p>
+
   {% if auth_enabled %}
     <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
 
@@ -245,8 +245,6 @@
     <h2>Latest Scan</h2>
     <p><code>{{ latest }}</code></p>
   </div>
-
-  <p class="secondary-actions">Other workflow: <a href="{{ url_for('return_queue') }}">Return Assets</a></p>
 {% endblock %}
 
 {% block extra_scripts %}
