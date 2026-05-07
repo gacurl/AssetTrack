@@ -1,8 +1,8 @@
 <!-- file: assettrack/intake/templates/return_queue.html -->
 {% extends "base.html" %}
 
-{% block title %}{{ page_title or "Return Assets" }}{% endblock %}
-{% block page_heading %}{{ page_heading or "Return Assets" }}{% endblock %}
+{% block title %}{{ page_title or "Return" }}{% endblock %}
+{% block page_heading %}{{ page_heading or "Return" }}{% endblock %}
 {% block page_class %} page-wide{% endblock %}
 
 {% block extra_head %}
@@ -114,7 +114,7 @@
 
   {% if issue_location_form is defined %}
     <div class="card workflow-card">
-      <h2>Current Location Prerequisite</h2>
+      <h2>Current Location</h2>
       <p class="workflow-summary">
         <strong>Current location:</strong>
         {% if issue_location_ready %}
@@ -161,7 +161,7 @@
   {% endif %}
 
   <div class="card workflow-card">
-    <h2>{{ scan_heading or "Scan returns" }}</h2>
+    <h2>{{ scan_heading or "Scan" }}</h2>
     {% if issue_location_form is defined and not issue_location_ready %}
       <div class="flash error">
         <strong>Scanning is blocked.</strong> Set the current building and current room / area above, then scan again.

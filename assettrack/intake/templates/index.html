@@ -1,8 +1,8 @@
 <!-- assettrack/intake/templates/index.html -->
 {% extends "base.html" %}
 
-{% block title %}AssetTrack — Stage Asset Intake{% endblock %}
-{% block page_heading %}Stage Asset Intake{% endblock %}
+{% block title %}AssetTrack — Add Assets{% endblock %}
+{% block page_heading %}Add Assets{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -152,12 +152,12 @@
   </div>
 
   <div class="card">
-    <h2>Latest staged scan</h2>
+    <h2>Latest Scan</h2>
     <p><code>{{ latest }}</code></p>
   </div>
 
   <div class="card">
-    <h2 id="queue-section">Staged queue ({{ queue_len }})</h2>
+    <h2 id="queue-section">Queue ({{ queue_len }})</h2>
     {% if queue %}
       <ul id="queue-list" class="queue-list" role="list">
         {% for s in queue %}

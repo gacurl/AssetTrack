@@ -102,7 +102,7 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     issue_page = client_with_temp_db.get("/issue")
 
     assert issue_page.status_code == 200
-    assert b"Current Location Prerequisite" in issue_page.data
+    assert b"Current Location" in issue_page.data
     assert b"Before scanning, set the current building and current room / area." in issue_page.data
     assert b"Scanning is blocked." in issue_page.data
     assert b"#issue-building," in issue_page.data
@@ -382,6 +382,6 @@ def test_issue_commit_missing_ack_shows_visible_message_on_issue_preview(client_
     )
 
     assert blocked.status_code == 400
-    assert b"Issue Assets \xe2\x80\x94 Preview / Confirm" in blocked.data
+    assert b"Issue Preview" in blocked.data
     assert b"Confirm responsibility acknowledgment before issuing assets." in blocked.data
     assert len(intake_app.SCAN_QUEUE) == 1

@@ -122,7 +122,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
         self.assertIn(b"CASE-LIVE", response.data)
-        self.assertIn(b"Stage Asset Intake", response.data)
+        self.assertIn(b"Add Assets", response.data)
         self.assertIn(b"Stage in queue", response.data)
         self.assertIn(b"Review staged batch", response.data)
         self.assertIn(b"Other workflow:", response.data)
@@ -223,7 +223,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         response = self.client.get("/preview")
 
         self.assertEqual(response.status_code, 200)
-        parsed_rows_heading = response.data.index(b"<h2>Parsed rows</h2>")
+        parsed_rows_heading = response.data.index(b"<h2>Rows</h2>")
         confirmation_text = response.data.index(b"I reviewed this batch and want to add it to the database.")
         self.assertLess(parsed_rows_heading, confirmation_text)
         self.assertIn(b'action="/preview/commit"', response.data)
