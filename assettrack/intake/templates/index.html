@@ -146,7 +146,7 @@
       </form>
     {% endif %}
     <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
-      <button id="review-batch" type="submit" data-timeout-lock-target>Review staged batch</button>
+      <button id="review-batch" class="preview-step" type="submit" data-timeout-lock-target>Preview Queue</button>
     </form>
     <p class="secondary-actions">Other workflow: <a href="{{ url_for('return_queue') }}">Return Assets</a></p>
   </div>

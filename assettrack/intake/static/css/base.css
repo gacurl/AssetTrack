@@ -463,6 +463,39 @@ button.theme-toggle:hover {
   text-transform: uppercase;
 }
 
+.preview-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-primary-soft) 82%, var(--color-surface-bg));
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 1rem;
+  text-decoration: none;
+  box-shadow: 0 2px 6px rgba(29, 53, 87, 0.08);
+}
+
+.preview-step:hover {
+  background: color-mix(in srgb, var(--color-primary-soft) 68%, var(--color-surface-bg));
+  border-color: color-mix(in srgb, var(--color-primary) 84%, var(--color-text));
+  color: color-mix(in srgb, var(--color-primary) 90%, var(--color-text));
+  text-decoration: none;
+}
+
+.preview-step:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.preview-step.chip {
+  border-radius: 10px;
+  white-space: normal;
+}
+
 .card {
   margin-top: 1rem;
   padding: 1rem;

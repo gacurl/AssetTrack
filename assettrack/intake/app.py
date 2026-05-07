@@ -4294,7 +4294,7 @@ def issue():
         workflow_banner_outcome=workflow_banner_outcome,
         return_to=url_for("issue"),
         preview_url=url_for("issue_preview"),
-        preview_label="Open Issue Preview",
+        preview_label="Preview Queue",
         auth_enabled=auth_enabled(),
         authed=is_authed(),
         last_seen_age_seconds=seconds_since_last_seen(),
