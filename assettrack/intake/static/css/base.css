@@ -408,8 +408,38 @@ a:hover {
 .top-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.75rem 0 1rem 0;
+  gap: 0.4rem 0.45rem;
+  margin: 0.65rem 0 0.9rem 0;
+}
+
+.top-nav .chip {
+  padding: 0.3rem 0.5rem;
+  background: var(--color-surface-bg);
+  border-color: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-primary) 62%, var(--color-text));
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.top-nav .chip:hover {
+  background: color-mix(in srgb, var(--color-primary-soft) 30%, var(--color-surface-bg));
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-primary) 76%, var(--color-text));
+  text-decoration: none;
+}
+
+.top-nav .chip.active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.top-nav .chip.mode-badge {
+  background: var(--color-warning-soft);
+  border-color: var(--color-warning);
+  color: var(--color-primary);
+  font-weight: 700;
 }
 
 button.theme-toggle {
