@@ -9,10 +9,64 @@
     input[type="text"], input[type="password"], select { width: 100%; max-width: 520px; padding: 0.6rem; font-size: 1rem; }
     .queue-ts { color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text)); font-size: 0.9rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
-    .queue-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 0.8rem; }
+    .workflow-entry-card {
+      border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+      box-shadow: 0 2px 10px rgba(29, 53, 87, 0.06);
+    }
+    .stage-entry-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .stage-entry-row input[type="text"] {
+      max-width: none;
+      margin: 0;
+    }
+    .stage-queue-action {
+      min-height: 2.9rem;
+      padding-inline: 1.2rem;
+      font-weight: 700;
+      box-shadow: 0 4px 10px rgba(29, 53, 87, 0.14);
+    }
+    .stage-clear-action {
+      min-height: 2.9rem;
+      background: var(--color-surface-bg);
+      border-color: var(--color-surface);
+      color: var(--color-text);
+      box-shadow: none;
+    }
+    .stage-clear-action:hover {
+      background: var(--color-surface-soft);
+    }
+    .next-step-card {
+      margin-top: 1rem;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-surface));
+    }
+    .next-step-card[data-preview-state="ready"] {
+      background: color-mix(in srgb, var(--color-primary-soft) 50%, var(--color-surface-bg));
+    }
+    .next-step-card[data-preview-state="pending"] {
+      background: var(--color-surface-bg);
+    }
+    .next-step-card[data-preview-state="pending"] .preview-step {
+      background: var(--color-surface-bg);
+      border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-surface));
+      color: color-mix(in srgb, var(--color-primary) 78%, var(--color-text));
+      box-shadow: none;
+    }
+    .queue-actions {
+      display: flex;
+      justify-content: flex-start;
+      margin: 0;
+    }
     .secondary-actions {
-      margin-top: 0.8rem;
-      font-size: 0.95rem;
+      margin: 1.1rem 0 0 0;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--color-surface);
+      font-size: 0.9rem;
       color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
     }
     .secondary-actions a { color: inherit; }
@@ -56,6 +110,9 @@
       background: var(--color-primary-soft);
     }
     @media (max-width: 720px) {
+      .stage-entry-row {
+        grid-template-columns: 1fr;
+      }
       .queue-row { flex-direction: column; }
       .queue-row form { align-self: flex-start; }
       .queue-meta { grid-template-columns: 1fr; }
@@ -84,7 +141,7 @@
     {% endif %}
   {% endwith %}
 
-  <div class="card">
+  <div class="card workflow-entry-card">
     {% if auth_enabled and not authed %}
       <form method="post">
         <input type="password" name="access_code" placeholder="Access code" autofocus />
@@ -130,7 +187,7 @@
           </div>
         {% endif %}
 
-        <div class="row">
+        <div class="row stage-entry-row">
           <input
             type="text"
             id="scan-input"
@@ -140,20 +197,11 @@
             autocomplete="off"
             data-timeout-lock-target
           />
-          <button id="submit-scan" type="submit" data-timeout-lock-target>Stage in queue</button>
-          <button id="clear-queue" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
+          <button id="submit-scan" class="stage-queue-action" type="submit" data-timeout-lock-target>Stage in queue</button>
+          <button id="clear-queue" class="stage-clear-action" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
         </div>
       </form>
     {% endif %}
-    <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
-      <button id="review-batch" class="preview-step" type="submit" data-timeout-lock-target>Preview Queue</button>
-    </form>
-    <p class="secondary-actions">Other workflow: <a href="{{ url_for('return_queue') }}">Return Assets</a></p>
-  </div>
-
-  <div class="card">
-    <h2>Latest Scan</h2>
-    <p><code>{{ latest }}</code></p>
   </div>
 
   <div class="card">
@@ -186,6 +234,19 @@
       <p class="queue-empty">No assets are staged yet. Scan or enter an asset tag, then stage it in the queue for review.</p>
     {% endif %}
   </div>
+
+  <div class="next-step-card" data-preview-state="{{ 'ready' if queue_len else 'pending' }}">
+    <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
+      <button id="review-batch" class="preview-step" type="submit" data-timeout-lock-target>Preview Queue</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Latest Scan</h2>
+    <p><code>{{ latest }}</code></p>
+  </div>
+
+  <p class="secondary-actions">Other workflow: <a href="{{ url_for('return_queue') }}">Return Assets</a></p>
 {% endblock %}
 
 {% block extra_scripts %}
