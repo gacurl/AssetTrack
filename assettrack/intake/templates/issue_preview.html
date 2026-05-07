@@ -170,7 +170,7 @@
         </tbody>
       </table>
     {% else %}
-      <p>No assets queued.</p>
+      <p>No assets queued. Return to the queue and scan or enter an asset tag.</p>
     {% endif %}
   </div>
 
@@ -179,7 +179,7 @@
     <form method="post" action="{{ url_for('issue_commit') }}">
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
-        I reviewed this batch and want to add it to the database.
+        I reviewed this batch and want to issue these assets to the selected holder.
       </label>
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" />

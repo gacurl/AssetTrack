@@ -4288,7 +4288,7 @@ def issue():
         "return_queue.html",
         page_title="Issue",
         page_heading="Issue",
-        scan_heading="Scan",
+        scan_heading="Add to Queue",
         workflow_banner_title="Issue",
         workflow_banner_queued_count=len(asset_tags),
         workflow_banner_outcome=workflow_banner_outcome,

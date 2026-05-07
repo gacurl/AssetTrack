@@ -83,7 +83,7 @@
     <form method="post" action="{{ url_for('issue_commit') if issue_mode else url_for('preview_commit') }}" style="margin-top: 10px;">
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
-        I reviewed this batch and want to add it to the database.
+        {{ "I reviewed this batch and want to issue these assets to the selected holder." if issue_mode else "I reviewed this batch and want to add it to the database." }}
       </label>
 
       <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>

@@ -81,6 +81,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert preview.status_code == 200
     assert b'action="/issue/commit"' in preview.data
     assert b"Commit Issue" in preview.data
+    assert b"I reviewed this batch and want to issue these assets to the selected holder." in preview.data
 
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200
@@ -92,6 +93,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Current location:</strong> <code>HQ North / 210</code>" in issue_preview.data
     assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
+    assert b"I reviewed this batch and want to issue these assets to the selected holder." in issue_preview.data
     assert b'name="confirm_responsibility_ack"' in issue_preview.data
     assert b"accepted responsibility for this issue batch" in issue_preview.data
     assert b'id="issue_btn" type="submit" data-timeout-lock-target' in issue_preview.data
@@ -138,6 +140,22 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert str(asset["location_type"]) == "IN_CUSTODY"
     assert int(asset["current_holder_id"]) == 1
     assert occupancy is None
+
+
+def test_issue_preview_empty_queue_shows_next_step_guidance(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-preview-empty", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
+
+    issue_preview = client_with_temp_db.get("/issue/preview")
+
+    assert issue_preview.status_code == 200
+    assert b"No assets queued. Return to the queue and scan or enter an asset tag." in issue_preview.data
 
 
 def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:

@@ -161,7 +161,7 @@
   {% endif %}
 
   <div class="card workflow-card">
-    <h2>{{ scan_heading or "Scan" }}</h2>
+    <h2>{{ scan_heading or "Add to Queue" }}</h2>
     {% if issue_location_form is defined and not issue_location_ready %}
       <div class="flash error">
         <strong>Scanning is blocked.</strong> Set the current building and current room / area above, then scan again.
@@ -182,11 +182,11 @@
         id="scan-input"
         type="text"
         name="scan_text"
-        placeholder="Scan here..."
+        placeholder="Scan or enter asset tag"
         {% if issue_location_form is not defined %}autofocus{% endif %}
         data-timeout-lock-target
       />
-      <button type="submit" data-timeout-lock-target>Submit</button>
+      <button type="submit" data-timeout-lock-target>Add to queue</button>
     </form>
 
     <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
@@ -213,20 +213,24 @@
 
   <div class="card workflow-card" id="queue-section">
     <h2>Queue ({{ queue_len }})</h2>
-    <ul id="queue-list" class="queue-list" role="list">
-      {% for s in queue %}
-        <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
-          <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
-          <code>{{ s.asset_tag }}</code>
-          <form method="post" action="{{ url_for('intake') }}">
-            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-            <input type="hidden" name="action" value="remove" />
-            <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
-            <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
-          </form>
-        </li>
-      {% endfor %}
-    </ul>
+    {% if queue %}
+      <ul id="queue-list" class="queue-list" role="list">
+        {% for s in queue %}
+          <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
+            <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">Queued at {{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
+            <code>{{ s.asset_tag }}</code>
+            <form method="post" action="{{ url_for('intake') }}">
+              <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+              <input type="hidden" name="action" value="remove" />
+              <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+              <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="queue-empty">No assets queued yet. Scan or enter an asset tag, then add it to the queue.</p>
+    {% endif %}
   </div>
 {% endblock %}
 
