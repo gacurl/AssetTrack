@@ -68,7 +68,6 @@
     <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
 
     {% if authed %}
-      {% include "_timeout_status.html" %}
     {% else %}
       <p>Locked. Enter access code to unlock.</p>
     {% endif %}

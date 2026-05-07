@@ -68,6 +68,12 @@
       {% endif %}
 
       {% block content %}{% endblock %}
+
+      {% if timeout_seconds is defined and timeout_seconds is not none and last_seen_age_seconds is not none %}
+        <footer class="page-footer page-session-footer" aria-label="Session status">
+          {% include "_timeout_status.html" %}
+        </footer>
+      {% endif %}
     </div>
     <script>
       const themeToggle = document.getElementById("theme-toggle");

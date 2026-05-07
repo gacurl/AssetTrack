@@ -89,8 +89,6 @@
   {% set jump_to_queue_href = "#queue-section" %}
   <p><a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
 
-  {% include "_timeout_status.html" %}
-
   {% if message_ns.global_messages %}
     {% for category, message in message_ns.global_messages %}
       <div class="flash {{ category|e }}">{{ message }}</div>

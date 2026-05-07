@@ -34,8 +34,6 @@
     <a class="nav-link" href="{{ url_for('preview') }}">Back to batch preview</a>
   </nav>
 
-  {% include "_timeout_status.html" %}
-
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
