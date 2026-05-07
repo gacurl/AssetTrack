@@ -378,6 +378,10 @@ a:hover {
   border-radius: 4px;
 }
 
+.workflow-local-nav {
+  margin: 0 0 0.85rem 0;
+}
+
 .page {
   max-width: 1200px;
   margin: 0 auto;

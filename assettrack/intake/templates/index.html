@@ -62,12 +62,6 @@
       justify-content: flex-start;
       margin: 0;
     }
-    .secondary-actions {
-      margin: 0 0 0.85rem 0;
-      font-size: 0.9rem;
-      color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
-    }
-    .secondary-actions a { color: inherit; }
     .queue-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; }
     .queue-row {
       display: flex;
@@ -119,7 +113,9 @@
 {% endblock %}
 
 {% block content %}
-  <p class="secondary-actions"><a href="{{ url_for('return_queue') }}">Back to Return</a></p>
+  <nav class="workflow-local-nav" aria-label="Workflow navigation">
+    <a class="nav-link" href="{{ url_for('return_queue') }}">Back to Return</a>
+  </nav>
 
   {% if auth_enabled %}
     <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
