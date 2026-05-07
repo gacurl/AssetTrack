@@ -97,7 +97,7 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     assert issue_queue.status_code == 200
     assert b'id="timeout-lock-panel"' in issue_queue.data
     assert b"20 minutes idle / 1 hour absolute" in issue_queue.data
-    assert b"Open Issue Preview" in issue_queue.data
+    assert b"Preview Queue" in issue_queue.data
     assert issue_queue.data.count(b"data-timeout-lock-target") >= 4
 
     issue_preview = client_with_temp_db.get("/issue/preview")
@@ -110,7 +110,7 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
     return_queue = client_with_temp_db.get("/return")
     assert return_queue.status_code == 200
     assert b'id="timeout-lock-panel"' in return_queue.data
-    assert b"Open Return Preview" in return_queue.data
+    assert b"Preview Queue" in return_queue.data
 
     return_preview = client_with_temp_db.get("/return/preview")
     assert return_preview.status_code == 200
