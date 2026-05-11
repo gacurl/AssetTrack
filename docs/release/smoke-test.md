@@ -200,3 +200,4 @@ docker compose down
 - [Deployment Guide](deployment.md)
 - [User Manual](user-manual.md)
 - [Troubleshooting Guide](troubleshooting.md)
+- [Recovery Workflow Smoke Test](recovery-smoke-test.md)

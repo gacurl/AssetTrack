@@ -42,8 +42,13 @@ Verify this:
 - the download completed successfully
 - the file has a `.db` extension
 - the file is not empty
+- the file is stored where you can locate it during recovery
 
 Do not do this:
 
 - do not treat the download as a restore operation
 - do not overwrite the live database file without following the restore runbook
+
+Next step when recovery is needed:
+
+- follow [Admin Recovery Workflow](admin-recovery-workflow.md)
