@@ -9,6 +9,18 @@
   <style>
     input[type="text"], input[type="password"], select { width: 100%; max-width: 320px; padding: 0.45rem; font-size: 0.95rem; }
     .inline-form { display: inline-block; margin: 0.15rem 0.35rem 0.15rem 0; }
+    .admin-user-actions {
+      display: grid;
+      gap: 0.45rem;
+      justify-items: start;
+    }
+    .admin-user-actions .inline-form {
+      margin: 0;
+    }
+    .admin-user-actions .inline-form select,
+    .admin-user-actions .inline-form button {
+      width: auto;
+    }
     .account-status-chip {
       display: inline-flex;
       align-items: center;
@@ -107,7 +119,7 @@
             </td>
             <td>{{ user.created_at_display }}</td>
             <td>{{ user.updated_at_display }}</td>
-            <td>
+            <td class="admin-user-actions">
               <form class="inline-form" method="post" action="{{ url_for('admin_users_toggle_active', user_id=user.id) }}">
                 <input type="hidden" name="active" value="{{ 0 if user.active else 1 }}" />
                 <button{% if user.active %} class="warn-button"{% endif %} type="submit">{{ "Disable" if user.active else "Enable" }}</button>
