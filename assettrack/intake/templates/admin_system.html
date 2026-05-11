@@ -5,7 +5,9 @@
 {% block page_class %} page-wide{% endblock %}
 
 {% block content %}
-  <p><a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+  <nav class="workflow-local-nav" aria-label="Admin navigation">
+    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
+  </nav>
 
   {% if schema_warning %}
     <div class="flash error">{{ schema_warning }}</div>
@@ -13,10 +15,14 @@
 
   <div class="card">
     <h2>Admin Tools</h2>
-    <p><a class="nav-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a></p>
-    <p><a class="nav-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a></p>
-    <p><a class="nav-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
-    <p><a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a></p>
+    <nav class="workflow-local-nav" aria-label="Admin tool navigation">
+      <p><a class="nav-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a></p>
+      <p><a class="nav-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a></p>
+      <p><a class="nav-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
+    </nav>
+    <div class="actions" aria-label="Admin tool actions">
+      <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    </div>
     <table>
       <tbody>
         <tr>

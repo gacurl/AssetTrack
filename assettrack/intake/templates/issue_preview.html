@@ -65,12 +65,12 @@
         {% endif %}
       </div>
       <div class="actions" style="margin-top: 0.75rem;">
-        <a class="chip" href="{{ url_for('holders_search') }}">Change holder</a>
+        <a class="nav-link" href="{{ url_for('holders_search') }}">Change holder</a>
       </div>
     {% else %}
       <p>No holder selected.</p>
       <div class="actions" style="margin-top: 0.75rem;">
-        <a class="chip" href="{{ url_for('holders_search') }}">Select holder</a>
+        <a class="nav-link" href="{{ url_for('holders_search') }}">Select holder</a>
       </div>
     {% endif %}
   </div>
@@ -95,7 +95,7 @@
       </ul>
     {% endif %}
     <div class="actions" style="margin-top: 0.75rem;">
-      <a class="chip" href="{{ url_for('issue') }}">Update current location</a>
+      <a class="nav-link" href="{{ url_for('issue') }}">Update current location</a>
     </div>
   </div>
 
