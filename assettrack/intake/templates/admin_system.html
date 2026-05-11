@@ -9,9 +9,71 @@
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
   </nav>
 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   {% if schema_warning %}
     <div class="flash error">{{ schema_warning }}</div>
   {% endif %}
+
+  <div class="card">
+    <h2>Recovery State</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Status</th>
+          <td id="recovery-status">{{ recovery_mode.status_label }}</td>
+        </tr>
+        <tr>
+          <th>Acknowledgment</th>
+          <td id="recovery-acknowledgment">{{ recovery_mode.acknowledgment_label }}</td>
+        </tr>
+        <tr>
+          <th>Restore timestamp</th>
+          <td id="recovery-restored-at">{{ recovery_mode.restored_at_display or "N/A" }}</td>
+        </tr>
+        <tr>
+          <th>Uploaded filename</th>
+          <td id="recovery-source-filename">
+            {% if recovery_mode.source_filename %}
+              <code>{{ recovery_mode.source_filename }}</code>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Rollback artifact</th>
+          <td id="recovery-rollback-path">
+            {% if recovery_mode.rollback_db_path %}
+              <code>{{ recovery_mode.rollback_db_path }}</code>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Recovery state file</th>
+          <td id="recovery-state-path"><code>{{ recovery_mode.recovery_state_path }}</code></td>
+        </tr>
+      </tbody>
+    </table>
+    {% if recovery_mode.parse_error %}
+      <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
+    {% endif %}
+    {% if recovery_mode.active %}
+      <div class="actions" aria-label="Recovery actions">
+        <form method="post" action="{{ url_for('admin_recovery_acknowledge') }}">
+          <button type="submit">Acknowledge Recovery and Resume</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
 
   <div class="card">
     <h2>Admin Tools</h2>

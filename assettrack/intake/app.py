@@ -73,6 +73,9 @@ from assettrack.restore import (
     RestoreError,
     RestoreOperationError,
     RestoreValidationError,
+    clear_recovery_state,
+    load_recovery_state,
+    recovery_mode_is_active,
     recovery_state_path_for,
     restore_database,
     rollback_artifact_path_for,
@@ -177,10 +180,12 @@ def enforce_required_password_change():
 @app.context_processor
 def inject_auth_user():
     user = current_user()
+    recovery_mode = _recovery_mode_context()
     return {
         "authenticated_user": user,
         "authenticated_role": None if user is None else user.get("role"),
         "password_change_required": is_temporary_password(user),
+        "recovery_mode": recovery_mode,
         "case_status_summary": _case_status_summary,
         "asset_state_label": _asset_state_label,
         "asset_is_terminal": _is_terminal_location_type,
@@ -1015,6 +1020,21 @@ def _asset_state_label(location_type: object) -> str:
 
 def _resolved_runtime_db_path() -> Path:
     return db_module.DB_PATH.expanduser().resolve()
+
+
+def _recovery_mode_context() -> dict[str, object]:
+    state = load_recovery_state(_resolved_runtime_db_path())
+    restored_at = str(state.get("restored_at") or "").strip()
+    return {
+        **state,
+        "status_label": "Active" if state.get("active") else "Inactive",
+        "acknowledgment_label": "Required" if state.get("acknowledgment_required") else "Cleared",
+        "restored_at_display": _receipt_display_timestamp(restored_at),
+    }
+
+
+def _recovery_mode_send_block_message() -> str:
+    return "Receipt resend is blocked during recovery mode. Admin acknowledgment is required before email delivery resumes."
 
 
 def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[str, object]:
@@ -5668,6 +5688,13 @@ def receipt_send(receipt_id: int):
         flash("Locked. Re-enter access code.", "error")
         return redirect(url_for("intake"))
 
+    if recovery_mode_is_active(_resolved_runtime_db_path()):
+        message = _recovery_mode_send_block_message()
+        if wants_json():
+            return {"ok": False, "error": message}, 409
+        flash(message, "error")
+        return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+
     try:
         result = _send_queued_receipt(receipt_id)
     except ValueError as exc:
@@ -5993,6 +6020,22 @@ def admin_system():
         asset_count=asset_count,
         schema_warning=schema_warning,
     )
+
+
+@app.post("/admin/recovery/acknowledge")
+@require_login
+@require_role("admin")
+def admin_recovery_acknowledge():
+    rate_limit_response = _enforce_admin_route_rate_limit(html_redirect_endpoint="admin_system")
+    if rate_limit_response is not None:
+        return rate_limit_response
+
+    cleared = clear_recovery_state(_resolved_runtime_db_path())
+    if cleared:
+        flash("Recovery mode acknowledged and cleared. Normal receipt delivery actions may resume.", "success")
+    else:
+        flash("Recovery mode is already inactive.", "success")
+    return redirect(url_for("admin_system"))
 
 
 @app.route("/admin/holders/import", methods=["GET", "POST"])

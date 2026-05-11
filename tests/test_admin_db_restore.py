@@ -261,3 +261,82 @@ def test_operator_cannot_access_restore_route(client_with_temp_db, tmp_path: Pat
         )
 
     assert post_response.status_code == 403
+
+
+def test_admin_system_surfaces_recovery_metadata_until_acknowledged(client_with_temp_db, tmp_path: Path) -> None:
+    admin_id = create_test_user(username="admin-recovery-meta", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    live_db_path = db.DB_PATH
+    restore_upload_path = _build_valid_restore_db(tmp_path / "restore-meta.db", asset_tag="RESTORE-ONLY")
+
+    with restore_upload_path.open("rb") as handle:
+        restore_response = client_with_temp_db.post(
+            "/admin/db/restore",
+            data={"db_file": (BytesIO(handle.read()), "restore-meta.db")},
+            content_type="multipart/form-data",
+        )
+
+    assert restore_response.status_code == 200
+
+    system_response = client_with_temp_db.get("/admin/system")
+    assert system_response.status_code == 200
+    assert b"Recovery Mode Active" in system_response.data
+    assert b'id="recovery-status">Active<' in system_response.data
+    assert b'id="recovery-acknowledgment">Required<' in system_response.data
+    assert b"restore-meta.db" in system_response.data
+    assert b"pre-restore" in system_response.data
+    assert b"Acknowledge Recovery and Resume" in system_response.data
+
+    restarted_client = intake_app.app.test_client()
+    login_session(restarted_client, admin_id)
+    restarted_response = restarted_client.get("/admin/system")
+    assert restarted_response.status_code == 200
+    assert b"Recovery Mode Active" in restarted_response.data
+    assert b'id="recovery-status">Active<' in restarted_response.data
+
+    recovery_state_path = restore_module.recovery_state_path_for(live_db_path)
+    assert recovery_state_path.exists()
+
+
+def test_admin_acknowledgment_clears_recovery_state(client_with_temp_db, tmp_path: Path) -> None:
+    admin_id = create_test_user(username="admin-recovery-clear", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    live_db_path = db.DB_PATH
+    restore_upload_path = _build_valid_restore_db(tmp_path / "restore-clear.db", asset_tag="RESTORE-ONLY")
+    with restore_upload_path.open("rb") as handle:
+        restore_response = client_with_temp_db.post(
+            "/admin/db/restore",
+            data={"db_file": (BytesIO(handle.read()), "restore-clear.db")},
+            content_type="multipart/form-data",
+        )
+    assert restore_response.status_code == 200
+
+    acknowledge_response = client_with_temp_db.post("/admin/recovery/acknowledge", follow_redirects=True)
+    assert acknowledge_response.status_code == 200
+    assert b"Recovery mode acknowledged and cleared." in acknowledge_response.data
+    assert b'id="recovery-status">Inactive<' in acknowledge_response.data
+    assert b'id="recovery-acknowledgment">Cleared<' in acknowledge_response.data
+    assert b"Recovery Mode Active" not in acknowledge_response.data
+    assert not restore_module.recovery_state_path_for(live_db_path).exists()
+
+
+def test_operator_cannot_acknowledge_recovery_state(client_with_temp_db, tmp_path: Path) -> None:
+    admin_id = create_test_user(username="admin-recovery-seed", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    restore_upload_path = _build_valid_restore_db(tmp_path / "restore-seed.db", asset_tag="RESTORE-ONLY")
+    with restore_upload_path.open("rb") as handle:
+        restore_response = client_with_temp_db.post(
+            "/admin/db/restore",
+            data={"db_file": (BytesIO(handle.read()), "restore-seed.db")},
+            content_type="multipart/form-data",
+        )
+    assert restore_response.status_code == 200
+
+    operator_id = create_test_user(username="operator-recovery-ack", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.post("/admin/recovery/acknowledge")
+    assert response.status_code == 403
