@@ -56,6 +56,10 @@ def rollback_artifact_path_for(db_path: Path) -> Path:
     return db_path.with_name(f"{db_path.stem}-pre-restore{suffix}")
 
 
+def restore_history_path_for(db_path: Path) -> Path:
+    return db_path.with_name(f"{db_path.stem}-restore-history.jsonl")
+
+
 def recovery_state_path_for(db_path: Path) -> Path:
     return db_path.with_name(f"{db_path.stem}-recovery-state.json")
 
@@ -114,6 +118,29 @@ def clear_recovery_state(db_path: Path) -> bool:
         return False
     recovery_state_path.unlink()
     return True
+
+
+def load_restore_history(db_path: Path) -> dict[str, object]:
+    db_path = db_path.expanduser().resolve()
+    history_path = restore_history_path_for(db_path)
+    if not history_path.exists() or not history_path.is_file():
+        return {"entries": [], "parse_error": "", "history_path": str(history_path)}
+
+    entries: list[dict[str, object]] = []
+    try:
+        with history_path.open("r", encoding="utf-8") as handle:
+            for line_number, raw_line in enumerate(handle, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                payload = json.loads(line)
+                if not isinstance(payload, dict):
+                    raise ValueError(f"Line {line_number} is not a JSON object.")
+                entries.append(payload)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        return {"entries": [], "parse_error": str(exc), "history_path": str(history_path)}
+
+    return {"entries": entries, "parse_error": "", "history_path": str(history_path)}
 
 
 def _list_tables(conn: sqlite3.Connection) -> set[str]:
@@ -192,7 +219,7 @@ def _activate_recovery_mode(
     rollback_path: Path,
     recovery_state_path: Path,
     source_filename: str,
-) -> None:
+) -> dict[str, object]:
     state = {
         "active": True,
         "recovered_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -217,6 +244,41 @@ def _activate_recovery_mode(
     except Exception as exc:
         temp_path.unlink(missing_ok=True)
         raise RestoreOperationError(f"Recovery mode state could not be written: {exc}") from exc
+    return state
+
+
+def _append_restore_history_entry(
+    *,
+    db_path: Path,
+    recovery_state: dict[str, object],
+) -> None:
+    history_path = restore_history_path_for(db_path)
+    entry = {
+        "restored_at": str(recovery_state.get("recovered_at") or "").strip(),
+        "source_filename": str(recovery_state.get("source_filename") or "").strip(),
+        "rollback_db_path": str(recovery_state.get("rollback_db_path") or "").strip(),
+        "result": "success",
+    }
+    with tempfile.NamedTemporaryFile(
+        dir=history_path.parent,
+        prefix=f"{history_path.name}.",
+        suffix=".tmp",
+        delete=False,
+        mode="w",
+        encoding="utf-8",
+    ) as handle:
+        temp_path = Path(handle.name)
+
+    try:
+        if history_path.exists():
+            temp_path.write_text(history_path.read_text(encoding="utf-8"), encoding="utf-8")
+        with temp_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, sort_keys=True))
+            handle.write("\n")
+        temp_path.replace(history_path)
+    except Exception as exc:
+        temp_path.unlink(missing_ok=True)
+        raise RestoreOperationError(f"Restore history could not be written: {exc}") from exc
 
 
 def _restore_rollback_copy(db_path: Path, rollback_path: Path) -> None:
@@ -261,14 +323,19 @@ def restore_database(
 
     try:
         validate_uploaded_database(live_db_path)
-        _activate_recovery_mode(
+        recovery_state = _activate_recovery_mode(
             db_path=live_db_path,
             rollback_path=rollback_path,
             recovery_state_path=recovery_state_path,
             source_filename=source_filename,
         )
+        _append_restore_history_entry(
+            db_path=live_db_path,
+            recovery_state=recovery_state,
+        )
     except Exception as exc:
         _restore_rollback_copy(live_db_path, rollback_path)
+        clear_recovery_state(live_db_path)
         if isinstance(exc, RestoreError):
             raise
         raise RestoreOperationError(f"Post-restore validation failed: {exc}") from exc
@@ -276,5 +343,6 @@ def restore_database(
     return {
         "live_db_path": str(live_db_path),
         "rollback_db_path": str(rollback_path),
+        "restore_history_path": str(restore_history_path_for(live_db_path)),
         "recovery_state_path": str(recovery_state_path),
     }
