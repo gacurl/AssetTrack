@@ -139,6 +139,27 @@ Operational confirmation:
 - recent known records appear as expected
 - no operator starts new work until restore verification is complete
 
+## Post-Restore Operator Checklist
+
+Do not resume operations until every item below passes.
+
+- `PASS` SQLite file exists at `data/assettrack.db`
+- `PASS` `sqlite3 data/assettrack.db "PRAGMA integrity_check;"` returns `ok`
+- `PASS` holder / asset / `asset_events` row counts are plausible for the selected backup
+- `PASS` `docker compose ps` shows the `assettrack` container running
+- `PASS` login succeeds
+- `PASS` dashboard loads without errors
+- `PASS` current status report opens
+- `PASS` receipts list opens
+- `PASS` Issue workflow entry page loads
+- `PASS` Return workflow entry page loads
+
+If any item fails:
+
+- stop operator use
+- keep the restored database file unchanged
+- investigate before allowing new commits
+
 ## Operational Warnings
 
 - `docker compose down -v` is destructive for container volumes; avoid it during normal backup/restore operations.
