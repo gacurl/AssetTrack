@@ -27,17 +27,86 @@
 
   <div class="card">
     <h2>Restore SQLite Backup</h2>
-    <p>Use this only for recovery. AssetTrack will validate the uploaded SQLite file before replacing the live database.</p>
+    <p>Use this only for recovery. AssetTrack validates the uploaded SQLite file first, then requires admin password confirmation before live replacement.</p>
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="validate" />
       <div class="row form-group">
         <label class="form-label" for="db_file"><strong>SQLite backup file</strong></label>
         <input id="db_file" name="db_file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" required />
       </div>
       <div class="search-actions">
-        <button type="submit">Validate and Restore</button>
+        <button type="submit">Validate Backup</button>
       </div>
     </form>
   </div>
+
+  {% if validation_summary %}
+    <div class="card">
+      <h2>Validation Summary</h2>
+      <p>Validation completed. No live replacement has occurred yet.</p>
+      <table>
+        <tbody>
+          <tr>
+            <th>Uploaded filename</th>
+            <td><code>{{ validation_summary.source_filename }}</code></td>
+          </tr>
+          <tr>
+            <th>SQLite integrity</th>
+            <td>{{ validation_summary.integrity_status }}</td>
+          </tr>
+          <tr>
+            <th>Required tables</th>
+            <td>{{ validation_summary.required_tables_status }}</td>
+          </tr>
+          <tr>
+            <th>Asset count</th>
+            <td>{{ validation_summary.asset_count }}</td>
+          </tr>
+          <tr>
+            <th>Holder count</th>
+            <td>{{ validation_summary.holder_count }}</td>
+          </tr>
+          <tr>
+            <th>Custody event count</th>
+            <td>{{ validation_summary.custody_event_count }}</td>
+          </tr>
+          <tr>
+            <th>Pending receipt count</th>
+            <td>{{ validation_summary.pending_receipt_count }}</td>
+          </tr>
+          <tr>
+            <th>Live DB target</th>
+            <td><code>{{ validation_summary.live_db_path }}</code></td>
+          </tr>
+          <tr>
+            <th>Rollback copy path</th>
+            <td><code>{{ validation_summary.rollback_db_path }}</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Confirm Live Replacement</h2>
+      <p>Replace the current live database only after you verify the backup details above. This action creates the rollback copy, activates recovery mode, and records restore history.</p>
+      <form method="post">
+        <input type="hidden" name="action" value="confirm_restore" />
+        <div class="row form-group">
+          <label class="form-label" for="admin_password"><strong>Admin password</strong></label>
+          <input id="admin_password" name="admin_password" type="password" autocomplete="current-password" required />
+        </div>
+        <div class="search-actions">
+          <button type="submit">Replace Live Database</button>
+        </div>
+      </form>
+      <form method="post">
+        <input type="hidden" name="action" value="cancel_validation" />
+        <div class="search-actions">
+          <button type="submit">Clear Validation</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
 
   <div class="card">
     <h2>Operational Paths</h2>

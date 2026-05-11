@@ -74,6 +74,7 @@ from assettrack.restore import (
     RestoreOperationError,
     RestoreValidationError,
     clear_recovery_state,
+    inspect_uploaded_database,
     load_recovery_state,
     load_restore_history,
     recovery_mode_is_active,
@@ -148,6 +149,7 @@ LOGIN_FAILURE_ATTEMPTS: dict[str, list[int]] = {}
 ADMIN_ROUTE_RATE_LIMIT_WINDOW_SECONDS = 60
 ADMIN_ROUTE_RATE_LIMIT_MAX_ACTIONS = 10
 ADMIN_ROUTE_ATTEMPTS: dict[str, list[int]] = {}
+PENDING_DB_RESTORE_SESSION_KEY = "pending_db_restore"
 
 
 @app.after_request
@@ -226,6 +228,35 @@ def _format_duration_label(total_seconds: object) -> str:
 
 def touch_session() -> None:
     session["last_seen"] = now_seconds()
+
+
+def _clear_pending_db_restore(*, unlink_temp_file: bool = True) -> None:
+    pending_restore = session.pop(PENDING_DB_RESTORE_SESSION_KEY, None)
+    if not unlink_temp_file or not isinstance(pending_restore, dict):
+        return
+
+    temp_path_value = str(pending_restore.get("temp_path") or "").strip()
+    if not temp_path_value:
+        return
+    Path(temp_path_value).unlink(missing_ok=True)
+
+
+def _load_pending_db_restore() -> dict[str, object] | None:
+    pending_restore = session.get(PENDING_DB_RESTORE_SESSION_KEY)
+    if not isinstance(pending_restore, dict):
+        return None
+
+    temp_path_value = str(pending_restore.get("temp_path") or "").strip()
+    if not temp_path_value:
+        _clear_pending_db_restore(unlink_temp_file=False)
+        return None
+
+    temp_path = Path(temp_path_value)
+    if not temp_path.exists() or not temp_path.is_file():
+        _clear_pending_db_restore(unlink_temp_file=False)
+        return None
+
+    return pending_restore
 
 
 def _should_refresh_session_activity() -> bool:
@@ -6549,53 +6580,115 @@ def admin_db_export():
 @require_login
 @require_role("admin")
 def admin_db_restore():
+    user = current_user()
     resolved_db_path = _resolved_runtime_db_path()
     rollback_path = rollback_artifact_path_for(resolved_db_path)
     recovery_state_path = recovery_state_path_for(resolved_db_path)
     error_message: str | None = None
     success_message: str | None = None
     restore_result: dict[str, str] | None = None
+    validation_summary: dict[str, object] | None = None
     status_code = 200
+
+    pending_restore = _load_pending_db_restore()
+    if pending_restore is not None and int(pending_restore.get("validated_by_user_id") or 0) == int(user["id"]):
+        validation_summary = dict(pending_restore.get("validation_summary") or {})
+    elif pending_restore is not None:
+        _clear_pending_db_restore()
+        pending_restore = None
 
     if request.method == "POST":
         if not _consume_admin_route_rate_limit_slot():
             error_message = "Too many requests. Wait and try again."
             status_code = 429
         else:
-            upload = request.files.get("db_file")
-            filename = str((upload.filename if upload is not None else "") or "").strip()
-
-            if upload is None or not filename:
-                error_message = "Choose a SQLite database file to restore."
-                status_code = 400
-            else:
-                suffix = Path(filename).suffix or ".db"
-                temp_path: Path | None = None
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-                        upload.save(handle)
-                        temp_path = Path(handle.name)
-
-                    restore_result = restore_database(
-                        uploaded_db_path=temp_path,
-                        live_db_path=resolved_db_path,
-                        source_filename=filename,
-                    )
-                    success_message = (
-                        "Database restore complete. Recovery mode is active and the previous database copy was preserved."
-                    )
-                except RestoreValidationError as exc:
-                    error_message = str(exc)
+            action = str(request.form.get("action") or "validate").strip().lower()
+            if action == "cancel_validation":
+                _clear_pending_db_restore()
+                validation_summary = None
+                pending_restore = None
+                success_message = "Pending restore validation was cleared."
+            elif action == "confirm_restore":
+                pending_restore = _load_pending_db_restore()
+                if pending_restore is None:
+                    error_message = "Validate a SQLite backup before replacing the live database."
                     status_code = 400
-                except RestoreOperationError as exc:
-                    error_message = str(exc)
-                    status_code = 500
-                except RestoreError as exc:
-                    error_message = str(exc)
-                    status_code = 500
-                finally:
-                    if temp_path is not None:
-                        temp_path.unlink(missing_ok=True)
+                elif int(pending_restore.get("validated_by_user_id") or 0) != int(user["id"]):
+                    _clear_pending_db_restore()
+                    error_message = "Pending restore validation does not match the current admin session."
+                    status_code = 403
+                else:
+                    admin_password = str(request.form.get("admin_password") or "")
+                    if not verify_password(user, admin_password):
+                        validation_summary = dict(pending_restore.get("validation_summary") or {})
+                        error_message = "Admin password is incorrect."
+                        status_code = 403
+                    else:
+                        temp_path = Path(str(pending_restore.get("temp_path") or "")).expanduser().resolve()
+                        source_filename = str(pending_restore.get("source_filename") or "").strip()
+                        try:
+                            restore_result = restore_database(
+                                uploaded_db_path=temp_path,
+                                live_db_path=resolved_db_path,
+                                source_filename=source_filename,
+                            )
+                            success_message = (
+                                "Database restore complete. Recovery mode is active and the previous database copy was preserved."
+                            )
+                            _clear_pending_db_restore()
+                            pending_restore = None
+                            validation_summary = None
+                        except RestoreValidationError as exc:
+                            validation_summary = dict(pending_restore.get("validation_summary") or {})
+                            error_message = str(exc)
+                            status_code = 400
+                        except RestoreOperationError as exc:
+                            validation_summary = dict(pending_restore.get("validation_summary") or {})
+                            error_message = str(exc)
+                            status_code = 500
+                        except RestoreError as exc:
+                            validation_summary = dict(pending_restore.get("validation_summary") or {})
+                            error_message = str(exc)
+                            status_code = 500
+            else:
+                upload = request.files.get("db_file")
+                filename = str((upload.filename if upload is not None else "") or "").strip()
+
+                if upload is None or not filename:
+                    error_message = "Choose a SQLite database file to validate."
+                    status_code = 400
+                else:
+                    suffix = Path(filename).suffix or ".db"
+                    temp_path: Path | None = None
+                    try:
+                        _clear_pending_db_restore()
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                            upload.save(handle)
+                            temp_path = Path(handle.name)
+
+                        validation_summary = {
+                            "source_filename": filename,
+                            "live_db_path": str(resolved_db_path),
+                            "rollback_db_path": str(rollback_path),
+                            **inspect_uploaded_database(temp_path),
+                        }
+                        session[PENDING_DB_RESTORE_SESSION_KEY] = {
+                            "temp_path": str(temp_path),
+                            "source_filename": filename,
+                            "validated_by_user_id": int(user["id"]),
+                            "validation_summary": validation_summary,
+                        }
+                        pending_restore = _load_pending_db_restore()
+                    except RestoreValidationError as exc:
+                        error_message = str(exc)
+                        status_code = 400
+                        if temp_path is not None:
+                            temp_path.unlink(missing_ok=True)
+                    except RestoreError as exc:
+                        error_message = str(exc)
+                        status_code = 500
+                        if temp_path is not None:
+                            temp_path.unlink(missing_ok=True)
 
     return (
         render_template(
@@ -6606,6 +6699,7 @@ def admin_db_restore():
             error_message=error_message,
             success_message=success_message,
             restore_result=restore_result,
+            validation_summary=validation_summary,
         ),
         status_code,
     )
