@@ -1,170 +1,154 @@
 # AssetTrack Backup and Restore Procedure
 
-This runbook defines the manual backup and restore process for AssetTrack SQLite persistence in Docker deployments.
+This runbook defines the approved backup export and in-app restore workflow for AssetTrack SQLite persistence.
 
 ## Database location
 
-- Container DB path: `/app/data/assettrack.db`
-- Host path in this repo (via `docker-compose.yml` bind mount): `./data/assettrack.db`
-- Config source: `ASSETTRACK_DB_PATH` (commonly set to `/app/data/assettrack.db`)
+- container DB path: `/app/data/assettrack.db`
+- host path in this repo: `./data/assettrack.db`
+- config source: `ASSETTRACK_DB_PATH`
 
-## Why stop the container first
+## Recovery model
 
-SQLite is a single-file database. Copying the file while the app is writing can produce an inconsistent backup.  
-For reliable backups, stop writes by stopping the container before copying.
+AssetTrack restore is an in-app operational recovery action.
 
-## Safe Backup Procedure
+Restore:
 
-Use this path for routine protection before upgrades, troubleshooting, or field transport.
+- validates the uploaded SQLite file
+- preserves the current live DB as a rollback artifact
+- replaces the live DB only after validation passes
+- activates recovery mode
+- records operational restore history
 
-1. Stop the app container:
+Restore does not:
 
-```bash
-docker compose down
-```
+- create custody events
+- change audit history
+- merge database snapshots
+- silently clear recovery mode
 
-2. Create a timestamped backup file:
+## Safe backup path
 
-```bash
-mkdir -p data/backups
-cp data/assettrack.db "data/backups/assettrack-$(date +%Y%m%d-%H%M%S).db"
-```
+Use the in-app export whenever you need a downloadable backup copy before recovery, troubleshooting, or field transport.
 
-Example backup filename: `assettrack-20260305-091500.db`
+Operator steps:
 
-3. Start the app again:
+1. Log in as admin.
+2. Open `Admin Tools`.
+3. Select `Download Database Backup`.
+4. Store the downloaded `.db` file in a controlled backup location.
 
-```bash
-docker compose up -d
-```
+Expected filename pattern:
+
+`assettrack-backup-YYYYMMDD-HHMMSS.db`
 
 Why this is safe:
 
-- `docker compose down` stops writes but preserves the mounted `./data/assettrack.db` file
-- the backup is a point-in-time copy of the real host-mounted database
-- no schema or runtime behavior changes occur
+- no schema change occurs
+- no runtime behavior changes
+- no custody or audit state is modified
 
-## Normal Restore Procedure
+## In-app restore path
 
-Use this path when you want to restore a known-good backup while preserving the current damaged database file for investigation.
+Use this path when the live database is no longer trusted and you have a known-good backup file.
 
-1. Stop the app container:
+1. Export one fresh backup first.
+2. Log in as admin.
+3. Open `Admin Tools`.
+4. Select `Restore Database Backup`.
+5. Upload the selected backup `.db` file.
+6. Select `Validate and Restore`.
 
-```bash
-docker compose down
-```
+Expected result:
 
-2. Preserve the current DB before replacing it:
+- restore succeeds
+- the current live DB is preserved as a rollback artifact
+- recovery mode activates
+- restore history records the operation
 
-```bash
-mkdir -p data/backups
-mv data/assettrack.db "data/backups/pre-restore-$(date +%Y%m%d-%H%M%S).db"
-```
+## Recovery mode expectations
 
-3. Replace the active DB file with the selected backup:
+While recovery mode is active:
 
-```bash
-cp data/backups/assettrack-YYYYMMDD-HHMMSS.db data/assettrack.db
-```
+- admins see a recovery banner
+- `Admin Tools` shows recovery metadata
+- `Admin Tools` shows restore history
+- resend and retry actions for queued receipts are blocked
+- core issue and return workflows remain available unless another control blocks them
 
-4. Start the app again:
+Recovery mode remains active across restart until an admin explicitly acknowledges it.
 
-```bash
-docker compose up -d
-```
+## Rollback expectations
 
-This is the preferred restore path because it keeps the pre-restore file available for rollback or forensic review.
+After successful restore, expect:
 
-## Destructive Reset Path
+- a rollback artifact path in `Recovery State`
+- the rollback artifact path recorded in `Restore History`
 
-Use this only when you intentionally want to discard the current local database and start from an empty file.
+Do not expect:
 
-```bash
-docker compose down
-rm -f data/assettrack.db
-./scripts/bootstrap_docker.sh
-```
+- automatic rollback selection
+- automatic rollback cleanup
+- automatic reconstruction of missing custody data
 
-Warnings:
+## Validation before acknowledgment
 
-- this does not restore prior custody history
-- on next start, AssetTrack initializes a fresh approved schema if no DB file exists
-- only use this when a reset is explicitly intended
+Do not acknowledge recovery until all checks pass.
 
-## Verification After Restore
+Required checks:
 
-Run these checks before allowing operators back into the system.
+- `PASS` `Recovery State` shows `Status: Active`
+- `PASS` `Recovery State` shows `Acknowledgment: Required`
+- `PASS` uploaded filename matches the intended restore file
+- `PASS` rollback artifact path is present
+- `PASS` restore history contains the new restore entry
+- `PASS` dashboard loads
+- `PASS` human-readable report loads
+- `PASS` receipts screens load
+- `PASS` resend/retry is visibly blocked during recovery mode
+- `PASS` holder / asset / recent record counts are plausible for the selected backup
 
-1. Confirm the restored file exists at the expected host path:
-
-```bash
-ls -l data/assettrack.db
-```
-
-2. Run a quick schema and data sanity check from the host:
-
-```bash
-sqlite3 data/assettrack.db "
-SELECT 'holders', COUNT(*) FROM holders
-UNION ALL
-SELECT 'assets', COUNT(*) FROM assets
-UNION ALL
-SELECT 'asset_events', COUNT(*) FROM asset_events;
-"
-```
-
-3. Run SQLite integrity check:
-
-```bash
-sqlite3 data/assettrack.db "PRAGMA integrity_check;"
-```
-
-4. Optional table list check:
-
-```bash
-sqlite3 data/assettrack.db ".tables"
-```
-
-5. Start the app and confirm the expected login/dashboard behavior:
-
-```bash
-docker compose up -d
-docker compose ps
-```
-
-Operational confirmation:
-
-- login page loads on `http://localhost:8000`
-- expected holder / asset / event counts are present
-- recent known records appear as expected
-- no operator starts new work until restore verification is complete
-
-## Post-Restore Operator Checklist
-
-Do not resume operations until every item below passes.
-
-- `PASS` SQLite file exists at `data/assettrack.db`
-- `PASS` `sqlite3 data/assettrack.db "PRAGMA integrity_check;"` returns `ok`
-- `PASS` holder / asset / `asset_events` row counts are plausible for the selected backup
-- `PASS` `docker compose ps` shows the `assettrack` container running
-- `PASS` login succeeds
-- `PASS` dashboard loads without errors
-- `PASS` current status report opens
-- `PASS` receipts list opens
-- `PASS` Issue workflow entry page loads
-- `PASS` Return workflow entry page loads
-
-If any item fails:
+If any check fails:
 
 - stop operator use
-- keep the restored database file unchanged
-- investigate before allowing new commits
+- do not acknowledge recovery
+- investigate before allowing new work
 
-## Operational Warnings
+## Clear recovery mode
 
-- `docker compose down -v` is destructive for container volumes; avoid it during normal backup/restore operations.
-- `rm -f data/assettrack.db` is destructive and belongs only to the explicit reset path above.
-- Keep backups outside ephemeral directories and include them in your field backup retention process.
-- Restore replaces the active SQLite file. Treat it as a recovery operation, not normal workflow.
-- AssetTrack remains append-only at the event level, but restoring an older backup reverts the entire database snapshot to that earlier point in time.
-- This procedure is manual by design and does not modify schema or runtime behavior.
+After validation:
+
+1. Open `Admin Tools`.
+2. In `Recovery State`, select `Acknowledge Recovery and Resume`.
+
+Expected result:
+
+- recovery mode clears
+- acknowledgment state becomes `Cleared`
+- resend/retry blocking lifts
+
+## What not to expect from restore
+
+Do not expect restore to:
+
+- recreate lost work from after the selected backup was taken
+- resend queued receipts automatically
+- create a custody correction trail
+- change workflow order
+
+Restore is a controlled snapshot replacement, not a history repair tool.
+
+## Recovery smoke test
+
+For the full end-to-end procedure, use:
+
+- [Recovery Workflow Smoke Test](../release/recovery-smoke-test.md)
+- [Admin Recovery Workflow](../operator/admin-recovery-workflow.md)
+- [Admin Database Backup Export](../operator/admin-backup-export.md)
+
+## Operational warnings
+
+- `docker compose down -v` remains destructive and is not part of normal recovery.
+- `rm -f data/assettrack.db` remains destructive and belongs only to explicit reset workflows.
+- Keep backups outside ephemeral directories.
+- Restore history is operational metadata only. It does not replace custody or audit history.

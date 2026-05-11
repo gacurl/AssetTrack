@@ -59,6 +59,19 @@
     </table>
   </div>
 
+  <div class="card">
+    <h2>After Restore</h2>
+    <p>Use this sequence before acknowledging recovery:</p>
+    <ol>
+      <li>Open <strong>Admin Tools</strong> and confirm recovery mode is active.</li>
+      <li>Confirm the rollback artifact path and uploaded filename look correct.</li>
+      <li>Review <strong>Restore History</strong> for the new entry.</li>
+      <li>Check dashboard, report, and receipts before resuming normal resend or retry actions.</li>
+      <li>Acknowledge recovery only after validation is complete.</li>
+    </ol>
+    <p>Restore replaces the live DB snapshot. It does not create custody events or rebuild missing work after the selected backup.</p>
+  </div>
+
   {% if restore_result %}
     <div class="card">
       <h2>Restore Result</h2>
