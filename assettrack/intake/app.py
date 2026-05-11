@@ -75,7 +75,9 @@ from assettrack.restore import (
     RestoreValidationError,
     clear_recovery_state,
     load_recovery_state,
+    load_restore_history,
     recovery_mode_is_active,
+    restore_history_path_for,
     recovery_state_path_for,
     restore_database,
     rollback_artifact_path_for,
@@ -1035,6 +1037,33 @@ def _recovery_mode_context() -> dict[str, object]:
 
 def _recovery_mode_send_block_message() -> str:
     return "Receipt resend is blocked during recovery mode. Admin acknowledgment is required before email delivery resumes."
+
+
+def _restore_history_context() -> dict[str, object]:
+    recovery_state = load_recovery_state(_resolved_runtime_db_path())
+    history_data = load_restore_history(_resolved_runtime_db_path())
+    active_restored_at = str(recovery_state.get("restored_at") or "").strip()
+    entries: list[dict[str, object]] = []
+    for entry in reversed(list(history_data.get("entries") or [])):
+        restored_at = str(entry.get("restored_at") or "").strip()
+        acknowledgment_state = "Cleared"
+        if recovery_state.get("active") and active_restored_at and restored_at == active_restored_at:
+            acknowledgment_state = "Required"
+        entries.append(
+            {
+                "restored_at": restored_at,
+                "restored_at_display": _receipt_display_timestamp(restored_at),
+                "source_filename": str(entry.get("source_filename") or "").strip(),
+                "rollback_db_path": str(entry.get("rollback_db_path") or "").strip(),
+                "result": str(entry.get("result") or "unknown").strip().title() or "Unknown",
+                "acknowledgment_state": acknowledgment_state,
+            }
+        )
+    return {
+        "entries": entries,
+        "parse_error": str(history_data.get("parse_error") or "").strip(),
+        "history_path": str(history_data.get("history_path") or restore_history_path_for(_resolved_runtime_db_path())),
+    }
 
 
 def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[str, object]:
@@ -6002,6 +6031,7 @@ def admin_system():
     holder_count: int | None = None
     asset_count: int | None = None
     schema_warning: str | None = None
+    restore_history = _restore_history_context()
 
     try:
         conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
@@ -6019,6 +6049,7 @@ def admin_system():
         holder_count=holder_count,
         asset_count=asset_count,
         schema_warning=schema_warning,
+        restore_history=restore_history,
     )
 
 

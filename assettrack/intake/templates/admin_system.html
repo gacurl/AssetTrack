@@ -104,4 +104,51 @@
       </tbody>
     </table>
   </div>
+
+  <div class="card">
+    <h2>Restore History</h2>
+    <p>Operational restore records only. This surface does not modify custody or audit history.</p>
+    <p><strong>History file:</strong> <code id="restore-history-path">{{ restore_history.history_path }}</code></p>
+    {% if restore_history.parse_error %}
+      <p class="warn">Restore history file could not be read cleanly: {{ restore_history.parse_error }}</p>
+    {% endif %}
+    <table>
+      <thead>
+        <tr>
+          <th>Restore Timestamp</th>
+          <th>Uploaded Filename</th>
+          <th>Rollback Artifact</th>
+          <th>Acknowledgment</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in restore_history.entries %}
+          <tr>
+            <td>{{ entry.restored_at_display or "Unknown" }}</td>
+            <td>
+              {% if entry.source_filename %}
+                <code>{{ entry.source_filename }}</code>
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if entry.rollback_db_path %}
+                <code>{{ entry.rollback_db_path }}</code>
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>{{ entry.acknowledgment_state }}</td>
+            <td>{{ entry.result }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5">No restore history recorded.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 {% endblock %}
