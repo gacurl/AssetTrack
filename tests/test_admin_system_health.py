@@ -110,10 +110,11 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/admin/system")
 
     assert response.status_code == 200
-    assert b"Admin: System Health" in response.data
+    assert b"Admin: Tools" in response.data
     assert b'id="holder-count">1<' in response.data
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
+    assert b"Manage Users" in response.data
     assert b"Import Holders from CSV" in response.data
     assert b"Open Human-Readable Report" in response.data
     assert b"Download Database Backup" in response.data

@@ -48,12 +48,9 @@
             <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
             <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue') }}">Issue</a>
             <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="{{ url_for('return_queue') }}">Return</a>
-            <a class="chip {% if request.path.startswith('/receipts') %}active{% endif %}" href="{{ url_for('receipts_list') }}">Receipts</a>
             <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
-            <a class="chip {% if request.path.startswith('/assets/search') %}active{% endif %}" href="{{ url_for('asset_search') }}">Asset Search</a>
             {% if authenticated_role == 'admin' %}
               <a class="chip {% if request.path.startswith('/add-assets') %}active{% endif %}" href="{{ url_for('add_assets') }}">Stage Assets</a>
-              <a class="chip {% if request.path.startswith('/admin/users') %}active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
               <a class="chip {% if request.path.startswith('/admin/system') %}active{% endif %}" href="{{ url_for('admin_system') }}">Admin Tools</a>
             {% endif %}
           {% endif %}
