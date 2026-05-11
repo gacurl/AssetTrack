@@ -67,7 +67,7 @@
       <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
     {% endif %}
     {% if recovery_mode.active %}
-      <div class="actions" aria-label="Recovery actions">
+      <div class="recovery-action-area search-actions" aria-label="Recovery actions">
         <form method="post" action="{{ url_for('admin_recovery_acknowledge') }}">
           <button type="submit">Acknowledge Recovery and Resume</button>
         </form>
