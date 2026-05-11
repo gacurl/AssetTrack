@@ -69,6 +69,14 @@ from assettrack.reference_data import (
 )
 from assettrack.audit import ACTIVE_EVENTS_WHERE, record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
+from assettrack.restore import (
+    RestoreError,
+    RestoreOperationError,
+    RestoreValidationError,
+    recovery_state_path_for,
+    restore_database,
+    rollback_artifact_path_for,
+)
 from assettrack.users import (
     change_own_password,
     count_users,
@@ -6460,6 +6468,72 @@ def admin_db_export():
         download_name=download_name,
         mimetype="application/octet-stream",
         conditional=False,
+    )
+
+
+@app.route("/admin/db/restore", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_db_restore():
+    resolved_db_path = _resolved_runtime_db_path()
+    rollback_path = rollback_artifact_path_for(resolved_db_path)
+    recovery_state_path = recovery_state_path_for(resolved_db_path)
+    error_message: str | None = None
+    success_message: str | None = None
+    restore_result: dict[str, str] | None = None
+    status_code = 200
+
+    if request.method == "POST":
+        if not _consume_admin_route_rate_limit_slot():
+            error_message = "Too many requests. Wait and try again."
+            status_code = 429
+        else:
+            upload = request.files.get("db_file")
+            filename = str((upload.filename if upload is not None else "") or "").strip()
+
+            if upload is None or not filename:
+                error_message = "Choose a SQLite database file to restore."
+                status_code = 400
+            else:
+                suffix = Path(filename).suffix or ".db"
+                temp_path: Path | None = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                        upload.save(handle)
+                        temp_path = Path(handle.name)
+
+                    restore_result = restore_database(
+                        uploaded_db_path=temp_path,
+                        live_db_path=resolved_db_path,
+                        source_filename=filename,
+                    )
+                    success_message = (
+                        "Database restore complete. Recovery mode is active and the previous database copy was preserved."
+                    )
+                except RestoreValidationError as exc:
+                    error_message = str(exc)
+                    status_code = 400
+                except RestoreOperationError as exc:
+                    error_message = str(exc)
+                    status_code = 500
+                except RestoreError as exc:
+                    error_message = str(exc)
+                    status_code = 500
+                finally:
+                    if temp_path is not None:
+                        temp_path.unlink(missing_ok=True)
+
+    return (
+        render_template(
+            "admin_db_restore.html",
+            db_path=str(resolved_db_path),
+            rollback_path=str(rollback_path),
+            recovery_state_path=str(recovery_state_path),
+            error_message=error_message,
+            success_message=success_message,
+            restore_result=restore_result,
+        ),
+        status_code,
     )
 
 
