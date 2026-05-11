@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Database Restore{% endblock %}
+{% block page_heading %}Admin: Database Restore{% endblock %}
+{% block page_class %} admin-maintenance-wide-fields{% endblock %}
+
+{% block content %}
+  <nav class="workflow-local-nav" aria-label="Admin restore navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to admin tools</a>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  {% if success_message %}
+    <div class="flash success">{{ success_message }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Restore SQLite Backup</h2>
+    <p>Use this only for recovery. AssetTrack will validate the uploaded SQLite file before replacing the live database.</p>
+    <form method="post" enctype="multipart/form-data">
+      <div class="row form-group">
+        <label class="form-label" for="db_file"><strong>SQLite backup file</strong></label>
+        <input id="db_file" name="db_file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" required />
+      </div>
+      <div class="search-actions">
+        <button type="submit">Validate and Restore</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Operational Paths</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Live DB path</th>
+          <td><code>{{ db_path }}</code></td>
+        </tr>
+        <tr>
+          <th>Rollback copy path</th>
+          <td><code>{{ rollback_path }}</code></td>
+        </tr>
+        <tr>
+          <th>Recovery state path</th>
+          <td><code>{{ recovery_state_path }}</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if restore_result %}
+    <div class="card">
+      <h2>Restore Result</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th>Live DB</th>
+            <td><code>{{ restore_result.live_db_path }}</code></td>
+          </tr>
+          <tr>
+            <th>Rollback copy</th>
+            <td><code>{{ restore_result.rollback_db_path }}</code></td>
+          </tr>
+          <tr>
+            <th>Recovery state</th>
+            <td><code>{{ restore_result.recovery_state_path }}</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}
