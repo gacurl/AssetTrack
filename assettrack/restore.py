@@ -35,6 +35,22 @@ class RestoreOperationError(RestoreError):
     """Raised when replacement or rollback preservation fails."""
 
 
+def _default_recovery_state(db_path: Path) -> dict[str, object]:
+    recovery_state_path = recovery_state_path_for(db_path)
+    return {
+        "active": False,
+        "acknowledgment_required": False,
+        "acknowledgment_state": "not_required",
+        "restored_at": "",
+        "source_filename": "",
+        "rollback_db_path": "",
+        "db_path": str(db_path),
+        "recovery_state_path": str(recovery_state_path),
+        "recovery_state_exists": recovery_state_path.exists(),
+        "parse_error": "",
+    }
+
+
 def rollback_artifact_path_for(db_path: Path) -> Path:
     suffix = db_path.suffix or ".db"
     return db_path.with_name(f"{db_path.stem}-pre-restore{suffix}")
@@ -42,6 +58,62 @@ def rollback_artifact_path_for(db_path: Path) -> Path:
 
 def recovery_state_path_for(db_path: Path) -> Path:
     return db_path.with_name(f"{db_path.stem}-recovery-state.json")
+
+
+def load_recovery_state(db_path: Path) -> dict[str, object]:
+    db_path = db_path.expanduser().resolve()
+    recovery_state_path = recovery_state_path_for(db_path)
+    default_state = _default_recovery_state(db_path)
+    if not recovery_state_path.exists() or not recovery_state_path.is_file():
+        return default_state
+
+    try:
+        raw_state = json.loads(recovery_state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        default_state["active"] = True
+        default_state["acknowledgment_required"] = True
+        default_state["acknowledgment_state"] = "required"
+        default_state["recovery_state_exists"] = True
+        default_state["parse_error"] = str(exc)
+        return default_state
+
+    if not isinstance(raw_state, dict):
+        default_state["active"] = True
+        default_state["acknowledgment_required"] = True
+        default_state["acknowledgment_state"] = "required"
+        default_state["recovery_state_exists"] = True
+        default_state["parse_error"] = "Recovery state file must contain a JSON object."
+        return default_state
+
+    active = bool(raw_state.get("active", True))
+    restored_at = str(raw_state.get("recovered_at") or raw_state.get("restored_at") or "").strip()
+    source_filename = str(raw_state.get("source_filename") or "").strip()
+    rollback_db_path = str(raw_state.get("rollback_db_path") or "").strip()
+
+    return {
+        "active": active,
+        "acknowledgment_required": active,
+        "acknowledgment_state": "required" if active else "cleared",
+        "restored_at": restored_at,
+        "source_filename": source_filename,
+        "rollback_db_path": rollback_db_path,
+        "db_path": str(raw_state.get("db_path") or db_path),
+        "recovery_state_path": str(recovery_state_path),
+        "recovery_state_exists": True,
+        "parse_error": "",
+    }
+
+
+def recovery_mode_is_active(db_path: Path) -> bool:
+    return bool(load_recovery_state(db_path).get("active"))
+
+
+def clear_recovery_state(db_path: Path) -> bool:
+    recovery_state_path = recovery_state_path_for(db_path.expanduser().resolve())
+    if not recovery_state_path.exists():
+        return False
+    recovery_state_path.unlink()
+    return True
 
 
 def _list_tables(conn: sqlite3.Connection) -> set[str]:

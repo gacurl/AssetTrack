@@ -207,6 +207,7 @@
   {% set receipt_action_word = "issued" if receipt.receipt_type == "ISSUE" else "returned" %}
   {% set receipt_direction = "to" if receipt.receipt_type == "ISSUE" else "from" %}
   {% set headline_subject = holder_display_name if holder_display_name else "recorded holder" %}
+  {% set send_blocked_by_recovery = recovery_mode.active and receipt.delivery.state in ["pending", "failed"] %}
   {% set context_parts = [] %}
   {% if holder_display_name %}
     {% set context_parts = context_parts + [holder_display_name] %}
@@ -238,9 +239,13 @@
     <a class="nav-link" href="{{ url_for('human_report') }}">Open Current Status Report</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
     {% if receipt.delivery.state in ["pending", "failed"] %}
-      <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
-        <button type="submit">{{ receipt_action_label }}</button>
-      </form>
+      {% if send_blocked_by_recovery %}
+        <span class="pill bad">Recovery mode blocks {{ receipt_action_label|lower }}</span>
+      {% else %}
+        <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
+          <button type="submit">{{ receipt_action_label }}</button>
+        </form>
+      {% endif %}
     {% endif %}
   </nav>
 
@@ -268,6 +273,9 @@
             · {{ email_timing_label }} {{ email_timing_value }}
           {% endif %}
         </p>
+        {% if send_blocked_by_recovery %}
+          <p class="receipt-context-line">Receipt resend and retry actions are paused until an admin acknowledges recovery mode.</p>
+        {% endif %}
       </section>
 
       <div class="receipt-summary">
@@ -316,7 +324,9 @@
           {% if receipt.delivery.state in ["pending", "failed"] %}
             <div class="summary-value">
               <div class="summary-label">Available action</div>
-              <div class="summary-copy">{{ receipt_action_label }}</div>
+              <div class="summary-copy">
+                {{ "Blocked during recovery mode" if send_blocked_by_recovery else receipt_action_label }}
+              </div>
             </div>
           {% endif %}
         </section>

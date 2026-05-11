@@ -125,6 +125,28 @@
   margin-bottom: 1rem;
 }
 
+.recovery-banner {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  border-left-width: 5px;
+}
+
+.recovery-banner p,
+.recovery-banner h2 {
+  margin: 0;
+}
+
+.recovery-status-line {
+  color: var(--color-text-muted);
+}
+
+.recovery-meta-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
 .report-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
