@@ -161,7 +161,14 @@ def _validate_integrity(conn: sqlite3.Connection) -> None:
         raise RestoreValidationError(f"SQLite integrity check failed: {details}")
 
 
-def validate_uploaded_database(candidate_path: Path) -> None:
+def _event_table_name(existing_tables: set[str]) -> str:
+    for name in EVENT_TABLE_ALIASES:
+        if name in existing_tables:
+            return name
+    raise RestoreValidationError("Uploaded database is missing required AssetTrack tables: asset_events")
+
+
+def inspect_uploaded_database(candidate_path: Path) -> dict[str, object]:
     candidate_path = candidate_path.expanduser().resolve()
     if not candidate_path.exists() or not candidate_path.is_file():
         raise RestoreValidationError("Uploaded database file was not saved correctly.")
@@ -172,20 +179,42 @@ def validate_uploaded_database(candidate_path: Path) -> None:
         raise RestoreValidationError(f"Uploaded file could not be opened as SQLite: {exc}") from exc
 
     try:
-        _validate_integrity(conn)
-        existing_tables = _list_tables(conn)
-    except sqlite3.Error as exc:
-        raise RestoreValidationError(f"Uploaded file is not a valid SQLite database: {exc}") from exc
+        try:
+            _validate_integrity(conn)
+            existing_tables = _list_tables(conn)
+        except sqlite3.Error as exc:
+            raise RestoreValidationError(f"Uploaded file is not a valid SQLite database: {exc}") from exc
+
+        missing_tables = sorted(RESTORE_REQUIRED_TABLES - existing_tables)
+        if not any(name in existing_tables for name in EVENT_TABLE_ALIASES):
+            missing_tables.append("asset_events")
+        if missing_tables:
+            raise RestoreValidationError(
+                "Uploaded database is missing required AssetTrack tables: " + ", ".join(missing_tables)
+            )
+
+        event_table_name = _event_table_name(existing_tables)
+        asset_count = int(conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0])
+        holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        custody_event_count = int(conn.execute(f"SELECT COUNT(*) FROM {event_table_name};").fetchone()[0])
+        pending_receipt_count = int(
+            conn.execute("SELECT COUNT(*) FROM receipt_queue WHERE sent_at IS NULL;").fetchone()[0]
+        )
     finally:
         conn.close()
 
-    missing_tables = sorted(RESTORE_REQUIRED_TABLES - existing_tables)
-    if not any(name in existing_tables for name in EVENT_TABLE_ALIASES):
-        missing_tables.append("asset_events")
-    if missing_tables:
-        raise RestoreValidationError(
-            "Uploaded database is missing required AssetTrack tables: " + ", ".join(missing_tables)
-        )
+    return {
+        "integrity_status": "ok",
+        "required_tables_status": "ok",
+        "asset_count": asset_count,
+        "holder_count": holder_count,
+        "custody_event_count": custody_event_count,
+        "pending_receipt_count": pending_receipt_count,
+    }
+
+
+def validate_uploaded_database(candidate_path: Path) -> None:
+    inspect_uploaded_database(candidate_path)
 
 
 def _ensure_live_db_replaceable(db_path: Path) -> None:
