@@ -69,7 +69,7 @@
     {% if recovery_mode.active %}
       <div class="recovery-action-area search-actions" aria-label="Recovery actions">
         <form method="post" action="{{ url_for('admin_recovery_acknowledge') }}">
-          <button type="submit">Acknowledge Recovery and Resume</button>
+          <button type="submit" class="action-danger">Acknowledge Recovery and Resume</button>
         </form>
       </div>
     {% endif %}
@@ -85,8 +85,8 @@
       <p><a class="nav-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
       <p><a class="nav-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a></p>
     </nav>
-    <div class="actions" aria-label="Admin tool actions">
-      <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    <div class="workflow-action-row" aria-label="Admin tool actions">
+      <a class="action-secondary" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
     </div>
     <table>
       <tbody>

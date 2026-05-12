@@ -9,6 +9,32 @@
   margin: 0;
 }
 
+.workflow-action-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.workflow-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.workflow-action-row form {
+  margin: 0;
+}
+
+.workflow-action-row--quiet {
+  margin-top: 0.55rem;
+}
+
+.workflow-action-row--danger {
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--color-surface);
+}
+
 .form-group {
   margin: 0.75rem 0;
 }
@@ -221,6 +247,71 @@ button.warn-button:hover,
 button.warn-button:focus-visible {
   background: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
   border-color: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
+}
+
+.action-secondary,
+.action-quiet,
+.action-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-secondary {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  border-radius: 10px;
+  background: var(--color-surface-bg);
+  color: color-mix(in srgb, var(--color-primary) 72%, var(--color-text));
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: none;
+}
+
+.action-secondary:hover,
+.action-secondary:focus-visible {
+  background: color-mix(in srgb, var(--color-primary-soft) 22%, var(--color-surface-bg));
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-primary) 88%, var(--color-text));
+  text-decoration: none;
+}
+
+.action-quiet {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.action-quiet:hover,
+.action-quiet:focus-visible {
+  color: color-mix(in srgb, var(--color-primary) 80%, var(--color-text));
+  text-decoration-thickness: 2px;
+  background: transparent;
+}
+
+.action-danger {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-surface));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-accent-soft) 58%, var(--color-surface-bg));
+  color: color-mix(in srgb, var(--color-accent) 76%, var(--color-text));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.action-danger:hover,
+.action-danger:focus-visible {
+  background: color-mix(in srgb, var(--color-accent-soft) 82%, var(--color-surface-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 44%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-accent) 88%, var(--color-text));
+  text-decoration: none;
 }
 
 .admin-maintenance-grid {
@@ -684,6 +775,41 @@ button {
   border: 1px solid var(--color-primary);
   border-radius: 8px;
   cursor: pointer;
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--color-primary) 88%, black);
+  border-color: color-mix(in srgb, var(--color-primary) 88%, black);
+}
+
+button.action-secondary,
+button.action-danger {
+  font: inherit;
+}
+
+button.action-secondary {
+  background: var(--color-surface-bg);
+  border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-primary) 72%, var(--color-text));
+}
+
+button.action-secondary:hover,
+button.action-secondary:focus-visible {
+  background: color-mix(in srgb, var(--color-primary-soft) 22%, var(--color-surface-bg));
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-primary) 88%, var(--color-text));
+}
+
+button.action-danger {
+  background: color-mix(in srgb, var(--color-accent) 78%, var(--color-primary));
+  border-color: color-mix(in srgb, var(--color-accent) 78%, var(--color-primary));
+  color: #fff;
+}
+
+button.action-danger:hover,
+button.action-danger:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
+  border-color: color-mix(in srgb, var(--color-accent) 66%, var(--color-primary));
 }
 
 .row {

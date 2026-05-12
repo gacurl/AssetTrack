@@ -86,7 +86,9 @@
         {{ "I reviewed this batch and want to issue these assets to the selected holder." if issue_mode else "I reviewed this batch and want to add it to the database." }}
       </label>
 
-      <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
+      <div class="workflow-action-row">
+        <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
+      </div>
     </form>
   </div>
 
@@ -98,8 +100,9 @@
         <input type="checkbox" name="issue_mode" value="on" {% if issue_mode %}checked{% endif %} />
         Enable Issue mode (issue assets to a selected holder)
       </label>
-      <br /><br />
-      <button type="submit">Save mode</button>
+      <div class="workflow-action-row">
+        <button type="submit" class="action-secondary">Save mode</button>
+      </div>
     </form>
 
     {% if issue_mode %}
@@ -115,9 +118,9 @@
       {% else %}
         <p><strong>No holder selected.</strong></p>
       {% endif %}
-      <nav class="workflow-local-nav" aria-label="Issue mode navigation">
-        <p><a class="nav-link" href="{{ url_for('holders_search') }}">Search/select holder</a></p>
-        <p><a class="nav-link" href="{{ url_for('issue_preview') }}">Review issue details</a></p>
+      <nav class="workflow-local-nav workflow-action-row workflow-action-row--quiet" aria-label="Issue mode navigation">
+        <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Search/select holder</a>
+        <a class="nav-link action-quiet" href="{{ url_for('issue_preview') }}">Review issue details</a>
       </nav>
     {% else %}
       <p style="margin-top: 12px;"><strong>Issue mode:</strong> OFF</p>

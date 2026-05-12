@@ -64,13 +64,13 @@
           <span>ID {{ selected_holder["identifier"] }}</span>
         {% endif %}
       </div>
-      <div class="actions" style="margin-top: 0.75rem;">
-        <a class="nav-link" href="{{ url_for('holders_search') }}">Change holder</a>
+      <div class="workflow-action-row workflow-action-row--quiet">
+        <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Change holder</a>
       </div>
     {% else %}
       <p>No holder selected.</p>
-      <div class="actions" style="margin-top: 0.75rem;">
-        <a class="nav-link" href="{{ url_for('holders_search') }}">Select holder</a>
+      <div class="workflow-action-row workflow-action-row--quiet">
+        <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Select holder</a>
       </div>
     {% endif %}
   </div>
@@ -94,8 +94,8 @@
         {% endfor %}
       </ul>
     {% endif %}
-    <div class="actions" style="margin-top: 0.75rem;">
-      <a class="nav-link" href="{{ url_for('issue') }}">Update current location</a>
+    <div class="workflow-action-row workflow-action-row--quiet">
+      <a class="nav-link action-quiet" href="{{ url_for('issue') }}">Update current location</a>
     </div>
   </div>
 
@@ -176,22 +176,28 @@
 
   <div class="card workflow-card">
     <h2>Commit</h2>
-    <form method="post" action="{{ url_for('issue_commit') }}">
-      <label style="display:block; margin-bottom: 10px;">
-        <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
-        I reviewed this batch and want to issue these assets to the selected holder.
-      </label>
-      <label style="display:block; margin-bottom: 10px;">
-        <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" />
-        I confirm the selected holder accepted responsibility for this issue batch.
-      </label>
-      <button id="issue_btn" type="submit" data-timeout-lock-target>Commit Issue</button>
-    </form>
-    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="action" value="clear" />
-      <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
-      <button type="submit" data-timeout-lock-target>Clear Queue</button>
-    </form>
+    <div class="workflow-action-stack">
+      <form method="post" action="{{ url_for('issue_commit') }}">
+        <label style="display:block; margin-bottom: 10px;">
+          <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
+          I reviewed this batch and want to issue these assets to the selected holder.
+        </label>
+        <label style="display:block; margin-bottom: 10px;">
+          <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" />
+          I confirm the selected holder accepted responsibility for this issue batch.
+        </label>
+        <div class="workflow-action-row">
+          <button id="issue_btn" type="submit" data-timeout-lock-target>Commit Issue</button>
+        </div>
+      </form>
+      <form method="post" action="{{ url_for('intake') }}">
+        <input type="hidden" name="action" value="clear" />
+        <input type="hidden" name="return_to" value="{{ url_for('issue') }}" />
+        <div class="workflow-action-row workflow-action-row--danger">
+          <button type="submit" class="action-secondary" data-timeout-lock-target>Clear Queue</button>
+        </div>
+      </form>
+    </div>
   </div>
 {% endblock %}
 
