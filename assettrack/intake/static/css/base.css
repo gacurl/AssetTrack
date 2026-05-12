@@ -400,6 +400,17 @@ button.warn-button:focus-visible {
   .top-nav-utility {
     margin-left: 0;
   }
+
+  .top-nav-admin {
+    width: 100%;
+  }
+
+  .top-nav-admin-panel {
+    position: static;
+    margin-top: 0.4rem;
+    min-width: 0;
+    box-shadow: none;
+  }
 }
 
 :root {
@@ -554,6 +565,98 @@ a:hover {
 
 .top-nav-primary {
   gap: 0.4rem 0.45rem;
+}
+
+.top-nav-admin {
+  position: relative;
+  margin: 0;
+}
+
+.top-nav-admin summary {
+  list-style: none;
+}
+
+.top-nav-admin summary::-webkit-details-marker {
+  display: none;
+}
+
+.top-nav-admin-summary {
+  cursor: pointer;
+  user-select: none;
+  gap: 0.36rem;
+  padding-right: 0.5rem;
+}
+
+.top-nav-admin-summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.top-nav-admin-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  min-width: 1rem;
+  color: currentColor;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0.9;
+  transition: transform 140ms ease;
+}
+
+.top-nav-admin[open] .top-nav-admin-arrow {
+  transform: rotate(180deg);
+}
+
+.top-nav-admin.active .top-nav-admin-summary,
+.top-nav-admin[open] .top-nav-admin-summary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.top-nav-admin-panel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 30;
+  min-width: 14.5rem;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  border-radius: 12px;
+  background: var(--color-surface-bg);
+  box-shadow: 0 10px 22px rgba(18, 32, 47, 0.14);
+}
+
+.top-nav-admin-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--color-primary) 74%, var(--color-text));
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.top-nav-admin-link:hover,
+.top-nav-admin-link:focus-visible {
+  background: color-mix(in srgb, var(--color-primary-soft) 32%, var(--color-surface-bg));
+  color: color-mix(in srgb, var(--color-primary) 90%, var(--color-text));
+  text-decoration: none;
+  outline: none;
+}
+
+.top-nav-admin-link.active {
+  background: color-mix(in srgb, var(--color-primary-soft) 46%, var(--color-surface-bg));
+  color: color-mix(in srgb, var(--color-primary) 90%, var(--color-text));
+  font-weight: 700;
 }
 
 .top-nav-utility {
