@@ -195,7 +195,7 @@
             data-timeout-lock-target
           />
           <button id="submit-scan" class="stage-queue-action" type="submit" data-timeout-lock-target>Stage in queue</button>
-          <button id="clear-queue" class="stage-clear-action" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
+          <button id="clear-queue" class="stage-clear-action action-secondary" type="submit" name="action" value="clear" data-timeout-lock-target>Clear queue</button>
         </div>
       </form>
     {% endif %}
@@ -222,7 +222,7 @@
               <input type="hidden" name="return_to" value="{{ url_for('add_assets') }}" />
               <input type="hidden" name="action" value="remove" />
               <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
-              <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+              <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
             </form>
           </li>
         {% endfor %}

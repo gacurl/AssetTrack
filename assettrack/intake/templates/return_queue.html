@@ -111,7 +111,9 @@
   {% endif %}
 
   {% if issue_location_form is defined %}
-    <p><a class="nav-link" href="{{ jump_to_scan_href }}">Jump to Scan</a></p>
+    <div class="workflow-action-row workflow-action-row--quiet">
+      <a class="nav-link action-quiet" href="{{ jump_to_scan_href }}">Jump to Scan</a>
+    </div>
   {% endif %}
 
   {% if issue_location_form is defined %}
@@ -157,7 +159,9 @@
         <label for="issue-room"><strong>Current room / area</strong></label><br />
         <input id="issue-room" type="text" name="room" value="{{ issue_location_form.room }}" data-timeout-lock-target />
         <br /><br />
-        <button type="submit" data-timeout-lock-target>Save current location</button>
+        <div class="workflow-action-row">
+          <button type="submit" data-timeout-lock-target>Save current location</button>
+        </div>
       </form>
     </div>
   {% endif %}
@@ -175,27 +179,35 @@
       {% endfor %}
     {% endif %}
     {% if queue_len > 0 %}
-      <p><a class="nav-link" href="{{ jump_to_queue_href }}">Jump to Queue</a></p>
+      <div class="workflow-action-row workflow-action-row--quiet">
+        <a class="nav-link action-quiet" href="{{ jump_to_queue_href }}">Jump to Queue</a>
+      </div>
     {% endif %}
 
-    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-      <input
-        id="scan-input"
-        type="text"
-        name="scan_text"
-        placeholder="Scan or enter asset tag"
-        {% if issue_location_form is not defined %}autofocus{% endif %}
-        data-timeout-lock-target
-      />
-      <button type="submit" data-timeout-lock-target>Add to queue</button>
-    </form>
+    <div class="workflow-action-stack">
+      <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+        <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+        <input
+          id="scan-input"
+          type="text"
+          name="scan_text"
+          placeholder="Scan or enter asset tag"
+          {% if issue_location_form is not defined %}autofocus{% endif %}
+          data-timeout-lock-target
+        />
+        <div class="workflow-action-row">
+          <button type="submit" data-timeout-lock-target>Add to queue</button>
+        </div>
+      </form>
 
-    <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-      <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-      <input type="hidden" name="action" value="clear" />
-      <button type="submit" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
-    </form>
+      <form method="post" action="{{ url_for('intake') }}">
+        <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+        <input type="hidden" name="action" value="clear" />
+        <div class="workflow-action-row workflow-action-row--danger">
+          <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   {% if blocking_issues %}
@@ -210,7 +222,9 @@
   {% endif %}
 
   <div class="card workflow-card">
-    <p class="workflow-action"><a class="chip preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a></p>
+    <div class="workflow-action-row">
+      <a class="chip preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
+    </div>
   </div>
 
   <div class="card workflow-card" id="queue-section">
@@ -225,7 +239,7 @@
               <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
               <input type="hidden" name="action" value="remove" />
               <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
-              <button type="submit" class="queue-remove" data-timeout-lock-target>Remove</button>
+              <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
             </form>
           </li>
         {% endfor %}
