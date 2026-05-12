@@ -8,7 +8,7 @@ import pytest
 import assettrack.db as db
 from assettrack.intake import app as intake_app
 from assettrack.intake.scan import Scan
-from tests.auth_test_utils import create_test_user
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -32,9 +32,9 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-queue-ts", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
 
     with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -49,7 +49,7 @@ def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) 
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Queued at 14:03:22 UTC" in issue_page.data
+    assert b"14:03:22 UTC" in issue_page.data
     assert b"QUEUE-TAG-1" in issue_page.data
 
     with client_with_temp_db.session_transaction() as sess:
@@ -57,5 +57,5 @@ def test_issue_and_return_queue_pages_show_scan_timestamps(client_with_temp_db) 
 
     return_page = client_with_temp_db.get("/return")
     assert return_page.status_code == 200
-    assert b"Queued at 14:03:22 UTC" in return_page.data
+    assert b"14:03:22 UTC" in return_page.data
     assert b"QUEUE-TAG-1" in return_page.data

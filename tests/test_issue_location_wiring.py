@@ -103,7 +103,7 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
 
     assert issue_page.status_code == 200
     assert b"Current Location" in issue_page.data
-    assert b"Before scanning, set the current building and current room / area." in issue_page.data
+    assert b"Required before issue scans." in issue_page.data
     assert b"Scanning is blocked." in issue_page.data
     assert b"Add to Queue" in issue_page.data
     assert b"Scan or enter asset tag" in issue_page.data

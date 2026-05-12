@@ -244,14 +244,14 @@ class ReturnBatchTests(unittest.TestCase):
         render = self.client.get("/return")
         self.assertEqual(render.status_code, 200)
         self.assertIn(
-            b"No assets queued yet. Scan or enter an asset tag, then add it to the queue.",
+            b"No assets queued.",
             render.data,
         )
 
         preview_render = self.client.get("/return/preview")
         self.assertEqual(preview_render.status_code, 200)
         self.assertIn(
-            b"No assets queued. Return to the queue and scan or enter an asset tag.",
+            b"No assets queued.",
             preview_render.data,
         )
 

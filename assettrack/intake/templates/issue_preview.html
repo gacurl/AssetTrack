@@ -53,7 +53,7 @@
   <div class="card workflow-card">
     <h2>Holder</h2>
     {% if selected_holder %}
-      <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Ready to issue to</p>
+      <p class="muted" style="margin: 0 0 0.2rem 0; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Issue to</p>
       <p class="holder-name">{{ holder_display_name(selected_holder) }}</p>
       {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
         <p class="holder-subtle">{{ selected_holder["organization"] }}</p>
@@ -170,7 +170,7 @@
         </tbody>
       </table>
     {% else %}
-      <p>No assets queued. Return to the queue and scan or enter an asset tag.</p>
+      <p>No assets queued.</p>
     {% endif %}
   </div>
 

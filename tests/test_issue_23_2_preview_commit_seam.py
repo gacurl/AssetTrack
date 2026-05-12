@@ -155,7 +155,7 @@ def test_issue_preview_empty_queue_shows_next_step_guidance(client_with_temp_db)
     issue_preview = client_with_temp_db.get("/issue/preview")
 
     assert issue_preview.status_code == 200
-    assert b"No assets queued. Return to the queue and scan or enter an asset tag." in issue_preview.data
+    assert b"No assets queued." in issue_preview.data
 
 
 def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:

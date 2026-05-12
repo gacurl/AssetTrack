@@ -147,7 +147,7 @@
     {% else %}
       <form id="intake-form" class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
-          <label for="equipment_type"><strong>Equipment type</strong> (used when commit creates new inventory records)</label><br />
+          <label for="equipment_type"><strong>Equipment type</strong></label><br />
           <input
             type="text"
             id="equipment_type"
@@ -162,7 +162,7 @@
         {% if authenticated_role == 'admin' %}
           <div class="grid">
             <div class="row">
-              <label for="case_name"><strong>Case</strong> (optional staging detail)</label><br />
+              <label for="case_name"><strong>Case</strong> (optional)</label><br />
               <select id="case_name" name="case_name" data-timeout-lock-target>
                 <option value="">Unassigned</option>
                 {% for case_name in case_options %}
@@ -171,7 +171,7 @@
               </select>
             </div>
             <div class="row">
-              <label for="slot_id"><strong>Slot</strong> (optional staging detail)</label><br />
+              <label for="slot_id"><strong>Slot</strong> (optional)</label><br />
               <select id="slot_id" name="slot_id" data-timeout-lock-target>
                 <option value="">Unassigned</option>
                 {% for slot in slot_options %}
@@ -228,7 +228,7 @@
         {% endfor %}
       </ul>
     {% else %}
-      <p class="queue-empty">No assets are staged yet. Scan or enter an asset tag, then stage it in the queue for review.</p>
+      <p class="queue-empty">No assets staged.</p>
     {% endif %}
   </div>
 
@@ -239,7 +239,7 @@
   </div>
 
   <div class="card">
-    <h2>Latest Scan</h2>
+    <h2>Latest</h2>
     <p><code>{{ latest }}</code></p>
   </div>
 {% endblock %}

@@ -398,7 +398,8 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert b"Admin: Current Status Report" in response.data
     assert b"Download PDF" in response.data
     assert b"Download Database Backup" in response.data
-    assert b"showing recent active events only" in response.data
+    assert b"Recent events:" in response.data
+    assert b"active events only." in response.data
     assert b"Assets" in response.data
     assert b"Holders" in response.data
     assert b"Organizations and Building Access" in response.data
@@ -577,8 +578,8 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     response = client_with_temp_db.get("/report")
 
     assert response.status_code == 200
-    assert b"Use Current State to Decide the Next Step" in response.data
-    assert b"This page shows the active custody and storage picture first." in response.data
+    assert b"Current State" in response.data
+    assert b"Active custody and storage first." in response.data
     assert b"Report Scope" not in response.data
     assert b"Review holders with assets out" in response.data
     assert b"Check case space" in response.data
