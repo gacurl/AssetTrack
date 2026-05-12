@@ -155,7 +155,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Queue is empty. Add at least one asset to the queue before reviewing the batch.", response.data)
-        self.assertIn(b"No assets are staged yet.", response.data)
+        self.assertIn(b"No assets staged.", response.data)
 
     def test_scans_keep_equipment_type_captured_at_scan_time(self) -> None:
         intake_app.SCAN_QUEUE.clear()
