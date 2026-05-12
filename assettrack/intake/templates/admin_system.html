@@ -61,9 +61,9 @@
   </style>
 {% endblock %}
 
-{% block content %}
+  {% block content %}
   <nav class="workflow-local-nav" aria-label="Admin navigation">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
+    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
   </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -134,12 +134,13 @@
 
   <div class="card admin-control-panel">
     <h2>Admin Tools</h2>
+    <p class="card-intro">Use these tools for administrative maintenance and operational follow-up without changing workflow order.</p>
     <nav class="admin-tool-grid" aria-label="Admin tool navigation">
-      <a class="admin-tool-link admin-tool-link--primary" href="{{ url_for('add_assets') }}">Stage Assets</a>
+      <a class="admin-tool-link admin-tool-link--primary" href="{{ url_for('add_assets') }}">Add Assets</a>
       <a class="admin-tool-link" href="{{ url_for('admin_users') }}">Manage Users</a>
       <a class="admin-tool-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a>
       <a class="admin-tool-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_human_report') }}">Open Operational Report</a>
       <a class="admin-tool-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a>
     </nav>
     <div class="workflow-action-row admin-secondary-actions" aria-label="Admin tool actions">

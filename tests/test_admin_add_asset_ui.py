@@ -228,7 +228,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertLess(parsed_rows_heading, confirmation_text)
         self.assertIn(b'action="/preview/commit"', response.data)
         self.assertIn(b'name="confirm_reviewed"', response.data)
-        self.assertIn(b">Add to database<", response.data)
+        self.assertIn(b">Commit Staged Assets<", response.data)
         self.assertNotIn(b"<h2>Validation result</h2>", response.data)
         self.assertNotIn(b"/preview/validate", response.data)
 

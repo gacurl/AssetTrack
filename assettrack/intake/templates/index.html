@@ -139,6 +139,7 @@
   {% endwith %}
 
   <div class="card workflow-entry-card">
+    <p class="card-intro">Add assets to the queue first, then review the queued batch before committing.</p>
     {% if auth_enabled and not authed %}
       <form method="post">
         <input type="password" name="access_code" placeholder="Access code" autofocus />
