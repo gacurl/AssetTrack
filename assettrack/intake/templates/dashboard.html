@@ -290,12 +290,10 @@
         <div class="status-pill">
           <strong>{{ overview.holders_with_assets_out }}</strong>
           <span>Holders with assets out</span>
-          <a class="nav-link" href="{{ url_for('dashboard_holders') }}">View holders</a>
         </div>
         <div class="status-pill">
           <strong>{{ overview.open_storage_slots }}</strong>
           <span>Open storage slots</span>
-          <a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a>
         </div>
       </div>
     </div>
@@ -308,7 +306,6 @@
       <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
       <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
       <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
-      <p class="card-link"><a class="nav-link" href="#problems-panel">Review problems</a></p>
     </section>
 
     <section class="card">
@@ -332,7 +329,6 @@
           <strong>None</strong>
         {% endif %}
       </p>
-      <p class="card-link"><a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open outstanding holders</a></p>
     </section>
 
     <section class="card">
@@ -344,7 +340,6 @@
       <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
       <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
       <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
-      <p class="card-link"><a class="nav-link" href="{{ url_for('human_report') }}">Open current status report</a></p>
     </section>
 
     <section class="card">
@@ -354,7 +349,6 @@
       <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
       <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
       <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
-      <p class="card-link"><a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case drilldown</a></p>
     </section>
   </div>
 

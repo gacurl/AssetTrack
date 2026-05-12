@@ -15,29 +15,17 @@
       color: var(--color-text-muted);
       max-width: 60rem;
     }
-    .report-priority-links {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, max-content));
+    .report-utility-links {
+      display: flex;
+      flex-wrap: wrap;
       gap: 0.65rem 0.8rem;
-      align-items: start;
+      align-items: center;
       margin-top: 0.1rem;
     }
-    .report-priority-links .nav-link {
-      display: flex;
-      align-items: center;
-      min-height: 2.75rem;
-      padding: 0.55rem 0.8rem;
-      border: 1px solid var(--color-surface);
-      border-radius: 10px;
-      background: var(--color-surface-bg);
-      text-decoration: none;
-    }
-    .report-priority-links .nav-link:hover {
-      text-decoration: none;
-      background: color-mix(in srgb, var(--color-primary-soft) 30%, var(--color-surface-bg));
-    }
-    .report-priority-links .nav-link:focus-visible {
-      outline-offset: 1px;
+    .report-utility-label {
+      color: var(--color-text-muted);
+      font-size: 0.92rem;
+      font-weight: 700;
     }
     .report-stat-link {
       color: inherit;
@@ -149,10 +137,8 @@
         {% endif %}
       </p>
     </div>
-    <div class="report-actions nav-row report-priority-links">
-      <a class="nav-link" href="{{ url_for('dashboard_holders', return_to=report_return_to) }}">Review holders with assets out</a>
-      <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=report_return_to) }}">Check case space</a>
-      <a class="nav-link" href="{{ url_for('asset_search', return_to=report_return_to) }}">Look up an asset</a>
+    <div class="report-actions report-utility-links" aria-label="Report utilities">
+      <span class="report-utility-label">Utilities</span>
       <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Open receipts</a>
       {% if include_retired_assets %}
         <a class="nav-link" href="{{ url_for('human_report') }}">View active inventory only</a>
@@ -176,11 +162,10 @@
         <strong>{{ asset_summary.in_custody_assets }}</strong>
         <span class="nav-link report-stat-action">Open holder follow-up</span>
       </a>
-      <a class="report-stat report-stat-link" href="{% if include_retired_assets %}{{ url_for('human_report') }}{% else %}{{ url_for('human_report', include_retired='1') }}{% endif %}">
+      <div class="report-stat">
         {% if include_retired_assets %}Retired shown{% else %}Retired hidden{% endif %}
         <strong>{{ asset_summary.disposed_assets }}</strong>
-        <span class="nav-link report-stat-action">{% if include_retired_assets %}Return to active-first view{% else %}Include retired assets{% endif %}</span>
-      </a>
+      </div>
     </div>
   </div>
 

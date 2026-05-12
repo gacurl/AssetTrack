@@ -581,12 +581,14 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Current State" in response.data
     assert b"Active custody and storage first." in response.data
     assert b"Report Scope" not in response.data
-    assert b"Review holders with assets out" in response.data
-    assert b"Check case space" in response.data
-    assert b"Look up an asset" in response.data
+    assert b"Open holder follow-up" in response.data
+    assert b"Review case space" in response.data
+    assert b"Search active asset records" in response.data
+    assert b"Utilities" in response.data
+    assert b"Open receipts" in response.data
     assert b"Include retired assets" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
-    assert response.data.count(b'href="/assets/search?return_to=/report"') >= 2
+    assert response.data.count(b'href="/assets/search?return_to=/report"') == 1
     assert b'href="/dashboard/cases?return_to=/report"' in response.data
     assert b'href="/dashboard/holders?return_to=/report"' in response.data
     assert b'href="/receipts?return_to=/report"' in response.data

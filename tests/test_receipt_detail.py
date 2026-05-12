@@ -10,7 +10,7 @@ from pypdf import PdfReader
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from tests.auth_test_utils import create_test_user
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -132,8 +132,8 @@ def _occupy_slot(slot_id: int, asset_id: int) -> None:
 
 def _login_issue_operator(client, *, username: str = "issue-operator") -> int:
     operator_id = create_test_user(username=username, password="op-pass", role="operator")
+    login_session(client, operator_id)
     with client.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -143,8 +143,7 @@ def _login_issue_operator(client, *, username: str = "issue-operator") -> int:
 
 def _login_user(client, *, username: str, role: str) -> int:
     user_id = create_test_user(username=username, password="op-pass", role=role)
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
+    login_session(client, user_id)
     return user_id
 
 
@@ -498,8 +497,7 @@ def test_mixed_holder_return_renders_safely(client_with_temp_db) -> None:
 
 def test_missing_receipt_returns_404(client_with_temp_db) -> None:
     operator_id = create_test_user(username="missing-operator", password="op-pass", role="operator")
-    with client_with_temp_db.session_transaction() as sess:
-        sess["user_id"] = operator_id
+    login_session(client_with_temp_db, operator_id)
 
     response = client_with_temp_db.get("/receipts/9999")
 
