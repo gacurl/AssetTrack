@@ -4,6 +4,63 @@
 {% block page_heading %}Admin: Tools{% endblock %}
 {% block page_class %} page-wide{% endblock %}
 
+{% block extra_head %}
+  <style>
+    .admin-control-panel {
+      border-width: 2px;
+      border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-surface));
+    }
+    .admin-tool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin: 0.5rem 0 1rem;
+    }
+    .admin-tool-link {
+      display: block;
+      min-height: 3.25rem;
+      padding: 0.85rem 0.95rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 10px;
+      background: var(--color-surface-bg);
+      color: var(--color-primary);
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .admin-tool-link:hover {
+      text-decoration: none;
+      background: color-mix(in srgb, var(--color-primary-soft) 36%, var(--color-surface-bg));
+      border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-surface));
+    }
+    .admin-tool-link.admin-tool-link--primary {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+    }
+    .admin-tool-link.admin-tool-link--primary:hover {
+      background: color-mix(in srgb, var(--color-primary) 88%, black);
+    }
+    .admin-meta-card {
+      background: color-mix(in srgb, var(--color-surface-bg) 78%, var(--color-panel-bg));
+      border-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    }
+    .admin-meta-card h2 {
+      color: var(--color-text-muted);
+    }
+    .recovery-state-card.is-active {
+      border-width: 2px;
+      border-color: var(--color-accent);
+      background: color-mix(in srgb, var(--color-accent) 8%, var(--color-panel-bg));
+    }
+    .recovery-state-card.is-active h2 {
+      color: var(--color-accent);
+    }
+    .admin-secondary-actions {
+      margin-top: 0.75rem;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <nav class="workflow-local-nav" aria-label="Admin navigation">
     <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
@@ -21,7 +78,77 @@
     <div class="flash error">{{ schema_warning }}</div>
   {% endif %}
 
-  <div class="card">
+  {% if recovery_mode.active %}
+  <div class="card recovery-state-card is-active">
+    <h2>Recovery Mode Active</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Status</th>
+          <td id="recovery-status">{{ recovery_mode.status_label }}</td>
+        </tr>
+        <tr>
+          <th>Acknowledgment</th>
+          <td id="recovery-acknowledgment">{{ recovery_mode.acknowledgment_label }}</td>
+        </tr>
+        <tr>
+          <th>Restore timestamp</th>
+          <td id="recovery-restored-at">{{ recovery_mode.restored_at_display or "N/A" }}</td>
+        </tr>
+        <tr>
+          <th>Uploaded filename</th>
+          <td id="recovery-source-filename">
+            {% if recovery_mode.source_filename %}
+              <code>{{ recovery_mode.source_filename }}</code>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Rollback artifact</th>
+          <td id="recovery-rollback-path">
+            {% if recovery_mode.rollback_db_path %}
+              <code>{{ recovery_mode.rollback_db_path }}</code>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Recovery state file</th>
+          <td id="recovery-state-path"><code>{{ recovery_mode.recovery_state_path }}</code></td>
+        </tr>
+      </tbody>
+    </table>
+    {% if recovery_mode.parse_error %}
+      <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
+    {% endif %}
+    <div class="recovery-action-area search-actions" aria-label="Recovery actions">
+      <form method="post" action="{{ url_for('admin_recovery_acknowledge') }}">
+        <button type="submit" class="action-danger">Acknowledge Recovery and Resume</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card admin-control-panel">
+    <h2>Admin Tools</h2>
+    <nav class="admin-tool-grid" aria-label="Admin tool navigation">
+      <a class="admin-tool-link admin-tool-link--primary" href="{{ url_for('add_assets') }}">Stage Assets</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_users') }}">Manage Users</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a>
+    </nav>
+    <div class="workflow-action-row admin-secondary-actions" aria-label="Admin tool actions">
+      <a class="action-secondary" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    </div>
+  </div>
+
+  {% if not recovery_mode.active %}
+  <div class="card admin-meta-card recovery-state-card">
     <h2>Recovery State</h2>
     <table>
       <tbody>
@@ -66,28 +193,11 @@
     {% if recovery_mode.parse_error %}
       <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
     {% endif %}
-    {% if recovery_mode.active %}
-      <div class="recovery-action-area search-actions" aria-label="Recovery actions">
-        <form method="post" action="{{ url_for('admin_recovery_acknowledge') }}">
-          <button type="submit" class="action-danger">Acknowledge Recovery and Resume</button>
-        </form>
-      </div>
-    {% endif %}
   </div>
+  {% endif %}
 
-  <div class="card">
-    <h2>Admin Tools</h2>
-    <nav class="workflow-local-nav" aria-label="Admin tool navigation">
-      <p><a class="nav-link" href="{{ url_for('add_assets') }}">Stage Assets</a></p>
-      <p><a class="nav-link" href="{{ url_for('admin_users') }}">Manage Users</a></p>
-      <p><a class="nav-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a></p>
-      <p><a class="nav-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a></p>
-      <p><a class="nav-link" href="{{ url_for('admin_human_report') }}">Open Human-Readable Report</a></p>
-      <p><a class="nav-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a></p>
-    </nav>
-    <div class="workflow-action-row" aria-label="Admin tool actions">
-      <a class="action-secondary" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
-    </div>
+  <div class="card admin-meta-card">
+    <h2>System Snapshot</h2>
     <table>
       <tbody>
         <tr>
@@ -106,7 +216,7 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card admin-meta-card">
     <h2>Restore History</h2>
     <p>Operational restore records only. This surface does not modify custody or audit history.</p>
     <p><strong>History file:</strong> <code id="restore-history-path">{{ restore_history.history_path }}</code></p>

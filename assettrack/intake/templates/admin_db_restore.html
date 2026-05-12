@@ -4,6 +4,35 @@
 {% block page_heading %}Admin: Database Restore{% endblock %}
 {% block page_class %} admin-maintenance-wide-fields{% endblock %}
 
+{% block extra_head %}
+  <style>
+    .restore-primary-card {
+      border-width: 2px;
+      border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-surface));
+    }
+    .restore-confirm-card {
+      border-width: 2px;
+      border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-surface));
+      background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel-bg));
+    }
+    .restore-result-card {
+      border-width: 2px;
+      border-color: color-mix(in srgb, var(--color-success) 46%, var(--color-surface));
+      background: color-mix(in srgb, var(--color-success) 7%, var(--color-panel-bg));
+    }
+    .restore-meta-card {
+      background: color-mix(in srgb, var(--color-surface-bg) 78%, var(--color-panel-bg));
+      border-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    }
+    .restore-meta-card h2 {
+      color: var(--color-text-muted);
+    }
+    .restore-secondary-action {
+      margin-top: 0.35rem;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <nav class="workflow-local-nav" aria-label="Admin restore navigation">
     <a class="nav-link" href="{{ url_for('admin_system') }}">Back to admin tools</a>
@@ -25,7 +54,7 @@
     <div class="flash success">{{ success_message }}</div>
   {% endif %}
 
-  <div class="card">
+  <div class="card restore-primary-card">
     <h2>Restore SQLite Backup</h2>
     <p>Use this only for recovery. AssetTrack validates the uploaded SQLite file first, then requires admin password confirmation before live replacement.</p>
     <form method="post" enctype="multipart/form-data">
@@ -41,7 +70,7 @@
   </div>
 
   {% if validation_summary %}
-    <div class="card">
+    <div class="card restore-primary-card">
       <h2>Validation Summary</h2>
       <p>Validation completed. No live replacement has occurred yet.</p>
       <table>
@@ -86,7 +115,7 @@
       </table>
     </div>
 
-    <div class="card">
+    <div class="card restore-confirm-card">
       <h2>Confirm Live Replacement</h2>
       <p>Replace the current live database only after you verify the backup details above. This action creates the rollback copy, activates recovery mode, and records restore history.</p>
       <form method="post">
@@ -96,19 +125,19 @@
           <input id="admin_password" name="admin_password" type="password" autocomplete="current-password" required />
         </div>
         <div class="search-actions">
-          <button type="submit">Replace Live Database</button>
+          <button type="submit" class="action-danger">Replace Live Database</button>
         </div>
       </form>
       <form method="post">
         <input type="hidden" name="action" value="cancel_validation" />
-        <div class="search-actions">
-          <button type="submit">Clear Validation</button>
+        <div class="search-actions restore-secondary-action">
+          <button type="submit" class="action-secondary">Clear Validation</button>
         </div>
       </form>
     </div>
   {% endif %}
 
-  <div class="card">
+  <div class="card restore-meta-card">
     <h2>Operational Paths</h2>
     <table>
       <tbody>
@@ -128,7 +157,7 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card restore-meta-card">
     <h2>After Restore</h2>
     <p>Use this sequence before acknowledging recovery:</p>
     <ol>
@@ -142,7 +171,7 @@
   </div>
 
   {% if restore_result %}
-    <div class="card">
+    <div class="card restore-result-card">
       <h2>Restore Result</h2>
       <table>
         <tbody>
