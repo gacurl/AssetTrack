@@ -51,3 +51,5 @@ Why it matters:
 - treat `CRITICAL` findings as merge blockers until fixed or explicitly risk-accepted
 - review advisory findings from uploaded artifacts during the normal patch cadence process and convert real issues into scoped remediation work
 - if a finding is a false positive, document the suppression in a separate change instead of weakening the baseline broadly
+
+For weekly review, severity triage, monthly patch cadence, and risk acceptance guidance, use [`patch-cadence.md`](/Users/gacurl/IdeaProjects/AssetTrack/docs/security/patch-cadence.md).
