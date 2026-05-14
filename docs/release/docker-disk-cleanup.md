@@ -91,6 +91,8 @@ Why it matters:
 
 - this sequence reclaims common Docker build waste without deleting the bind-mounted SQLite data path used by AssetTrack
 
+Before deployment cleanup or rebuild work, confirm a current backup exists by following the [Backup and Restore Runbook](../operations/backup_restore.md).
+
 ## Dangerous Commands
 
 Do not use these casually:
