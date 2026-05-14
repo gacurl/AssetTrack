@@ -8,6 +8,43 @@ This runbook defines the approved backup export and in-app restore workflow for 
 - host path in this repo: `./data/assettrack.db`
 - config source: `ASSETTRACK_DB_PATH`
 
+Why it matters:
+
+- this is the live database path
+- backup and restore work must preserve this data unless an admin intentionally performs a validated in-app restore
+- manual overwrite of this path creates data-loss risk
+
+## Backup cadence
+
+Take a full database backup at these times:
+
+- before each live event
+- after each live event
+- daily during multi-day events
+- before deployment or build changes
+- before restore testing
+- before any recovery action on a live system
+
+Why it matters:
+
+- AssetTrack is offline-first, so local backup discipline is the recovery plan
+- event activity after the last backup cannot be recreated automatically from a later restore
+
+## Backup storage rules
+
+Store backup files:
+
+- outside ephemeral temp directories
+- outside Docker cache or container-only paths
+- in a controlled operator backup location
+- with restricted access appropriate for production custody data
+
+Recommended practice:
+
+- keep at least one recent local backup immediately available
+- keep older event-period backups until the event closes cleanly
+- label backups clearly enough that an operator can identify the correct restore point under time pressure
+
 ## Recovery model
 
 AssetTrack restore is an in-app operational recovery action.
@@ -42,11 +79,39 @@ Expected filename pattern:
 
 `assettrack-backup-YYYYMMDD-HHMMSS.db`
 
+Recommended interpretation:
+
+- `YYYYMMDD` is the local calendar date
+- `HHMMSS` is the local 24-hour time
+
+Recommended operator notes to record with the file:
+
+- who took the backup
+- why it was taken
+- whether it was pre-event, post-event, pre-deployment, or pre-restore-test
+
 Why this is safe:
 
 - no schema change occurs
 - no runtime behavior changes
 - no custody or audit state is modified
+
+## Backup verification
+
+After downloading a backup:
+
+1. Confirm the file name matches the expected `assettrack-backup-YYYYMMDD-HHMMSS.db` pattern.
+2. Confirm the file is stored in the intended backup location.
+3. Confirm the file is not zero bytes.
+4. Record when and why the backup was taken.
+
+If any of those checks fail:
+
+- stop and correct the backup handling before relying on the file
+
+Why it matters:
+
+- a backup that cannot be identified or located is not operationally reliable
 
 ## In-app restore path
 
@@ -58,6 +123,13 @@ Use this path when the live database is no longer trusted and you have a known-g
 4. Select `Restore Database Backup`.
 5. Upload the selected backup `.db` file.
 6. Select `Validate and Restore`.
+
+Do not:
+
+- overwrite `./data/assettrack.db` manually
+- copy a backup file directly over the live DB path
+- use restore as a merge tool
+- use destructive Docker volume cleanup as part of restore
 
 Expected result:
 
@@ -107,12 +179,17 @@ Required checks:
 - `PASS` receipts screens load
 - `PASS` resend/retry is visibly blocked during recovery mode
 - `PASS` holder / asset / recent record counts are plausible for the selected backup
+- `PASS` the restored state matches the expected event history snapshot for the selected backup point
 
 If any check fails:
 
 - stop operator use
 - do not acknowledge recovery
 - investigate before allowing new work
+
+Why it matters:
+
+- restored operational state must still reconcile with the event history captured in the selected backup
 
 ## Clear recovery mode
 
@@ -145,10 +222,14 @@ For the full end-to-end procedure, use:
 - [Recovery Workflow Smoke Test](../release/recovery-smoke-test.md)
 - [Admin Recovery Workflow](../operator/admin-recovery-workflow.md)
 - [Admin Database Backup Export](../operator/admin-backup-export.md)
+- [Deployment Guide](../release/deployment.md)
+- [Docker Disk Cleanup](../release/docker-disk-cleanup.md)
 
 ## Operational warnings
 
 - `docker compose down -v` remains destructive and is not part of normal recovery.
+- `docker volume prune` remains destructive and is not part of normal recovery.
 - `rm -f data/assettrack.db` remains destructive and belongs only to explicit reset workflows.
+- manually replacing `./data/assettrack.db` is destructive and is not an approved restore path.
 - Keep backups outside ephemeral directories.
 - Restore history is operational metadata only. It does not replace custody or audit history.
