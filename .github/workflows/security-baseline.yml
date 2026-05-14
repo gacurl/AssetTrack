@@ -1,0 +1,134 @@
+name: Security Baseline
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  trivy-filesystem:
+    name: Trivy filesystem, dependency, and secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      # Trivy setup is supply-chain-sensitive. Keep the setup action pinned to a
+      # full commit SHA and review both the action ref and CLI version before any
+      # bump. Do not switch to floating refs such as @master, @main, or mutable tags.
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: v0.70.0
+          cache: true
+
+      - name: Create report directory
+        run: mkdir -p trivy-reports
+
+      - name: Generate filesystem advisory report
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format table \
+            --output trivy-reports/fs-all-severities.txt \
+            .
+
+      - name: Generate filesystem advisory report JSON
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format json \
+            --output trivy-reports/fs-all-severities.json \
+            .
+
+      - name: Fail on CRITICAL filesystem findings
+        run: |
+          trivy fs \
+            --scanners vuln,misconfig,secret \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            .
+
+      - name: Upload filesystem scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-filesystem-reports
+          path: trivy-reports/
+          if-no-files-found: error
+
+  trivy-image:
+    name: Trivy container image scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      # Trivy setup is supply-chain-sensitive. Keep the setup action pinned to a
+      # full commit SHA and review both the action ref and CLI version before any
+      # bump. Do not switch to floating refs such as @master, @main, or mutable tags.
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: v0.70.0
+          cache: true
+
+      - name: Build Docker image
+        run: docker build -t assettrack-security-baseline:${{ github.sha }} .
+
+      - name: Create report directory
+        run: mkdir -p trivy-reports
+
+      - name: Generate image advisory report
+        run: |
+          trivy image \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format table \
+            --output trivy-reports/image-all-severities.txt \
+            assettrack-security-baseline:${{ github.sha }}
+
+      - name: Generate image advisory report JSON
+        run: |
+          trivy image \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format json \
+            --output trivy-reports/image-all-severities.json \
+            assettrack-security-baseline:${{ github.sha }}
+
+      - name: Generate image SBOM
+        run: |
+          trivy image \
+            --format cyclonedx \
+            --output trivy-reports/image-sbom.cdx.json \
+            assettrack-security-baseline:${{ github.sha }}
+
+      - name: Fail on CRITICAL image findings
+        run: |
+          trivy image \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            assettrack-security-baseline:${{ github.sha }}
+
+      - name: Upload image scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: trivy-reports/
+          if-no-files-found: error
