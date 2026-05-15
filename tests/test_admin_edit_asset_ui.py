@@ -407,7 +407,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertIn(b"Asset Removal", response.data)
         self.assertIn(b"Asset records are not removed from the admin UI.", response.data)
         self.assertIn(b"Use the retire flow for asset removal handling.", response.data)
-        self.assertIn(b"Open Retire Asset", response.data)
+        self.assertIn(b"Open Retire Flow", response.data)
         self.assertIn(b'href="/admin/assets/retire"', response.data)
         self.assertNotIn(b"Delete Orphan / Junk Asset", response.data)
 
@@ -433,7 +433,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset has event history and cannot be removed.", response.data)
         self.assertIn(b"This asset must use the retire flow rather than removal from edit.", response.data)
-        self.assertIn(b"Open Retire Asset", response.data)
+        self.assertIn(b"Open Retire Flow", response.data)
         self.assertIn(b'href="/admin/assets/retire"', response.data)
         still_present = self.conn.execute("SELECT 1 FROM assets WHERE id = ?;", (asset_id,)).fetchone()
         self.assertIsNotNone(still_present)

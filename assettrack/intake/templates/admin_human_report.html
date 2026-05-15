@@ -10,10 +10,10 @@
 {% endblock %}
 
 {% block content %}
-  <div class="report-actions nav-row mixed-nav-row">
+  <div class="report-actions nav-row">
     <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
-    <a class="chip" href="{{ url_for('admin_human_report_pdf') }}">Download PDF</a>
-    <a class="chip" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    <a class="action-secondary" href="{{ url_for('admin_human_report_pdf') }}">Download PDF</a>
+    <a class="action-secondary" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
   </div>
 
   {% if report_error %}
@@ -22,7 +22,7 @@
 
   <div class="card">
     <h2>Report Scope</h2>
-    <p>Read-only report. Not a database backup.</p>
+    <p class="card-intro">Read-only operational report. This surface does not replace a database backup.</p>
     <p><strong>Database path:</strong> <code>{{ db_path }}</code></p>
     <p><strong>Recent events:</strong> active events only.</p>
   </div>

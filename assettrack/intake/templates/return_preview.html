@@ -105,6 +105,7 @@
 
   <div class="card workflow-card">
     <h2>Commit</h2>
+    <p class="card-intro">Commit only after the queued returns and any blocked items have been reviewed.</p>
 
     {% if not blocking_issues %}
       <form method="post" action="{{ url_for('return_commit') }}">

@@ -168,6 +168,7 @@
 
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
+    <p class="card-intro">Stage return scans in the queue, then review the queued batch before commit.</p>
     {% if issue_location_form is defined and not issue_location_ready %}
       <div class="flash error">
         <strong>Scanning is blocked.</strong> Set current location first.
@@ -223,7 +224,7 @@
 
   <div class="card workflow-card">
     <div class="workflow-action-row">
-      <a class="chip preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
+      <a class="preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
     </div>
   </div>
 

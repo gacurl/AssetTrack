@@ -35,7 +35,7 @@
 
 {% block content %}
   <nav class="workflow-local-nav" aria-label="Admin restore navigation">
-    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to admin tools</a>
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
   </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -56,7 +56,7 @@
 
   <div class="card restore-primary-card">
     <h2>Restore SQLite Backup</h2>
-    <p>Use this only for recovery. AssetTrack validates the uploaded SQLite file first, then requires admin password confirmation before live replacement.</p>
+    <p class="card-intro">Use this only for recovery. AssetTrack validates the uploaded SQLite file first, then requires admin password confirmation before live replacement.</p>
     <form method="post" enctype="multipart/form-data">
       <input type="hidden" name="action" value="validate" />
       <div class="row form-group">

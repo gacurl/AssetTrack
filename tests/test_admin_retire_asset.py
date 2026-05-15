@@ -85,7 +85,7 @@ class AdminRetireAssetTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Retire Asset", response.data)
         self.assertIn(b"Find Asset", response.data)
-        self.assertIn(b"Search by asset tag", response.data)
+        self.assertIn(b"Enter a full or partial asset tag", response.data)
         self.assertIn(b">Search<", response.data)
 
     def test_retire_from_storage_is_atomic_and_logs_event(self) -> None:

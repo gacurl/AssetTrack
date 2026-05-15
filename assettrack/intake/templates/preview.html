@@ -25,6 +25,7 @@
   {% endwith %}
 
   <div class="card">
+    <h2>Batch Status</h2>
     <p>
       <strong>Rows:</strong> {{ row_count }}
       &nbsp;|&nbsp;
@@ -80,6 +81,7 @@
   </div>
 
   <div class="card">
+    <h2>Commit</h2>
     <form method="post" action="{{ url_for('issue_commit') if issue_mode else url_for('preview_commit') }}" style="margin-top: 10px;">
       <label style="display:block; margin-bottom: 10px;">
         <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
@@ -87,7 +89,7 @@
       </label>
 
       <div class="workflow-action-row">
-        <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Add to database" }}</button>
+        <button id="add_btn" type="submit" disabled data-timeout-lock-target>{{ "Commit Issue" if issue_mode else "Commit Staged Assets" }}</button>
       </div>
     </form>
   </div>
