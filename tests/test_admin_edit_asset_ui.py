@@ -101,6 +101,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         response = self.client.get("/admin/assets/edit")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Edit Asset", response.data)
+        self.assertNotIn(b'<option value="tablet"', response.data)
 
     def test_exact_lookup_loads_edit_form_directly(self) -> None:
         self._insert_asset(
@@ -229,7 +230,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
                 "asset_tag": "AT-EDIT-1",
                 "serial_number": "SER-EDIT-1A",
                 "manufacturer": "Lenovo",
-                "equipment_type": "tablet",
+                "equipment_type": "monitor",
                 "building": "HQ",
                 "room": "210",
                 "model": "X1",
@@ -251,7 +252,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(asset_row["serial_number"], "SER-EDIT-1A")
         self.assertEqual(asset_row["manufacturer"], "Lenovo")
-        self.assertEqual(asset_row["equipment_type"], "tablet")
+        self.assertEqual(asset_row["equipment_type"], "monitor")
         self.assertEqual(asset_row["building_room"], "HQ/210")
         self.assertEqual(asset_row["home_slot_id"], 202)
         self.assertEqual(asset_row["case_number"], "CASE-B")
@@ -276,6 +277,81 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertTrue(any(row["event_type"] == "ASSET_UPDATED" for row in events))
         payloads = [json.loads(row["payload"]) for row in events if row["payload"]]
         self.assertTrue(any(payload.get("home_slot_id") == 202 for payload in payloads))
+
+    def test_edit_form_preserves_existing_legacy_equipment_type(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-EDIT-LEGACY-1",
+            serial_number="SER-EDIT-LEGACY-1",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+        self.conn.execute("UPDATE assets SET equipment_type = 'tablet' WHERE id = ?;", (asset_id,))
+        self.conn.commit()
+
+        loaded = self.client.get("/admin/assets/edit?asset_tag=AT-EDIT-LEGACY-1")
+        self.assertEqual(loaded.status_code, 200)
+        self.assertIn(b'<option value="tablet" selected>', loaded.data)
+        self.assertIn(b"tablet (existing value)", loaded.data)
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "update",
+                "lookup_asset_tag": "AT-EDIT-LEGACY-1",
+                "asset_tag": "AT-EDIT-LEGACY-1",
+                "serial_number": "SER-EDIT-LEGACY-1A",
+                "manufacturer": "Dell",
+                "equipment_type": "tablet",
+                "building": "HQ",
+                "room": "112",
+                "model": "Latitude",
+                "model_code": "5400",
+                "notes": "legacy type preserved",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            "SELECT serial_number, equipment_type, building_room FROM assets WHERE id = ?;",
+            (asset_id,),
+        ).fetchone()
+        self.assertEqual(asset_row["serial_number"], "SER-EDIT-LEGACY-1A")
+        self.assertEqual(asset_row["equipment_type"], "tablet")
+        self.assertEqual(asset_row["building_room"], "HQ/112")
+
+    def test_edit_rejects_invalid_new_equipment_type(self) -> None:
+        self._insert_asset(
+            "AT-EDIT-INVALID-1",
+            serial_number="SER-EDIT-INVALID-1",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "update",
+                "lookup_asset_tag": "AT-EDIT-INVALID-1",
+                "asset_tag": "AT-EDIT-INVALID-1",
+                "serial_number": "SER-EDIT-INVALID-1",
+                "manufacturer": "Dell",
+                "equipment_type": "tablet",
+                "building": "HQ",
+                "room": "110",
+                "model": "Latitude",
+                "model_code": "5400",
+                "notes": "invalid new type",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Choose a valid asset type.", response.data)
 
     def test_edit_in_custody_asset_updates_home_slot_without_occupancy(self) -> None:
         self._insert_slot(301, "CASE-C", 3)

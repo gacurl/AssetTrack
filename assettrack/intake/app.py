@@ -110,7 +110,26 @@ INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", str(
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
-ASSET_EQUIPMENT_TYPE_OPTIONS = ("laptop", "tablet")
+ASSET_EQUIPMENT_TYPE_OPTIONS = (
+    "laptop",
+    "monitor",
+    "large tv",
+    "switch",
+    "other network equipment",
+    "peripheral",
+    "voip",
+    "other",
+)
+ASSET_EQUIPMENT_TYPE_LABELS = {
+    "laptop": "Laptop",
+    "monitor": "Monitor",
+    "large tv": "Large TV",
+    "switch": "Switch",
+    "other network equipment": "Other Network Equipment",
+    "peripheral": "Peripheral",
+    "voip": "VoIP",
+    "other": "Other",
+}
 DEMO_SUMMARY = {
     "assets_in_custody": 18,
     "pending_receipts": 2,
@@ -150,6 +169,36 @@ ADMIN_ROUTE_RATE_LIMIT_WINDOW_SECONDS = 60
 ADMIN_ROUTE_RATE_LIMIT_MAX_ACTIONS = 10
 ADMIN_ROUTE_ATTEMPTS: dict[str, list[int]] = {}
 PENDING_DB_RESTORE_SESSION_KEY = "pending_db_restore"
+
+
+def _equipment_type_form_options(current_value: object = "") -> list[dict[str, object]]:
+    current = str(current_value or "").strip()
+    options = [
+        {
+            "value": equipment_type,
+            "label": ASSET_EQUIPMENT_TYPE_LABELS[equipment_type],
+            "is_legacy": False,
+        }
+        for equipment_type in ASSET_EQUIPMENT_TYPE_OPTIONS
+    ]
+    if current and current not in ASSET_EQUIPMENT_TYPE_OPTIONS:
+        options.append(
+            {
+                "value": current,
+                "label": f"{current} (existing value)",
+                "is_legacy": True,
+            }
+        )
+    return options
+
+
+def _equipment_type_is_allowed(value: object, *, allow_current: object = "") -> bool:
+    selected = str(value or "").strip()
+    if not selected:
+        return False
+    if selected in ASSET_EQUIPMENT_TYPE_OPTIONS:
+        return True
+    return bool(str(allow_current or "").strip()) and selected == str(allow_current or "").strip()
 
 
 @app.after_request
@@ -3615,6 +3664,12 @@ def intake():
             selected_equipment_type = current_equipment_type
         else:
             selected_equipment_type = (submitted_equipment_type or "").strip() or "laptop"
+        if not _equipment_type_is_allowed(selected_equipment_type, allow_current=current_equipment_type):
+            flash("Choose a valid asset type.", "error")
+            touch_session()
+            if redirect_target.startswith("/") and not redirect_target.startswith("//"):
+                return redirect(redirect_target)
+            return redirect(url_for("add_assets"))
         session["equipment_type"] = selected_equipment_type
 
         if action == "clear":
@@ -3842,6 +3897,7 @@ def add_assets():
         queue_len=len(SCAN_QUEUE),
         latest=(SCAN_QUEUE[-1].asset_tag if SCAN_QUEUE else ""),
         equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+        equipment_type_options=_equipment_type_form_options((session.get("equipment_type") or "laptop").strip() or "laptop"),
         slot_options=slot_options,
         case_options=case_options,
     )
@@ -7140,6 +7196,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7151,6 +7208,11 @@ def admin_edit_asset():
                     errors.append("manufacturer is required.")
                 if not form_state["equipment_type"]:
                     errors.append("equipment_type is required.")
+                elif not _equipment_type_is_allowed(
+                    form_state["equipment_type"],
+                    allow_current=asset_view["equipment_type"],
+                ):
+                    errors.append("Choose a valid asset type.")
                 if not form_state["building"]:
                     errors.append("building is required.")
                 if not form_state["room"]:
@@ -7171,6 +7233,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7201,6 +7264,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7213,6 +7277,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7233,6 +7298,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7282,6 +7348,7 @@ def admin_edit_asset():
                         asset=asset_view,
                         asset_matches=asset_matches,
                         error_message=error_message,
+                        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
                         slot_options=slot_options,
                         case_options=case_options,
                     )
@@ -7302,6 +7369,7 @@ def admin_edit_asset():
         asset=asset_view,
         asset_matches=asset_matches,
         error_message=error_message,
+        equipment_type_options=_equipment_type_form_options(form_state["equipment_type"]),
         slot_options=slot_options,
         case_options=case_options,
     )
