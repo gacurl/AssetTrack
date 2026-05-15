@@ -30,7 +30,9 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+  <nav class="workflow-local-nav" aria-label="Admin retire navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -46,7 +48,7 @@
 
   <div class="card">
   <h2>Find Asset</h2>
-  <p class="muted">
+  <p class="card-intro">
     Enter a full or partial asset tag. Exact matches load directly.
     Partial matches require you to select one asset before retiring.
   </p>
@@ -68,8 +70,6 @@
       {% endif %}
     </div>
   </form>
-</div>
-    </form>
   </div>
 
   {% if asset_matches and not asset %}

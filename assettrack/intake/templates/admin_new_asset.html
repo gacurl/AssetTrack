@@ -13,8 +13,10 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
-  <p><a href="{{ url_for('admin_edit_asset') }}">Edit an existing asset</a></p>
+  <nav class="workflow-local-nav" aria-label="Admin asset creation navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+    <a class="action-secondary" href="{{ url_for('admin_edit_asset') }}">Edit Existing Asset</a>
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -30,7 +32,7 @@
 
   <div class="card">
     <h2>New Asset</h2>
-    <p class="muted">Fill in the required fields below. Asset type defaults to Laptop.</p>
+    <p class="card-intro">Fill in the required fields below. Asset type defaults to Laptop.</p>
     <form method="post" action="{{ url_for('admin_new_asset') }}">
       <div class="admin-maintenance-grid">
         <div class="row">

@@ -12,7 +12,9 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+  <nav class="workflow-local-nav" aria-label="Admin replacement navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -28,6 +30,7 @@
 
   <div class="card">
     <h2>1) Lookup Failed Asset</h2>
+    <p class="card-intro">Load the failed asset first, then record the replacement details as one maintenance operation.</p>
     <form method="post" action="{{ url_for('admin_replace_asset') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">

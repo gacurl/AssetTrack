@@ -26,7 +26,7 @@ def test_admin_navigation_exposes_system_health_link(client_with_temp_db) -> Non
 
     assert response.status_code == 200
     assert b'href="/admin/system"' in response.data
-    assert b">System / Admin Tools<" in response.data
+    assert b">Admin Tools<" in response.data
 
 
 def test_operator_navigation_hides_system_health_link(client_with_temp_db) -> None:
@@ -37,4 +37,4 @@ def test_operator_navigation_hides_system_health_link(client_with_temp_db) -> No
 
     assert response.status_code == 200
     assert b'href="/admin/system"' not in response.data
-    assert b">System / Admin Tools<" not in response.data
+    assert b">Admin Tools<" not in response.data

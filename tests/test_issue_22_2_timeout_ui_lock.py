@@ -78,7 +78,7 @@ def test_add_assets_and_preview_render_timeout_lock_targets(client_with_temp_db)
     assert b"Session expired. Redirecting to login..." in preview.data
     assert b'let timeoutLocked = false;' in preview.data
     assert b'window.location = "/logout";' in preview.data
-    assert b'data-timeout-lock-target>Add to database<' in preview.data
+    assert b'data-timeout-lock-target>Commit Staged Assets<' in preview.data
     assert b"Discard batch" not in preview.data
     assert b'action="/preview/discard"' not in preview.data
 

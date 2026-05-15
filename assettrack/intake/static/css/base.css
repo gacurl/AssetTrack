@@ -517,7 +517,28 @@ a:hover {
 }
 
 .workflow-local-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin: 0 0 1rem 0;
+}
+
+.workflow-local-nav .nav-link,
+.workflow-local-nav .action-secondary,
+.workflow-local-nav .action-quiet {
+  display: inline-flex;
+  align-items: center;
+}
+
+.card h2:first-child {
+  margin-top: 0;
+}
+
+.card-intro {
   margin: 0 0 0.85rem 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
 }
 
 .page {

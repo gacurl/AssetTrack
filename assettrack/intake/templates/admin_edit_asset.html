@@ -5,10 +5,10 @@
 {% block page_heading %}Admin: Edit Asset{% endblock %}
 
 {% block content %}
-  <div class="actions">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
-    <a class="chip" href="{{ url_for('admin_new_asset') }}">Create asset</a>
-  </div>
+  <nav class="workflow-local-nav" aria-label="Admin asset navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+    <a class="action-secondary" href="{{ url_for('admin_new_asset') }}">Create Asset</a>
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -180,7 +180,9 @@
       {% else %}
         <p>This asset must use the retire flow rather than removal from edit.</p>
       {% endif %}
-      <p><a class="nav-link" href="{{ url_for('admin_retire_asset') }}">Open Retire Asset</a></p>
+      <div class="workflow-action-row workflow-action-row--quiet">
+        <a class="action-secondary" href="{{ url_for('admin_retire_asset') }}">Open Retire Flow</a>
+      </div>
     </div>
   {% endif %}
 {% endblock %}
