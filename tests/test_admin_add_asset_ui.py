@@ -94,7 +94,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Admin: Add Asset", response.data)
         self.assertIn(b"Asset type", response.data)
         self.assertIn(b'<option value="laptop"', response.data)
-        self.assertIn(b'<option value="tablet"', response.data)
+        self.assertIn(b'<option value="other network equipment"', response.data)
+        self.assertIn(b'<option value="voip"', response.data)
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
 
@@ -137,7 +138,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         response = self.client.post(
             "/",
-            data={"scan_text": "", "equipment_type": "tablet", "return_to": "/add-assets"},
+            data={"scan_text": "", "equipment_type": "monitor", "return_to": "/add-assets"},
             follow_redirects=True,
         )
 
@@ -162,7 +163,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         first = self.client.post(
             "/",
-            data={"scan_text": "AT-QUEUE-1", "equipment_type": "tablet"},
+            data={"scan_text": "AT-QUEUE-1", "equipment_type": "monitor"},
         )
         self.assertEqual(first.status_code, 302)
 
@@ -172,12 +173,12 @@ class AdminAddAssetUiTests(unittest.TestCase):
         )
         self.assertEqual(second.status_code, 302)
 
-        self.assertEqual([scan.equipment_type for scan in intake_app.SCAN_QUEUE], ["tablet", "laptop"])
+        self.assertEqual([scan.equipment_type for scan in intake_app.SCAN_QUEUE], ["monitor", "laptop"])
 
         preview = self.client.get("/preview?json=1")
         self.assertEqual(preview.status_code, 200)
         rows = preview.json["rows"]
-        self.assertEqual(rows[0]["equipment_type"], "tablet")
+        self.assertEqual(rows[0]["equipment_type"], "monitor")
         self.assertEqual(rows[1]["equipment_type"], "laptop")
 
     def test_add_assets_queue_rows_show_operator_verification_details(self) -> None:
@@ -186,7 +187,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             Scan(
                 asset_tag="AT-VERIFY-1",
                 scanned_at=datetime(2026, 1, 1, 14, 3, 22, tzinfo=timezone.utc),
-                equipment_type="tablet",
+                equipment_type="monitor",
                 case_name="CASE-V",
                 slot_position=3,
             )
@@ -203,7 +204,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"AT-VERIFY-1", response.data)
-        self.assertIn(b"Equipment type:</strong> tablet", response.data)
+        self.assertIn(b"Equipment type:</strong> monitor", response.data)
         self.assertIn(b"Case:</strong> CASE-V", response.data)
         self.assertIn(b"Slot:</strong> Slot 3", response.data)
         self.assertIn(b"AT-VERIFY-2", response.data)
@@ -216,7 +217,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             Scan(
                 asset_tag="AT-PREVIEW-1",
                 scanned_at=datetime(2026, 1, 1, 14, 5, 22, tzinfo=timezone.utc),
-                equipment_type="tablet",
+                equipment_type="monitor",
             )
         )
 
@@ -235,11 +236,11 @@ class AdminAddAssetUiTests(unittest.TestCase):
     def test_blank_equipment_type_uses_default_and_missing_field_preserves_selection(self) -> None:
         intake_app.SCAN_QUEUE.clear()
 
-        select_tablet = self.client.post(
+        select_monitor = self.client.post(
             "/",
-            data={"scan_text": "AT-QUEUE-1", "equipment_type": "tablet"},
+            data={"scan_text": "AT-QUEUE-1", "equipment_type": "monitor"},
         )
-        self.assertEqual(select_tablet.status_code, 302)
+        self.assertEqual(select_monitor.status_code, 302)
 
         preserve_selection = self.client.post(
             "/",
@@ -248,7 +249,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual(preserve_selection.status_code, 302)
 
         with self.client.session_transaction() as sess:
-            self.assertEqual(sess["equipment_type"], "tablet")
+            self.assertEqual(sess["equipment_type"], "monitor")
 
         default_scan = self.client.post(
             "/",
@@ -318,7 +319,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
                 "asset_tag": "AT-600",
                 "serial_number": "SER-600",
                 "manufacturer": "HP",
-                "equipment_type": "tablet",
+                "equipment_type": "monitor",
                 "building": "HQ",
                 "room": "220",
                 "case_name": "CASE-A",
@@ -448,7 +449,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             "/",
             data={
                 "scan_text": "AT-LIVE-1",
-                "equipment_type": "tablet",
+                "equipment_type": "monitor",
                 "case_name": "CASE-Q",
                 "slot_id": "120",
                 "return_to": "/add-assets",
@@ -481,7 +482,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             ).fetchone()
             self.assertIsNotNone(asset_row)
             self.assertEqual(asset_row["asset_tag"], stored_tag)
-            self.assertEqual(asset_row["equipment_type"], "tablet")
+            self.assertEqual(asset_row["equipment_type"], "monitor")
             self.assertEqual(asset_row["location_type"], "STORAGE")
             self.assertIsNone(asset_row["current_holder_id"])
             self.assertEqual(asset_row["home_slot_id"], 120)
@@ -497,6 +498,29 @@ class AdminAddAssetUiTests(unittest.TestCase):
             self.assertEqual(slot["current_asset_tag"], stored_tag)
         finally:
             verify_conn.close()
+
+    def test_add_assets_route_rejects_invalid_equipment_type_submission(self) -> None:
+        intake_app.SCAN_QUEUE.clear()
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "AT-QUEUE-1", "equipment_type": "tablet", "return_to": "/add-assets"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Choose a valid asset type.", response.data)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 0)
+
+    def test_add_assets_route_preserves_legacy_session_equipment_type_in_dropdown(self) -> None:
+        with self.client.session_transaction() as sess:
+            sess["equipment_type"] = "tablet"
+
+        response = self.client.get("/add-assets")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<option value="tablet" selected>', response.data)
+        self.assertIn(b"tablet (existing value)", response.data)
 
     def test_add_assets_live_seam_rejects_occupied_slot_on_commit(self) -> None:
         existing_id = self._insert_asset("AT-OCC-LIVE", "SER-OCC-LIVE")

@@ -149,15 +149,13 @@
       <form id="intake-form" class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
           <label for="equipment_type"><strong>Equipment type</strong></label><br />
-          <input
-            type="text"
-            id="equipment_type"
-            name="equipment_type"
-            placeholder="e.g. laptop"
-            value="{{ equipment_type or '' }}"
-            autocomplete="off"
-            data-timeout-lock-target
-          />
+          <select id="equipment_type" name="equipment_type" data-timeout-lock-target>
+            {% for option in equipment_type_options %}
+              <option value="{{ option.value }}" {% if (equipment_type or 'laptop') == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
 
         {% if authenticated_role == 'admin' %}

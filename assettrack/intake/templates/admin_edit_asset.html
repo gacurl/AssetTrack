@@ -117,7 +117,13 @@
           </div>
           <div class="row form-group">
             <label class="form-label" for="equipment_type"><strong>equipment_type</strong> (required)</label>
-            <input class="form-input" type="text" id="equipment_type" name="equipment_type" value="{{ form.equipment_type or '' }}" required />
+            <select class="form-select" id="equipment_type" name="equipment_type" required>
+              {% for option in equipment_type_options %}
+                <option value="{{ option.value }}" {% if (form.equipment_type or '') == option.value %}selected{% endif %}>
+                  {{ option.label }}
+                </option>
+              {% endfor %}
+            </select>
           </div>
           <div class="row form-group">
             <label class="form-label" for="building"><strong>building</strong> (required)</label>
