@@ -114,20 +114,15 @@
 {% endblock %}
 
 {% block content %}
-  <nav class="workflow-local-nav" aria-label="Workflow navigation">
-    <a class="nav-link" href="{{ url_for('return_queue') }}">Back to Return</a>
-  </nav>
-
   {% if auth_enabled %}
-    <p><strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}</p>
-
-    {% if authed %}
-    {% else %}
-      <p>Locked. Enter access code to unlock.</p>
-    {% endif %}
-  {% endif %}
-  {% if auth_enabled and authed %}
-    <p><a href="{{ url_for('lock') }}">Lock</a></p>
+    <p class="workflow-summary">
+      <strong>Status:</strong> {{ "Unlocked" if authed else "Locked" }}
+      {% if auth_enabled and authed %}
+        &nbsp;|&nbsp;<a class="action-quiet" href="{{ url_for('lock') }}">Lock</a>
+      {% else %}
+        &nbsp;|&nbsp;Enter access code to unlock.
+      {% endif %}
+    </p>
   {% endif %}
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -139,7 +134,7 @@
   {% endwith %}
 
   <div class="card workflow-entry-card">
-    <p class="card-intro">Add assets to the queue first, then review the queued batch before committing.</p>
+    <p class="card-intro">Add assets to the queue, then review the batch before commit.</p>
     {% if auth_enabled and not authed %}
       <form method="post">
         <input type="password" name="access_code" placeholder="Access code" autofocus />
@@ -235,11 +230,6 @@
     <form method="post" action="{{ url_for('add_assets_review') }}" class="queue-actions">
       <button id="review-batch" class="preview-step" type="submit" data-timeout-lock-target>Preview Queue</button>
     </form>
-  </div>
-
-  <div class="card">
-    <h2>Latest</h2>
-    <p><code>{{ latest }}</code></p>
   </div>
 {% endblock %}
 

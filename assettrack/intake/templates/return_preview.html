@@ -12,7 +12,6 @@
 {% endblock %}
 
 {% block content %}
-  {% set blocked_count = queued_count - ready_count %}
   <nav class="workflow-local-nav" aria-label="Workflow navigation">
     <a class="nav-link" href="{{ url_for('return_queue') }}">Back to Return Queue</a>
   </nav>

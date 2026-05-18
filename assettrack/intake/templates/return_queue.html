@@ -85,12 +85,6 @@
       {% set message_ns.global_messages = message_ns.global_messages + [(category, message)] %}
     {% endif %}
   {% endfor %}
-  {% set jump_to_scan_href = "#scan-input" %}
-  {% set jump_to_queue_href = "#queue-section" %}
-  <nav class="workflow-local-nav" aria-label="Workflow navigation">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-  </nav>
-
   {% if message_ns.global_messages %}
     {% for category, message in message_ns.global_messages %}
       <div class="flash {{ category|e }}">{{ message }}</div>
@@ -108,12 +102,6 @@
 
   {% if workflow_banner_title %}
     {% include "_workflow_context_banner.html" %}
-  {% endif %}
-
-  {% if issue_location_form is defined %}
-    <div class="workflow-action-row workflow-action-row--quiet">
-      <a class="nav-link action-quiet" href="{{ jump_to_scan_href }}">Jump to Scan</a>
-    </div>
   {% endif %}
 
   {% if issue_location_form is defined %}
@@ -168,7 +156,7 @@
 
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
-    <p class="card-intro">Stage return scans in the queue, then review the queued batch before commit.</p>
+    <p class="card-intro">Stage scans in the queue, then review the batch before commit.</p>
     {% if issue_location_form is defined and not issue_location_ready %}
       <div class="flash error">
         <strong>Scanning is blocked.</strong> Set current location first.
@@ -178,11 +166,6 @@
       {% for category, message in message_ns.scan_messages %}
         <div class="flash {{ category|e }}">{{ message }}</div>
       {% endfor %}
-    {% endif %}
-    {% if queue_len > 0 %}
-      <div class="workflow-action-row workflow-action-row--quiet">
-        <a class="nav-link action-quiet" href="{{ jump_to_queue_href }}">Jump to Queue</a>
-      </div>
     {% endif %}
 
     <div class="workflow-action-stack">
