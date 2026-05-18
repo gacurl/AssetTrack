@@ -149,118 +149,133 @@
   </div>
 
   {% if not recovery_mode.active %}
-  <div class="card admin-meta-card recovery-state-card">
-    <h2>Recovery State</h2>
-    <table>
-      <tbody>
-        <tr>
-          <th>Status</th>
-          <td id="recovery-status">{{ recovery_mode.status_label }}</td>
-        </tr>
-        <tr>
-          <th>Acknowledgment</th>
-          <td id="recovery-acknowledgment">{{ recovery_mode.acknowledgment_label }}</td>
-        </tr>
-        <tr>
-          <th>Restore timestamp</th>
-          <td id="recovery-restored-at">{{ recovery_mode.restored_at_display or "N/A" }}</td>
-        </tr>
-        <tr>
-          <th>Uploaded filename</th>
-          <td id="recovery-source-filename">
-            {% if recovery_mode.source_filename %}
-              <code>{{ recovery_mode.source_filename }}</code>
-            {% else %}
-              N/A
-            {% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th>Rollback artifact</th>
-          <td id="recovery-rollback-path">
-            {% if recovery_mode.rollback_db_path %}
-              <code>{{ recovery_mode.rollback_db_path }}</code>
-            {% else %}
-              N/A
-            {% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th>Recovery state file</th>
-          <td id="recovery-state-path"><code>{{ recovery_mode.recovery_state_path }}</code></td>
-        </tr>
-      </tbody>
-    </table>
-    {% if recovery_mode.parse_error %}
-      <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
-    {% endif %}
-  </div>
+  <details class="disclosure-section admin-meta-card recovery-state-card" {% if recovery_mode.parse_error %}open{% endif %}>
+    <summary>
+      <span class="disclosure-title">Recovery State</span>
+      <span class="disclosure-hint">{{ recovery_mode.status_label }} / {{ recovery_mode.acknowledgment_label }}</span>
+    </summary>
+    <div class="disclosure-body">
+      <table>
+        <tbody>
+          <tr>
+            <th>Status</th>
+            <td id="recovery-status">{{ recovery_mode.status_label }}</td>
+          </tr>
+          <tr>
+            <th>Acknowledgment</th>
+            <td id="recovery-acknowledgment">{{ recovery_mode.acknowledgment_label }}</td>
+          </tr>
+          <tr>
+            <th>Restore timestamp</th>
+            <td id="recovery-restored-at">{{ recovery_mode.restored_at_display or "N/A" }}</td>
+          </tr>
+          <tr>
+            <th>Uploaded filename</th>
+            <td id="recovery-source-filename">
+              {% if recovery_mode.source_filename %}
+                <code>{{ recovery_mode.source_filename }}</code>
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th>Rollback artifact</th>
+            <td id="recovery-rollback-path">
+              {% if recovery_mode.rollback_db_path %}
+                <code>{{ recovery_mode.rollback_db_path }}</code>
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th>Recovery state file</th>
+            <td id="recovery-state-path"><code>{{ recovery_mode.recovery_state_path }}</code></td>
+          </tr>
+        </tbody>
+      </table>
+      {% if recovery_mode.parse_error %}
+        <p class="warn">Recovery state file could not be read cleanly: {{ recovery_mode.parse_error }}</p>
+      {% endif %}
+    </div>
+  </details>
   {% endif %}
 
-  <div class="card admin-meta-card">
-    <h2>System Snapshot</h2>
-    <table>
-      <tbody>
-        <tr>
-          <th>DB path</th>
-          <td><code id="db-path">{{ db_path }}</code></td>
-        </tr>
-        <tr>
-          <th>Holder count</th>
-          <td id="holder-count">{{ holder_count if holder_count is not none else "N/A" }}</td>
-        </tr>
-        <tr>
-          <th>Asset count</th>
-          <td id="asset-count">{{ asset_count if asset_count is not none else "N/A" }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <details class="disclosure-section admin-meta-card">
+    <summary>
+      <span class="disclosure-title">System Snapshot</span>
+      <span class="disclosure-hint">{{ holder_count if holder_count is not none else "N/A" }} holders / {{ asset_count if asset_count is not none else "N/A" }} assets</span>
+    </summary>
+    <div class="disclosure-body">
+      <table>
+        <tbody>
+          <tr>
+            <th>DB path</th>
+            <td><code id="db-path">{{ db_path }}</code></td>
+          </tr>
+          <tr>
+            <th>Holder count</th>
+            <td id="holder-count">{{ holder_count if holder_count is not none else "N/A" }}</td>
+          </tr>
+          <tr>
+            <th>Asset count</th>
+            <td id="asset-count">{{ asset_count if asset_count is not none else "N/A" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
 
-  <div class="card admin-meta-card">
-    <h2>Restore History</h2>
-    <p>Operational restore records only. This surface does not modify custody or audit history.</p>
-    <p><strong>History file:</strong> <code id="restore-history-path">{{ restore_history.history_path }}</code></p>
-    {% if restore_history.parse_error %}
-      <p class="warn">Restore history file could not be read cleanly: {{ restore_history.parse_error }}</p>
-    {% endif %}
-    <table>
-      <thead>
-        <tr>
-          <th>Restore Timestamp</th>
-          <th>Uploaded Filename</th>
-          <th>Rollback Artifact</th>
-          <th>Acknowledgment</th>
-          <th>Result</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for entry in restore_history.entries %}
+  <details class="disclosure-section admin-meta-card" {% if restore_history.parse_error %}open{% endif %}>
+    <summary>
+      <span class="disclosure-title">Restore History</span>
+      <span class="disclosure-hint">{{ restore_history.entries|length }} records</span>
+    </summary>
+    <div class="disclosure-body">
+      <p>Operational restore records only. This surface does not modify custody or audit history.</p>
+      <p><strong>History file:</strong> <code id="restore-history-path">{{ restore_history.history_path }}</code></p>
+      {% if restore_history.parse_error %}
+        <p class="warn">Restore history file could not be read cleanly: {{ restore_history.parse_error }}</p>
+      {% endif %}
+      <table>
+        <thead>
           <tr>
-            <td>{{ entry.restored_at_display or "Unknown" }}</td>
-            <td>
-              {% if entry.source_filename %}
-                <code>{{ entry.source_filename }}</code>
-              {% else %}
-                N/A
-              {% endif %}
-            </td>
-            <td>
-              {% if entry.rollback_db_path %}
-                <code>{{ entry.rollback_db_path }}</code>
-              {% else %}
-                N/A
-              {% endif %}
-            </td>
-            <td>{{ entry.acknowledgment_state }}</td>
-            <td>{{ entry.result }}</td>
+            <th>Restore Timestamp</th>
+            <th>Uploaded Filename</th>
+            <th>Rollback Artifact</th>
+            <th>Acknowledgment</th>
+            <th>Result</th>
           </tr>
-        {% else %}
-          <tr>
-            <td colspan="5">No restore history recorded.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {% for entry in restore_history.entries %}
+            <tr>
+              <td>{{ entry.restored_at_display or "Unknown" }}</td>
+              <td>
+                {% if entry.source_filename %}
+                  <code>{{ entry.source_filename }}</code>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+              <td>
+                {% if entry.rollback_db_path %}
+                  <code>{{ entry.rollback_db_path }}</code>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+              <td>{{ entry.acknowledgment_state }}</td>
+              <td>{{ entry.result }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5">No restore history recorded.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
 {% endblock %}

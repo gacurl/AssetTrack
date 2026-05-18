@@ -4,11 +4,6 @@
 {% block page_heading %}Admin: Current Status Report{% endblock %}
 {% block page_class %} report-page{% endblock %}
 
-{% block extra_head %}
-  <style>
-  </style>
-{% endblock %}
-
 {% block content %}
   <div class="report-actions nav-row">
     <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
@@ -27,213 +22,243 @@
     <p><strong>Recent events:</strong> active events only.</p>
   </div>
 
-  <div class="card">
-    <h2>Assets</h2>
-    <div class="report-grid">
-      <div class="report-stat">Total assets<strong>{{ asset_summary.total_assets }}</strong></div>
-      <div class="report-stat">In storage<strong>{{ asset_summary.storage_assets }}</strong></div>
-      <div class="report-stat">In custody<strong>{{ asset_summary.in_custody_assets }}</strong></div>
-      <div class="report-stat">Disposed<strong>{{ asset_summary.disposed_assets }}</strong></div>
-    </div>
-    <div class="table-wrap" style="margin-top: 1rem;">
-      <table>
-        <thead>
-          <tr>
-            <th>Asset Tag</th>
-            <th>Type</th>
-            <th>Make / Model</th>
-            <th>Location Type</th>
-            <th>Current Holder</th>
-            <th>Home Slot</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in assets %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Assets</span>
+      <span class="report-section-hint">{{ asset_summary.total_assets }} total records</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="report-grid">
+        <div class="report-stat">Total assets<strong>{{ asset_summary.total_assets }}</strong></div>
+        <div class="report-stat">In storage<strong>{{ asset_summary.storage_assets }}</strong></div>
+        <div class="report-stat">In custody<strong>{{ asset_summary.in_custody_assets }}</strong></div>
+        <div class="report-stat">Disposed<strong>{{ asset_summary.disposed_assets }}</strong></div>
+      </div>
+      <div class="table-wrap" style="margin-top: 1rem;">
+        <table>
+          <thead>
             <tr>
-              <td><code>{{ row.asset_tag }}</code></td>
-              <td>{{ row.equipment_type or "" }}</td>
-              <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
-              <td>
-                <span class="state-badge{% if asset_is_terminal(row.location_type) %} terminal{% endif %}">{{ asset_state_label(row.location_type) }}</span>
-              </td>
-              <td>
-                {% if row.holder_name %}
-                  {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
-                {% endif %}
-              </td>
-              <td>{{ row.home_slot or "" }}</td>
+              <th>Asset Tag</th>
+              <th>Type</th>
+              <th>Make / Model</th>
+              <th>Location Type</th>
+              <th>Current Holder</th>
+              <th>Home Slot</th>
             </tr>
-          {% else %}
-            <tr><td colspan="6">No assets found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in assets %}
+              <tr>
+                <td><code>{{ row.asset_tag }}</code></td>
+                <td>{{ row.equipment_type or "" }}</td>
+                <td>{{ row.manufacturer }}{% if row.model %} / {{ row.model }}{% endif %}</td>
+                <td>
+                  <span class="state-badge{% if asset_is_terminal(row.location_type) %} terminal{% endif %}">{{ asset_state_label(row.location_type) }}</span>
+                </td>
+                <td>
+                  {% if row.holder_name %}
+                    {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
+                  {% endif %}
+                </td>
+                <td>{{ row.home_slot or "" }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No assets found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Holders</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Name</th>
-            <th>Organization</th>
-            <th>Identifier</th>
-            <th>Assets In Custody</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in holders %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Holders</span>
+      <span class="report-section-hint">{{ holders|length }} records</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td><code>{{ row.id }}</code></td>
-              <td>{{ row.holder_type }}</td>
-              <td>{{ row.name }}</td>
-              <td>{{ row.organization }}</td>
-              <td>{{ row.identifier }}</td>
-              <td>{{ row.assets_in_custody }}</td>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Organization</th>
+              <th>Identifier</th>
+              <th>Assets In Custody</th>
             </tr>
-          {% else %}
-            <tr><td colspan="6">No holders found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in holders %}
+              <tr>
+                <td><code>{{ row.id }}</code></td>
+                <td>{{ row.holder_type }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.organization }}</td>
+                <td>{{ row.identifier }}</td>
+                <td>{{ row.assets_in_custody }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No holders found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Organizations and Building Access</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Organization</th>
-            <th>Mapped Buildings</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in organizations %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Organizations and Building Access</span>
+      <span class="report-section-hint">{{ organizations|length }} organizations</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.name }}</td>
-              <td>{{ row.building_count }}</td>
+              <th>Organization</th>
+              <th>Mapped Buildings</th>
             </tr>
-          {% else %}
-            <tr><td colspan="2">No organizations found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="table-wrap" style="margin-top: 1rem;">
-      <table>
-        <thead>
-          <tr>
-            <th>Organization</th>
-            <th>Building</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in organization_building_mappings %}
+          </thead>
+          <tbody>
+            {% for row in organizations %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.building_count }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="2">No organizations found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap" style="margin-top: 1rem;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.organization_name }}</td>
-              <td>{{ row.building_name }}</td>
+              <th>Organization</th>
+              <th>Building</th>
             </tr>
-          {% else %}
-            <tr><td colspan="2">No organization-to-building mappings found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in organization_building_mappings %}
+              <tr>
+                <td>{{ row.organization_name }}</td>
+                <td>{{ row.building_name }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="2">No organization-to-building mappings found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Current Custody</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Holder</th>
-            <th>Organization</th>
-            <th>Asset Tag</th>
-            <th>Type</th>
-            <th>Current Location</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in current_custody %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Current Custody</span>
+      <span class="report-section-hint">{{ current_custody|length }} assets out</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.holder_name }}</td>
-              <td>{{ row.organization }}</td>
-              <td><code>{{ row.asset_tag }}</code></td>
-              <td>{{ row.equipment_type }}</td>
-              <td>{{ row.current_location }}</td>
+              <th>Holder</th>
+              <th>Organization</th>
+              <th>Asset Tag</th>
+              <th>Type</th>
+              <th>Current Location</th>
             </tr>
-          {% else %}
-            <tr><td colspan="5">No assets are currently in custody.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in current_custody %}
+              <tr>
+                <td>{{ row.holder_name }}</td>
+                <td>{{ row.organization }}</td>
+                <td><code>{{ row.asset_tag }}</code></td>
+                <td>{{ row.equipment_type }}</td>
+                <td>{{ row.current_location }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5">No assets are currently in custody.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Last 10 Events</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>When</th>
-            <th>Asset Tag</th>
-            <th>Event Type</th>
-            <th>Holder</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in recent_active_events %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Last 10 Events</span>
+      <span class="report-section-hint">{{ recent_active_events|length }} rows</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td><code>{{ row.id }}</code></td>
-              <td>{{ row.event_date_display }}</td>
-              <td><code>{{ row.asset_tag }}</code></td>
-              <td>{{ row.event_type }}</td>
-              <td>
-                {% if row.holder_name %}
-                  {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
-                {% endif %}
-              </td>
+              <th>ID</th>
+              <th>When</th>
+              <th>Asset Tag</th>
+              <th>Event Type</th>
+              <th>Holder</th>
             </tr>
-          {% else %}
-            <tr><td colspan="5">No active events found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in recent_active_events %}
+              <tr>
+                <td><code>{{ row.id }}</code></td>
+                <td>{{ row.event_date_display }}</td>
+                <td><code>{{ row.asset_tag }}</code></td>
+                <td>{{ row.event_type }}</td>
+                <td>
+                  {% if row.holder_name %}
+                    {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5">No active events found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Location and Case Data</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Case</th>
-            <th>Total Slots</th>
-            <th>Occupied Slots</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in cases %}
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Location and Case Data</span>
+      <span class="report-section-hint">{{ cases|length }} cases</span>
+    </summary>
+    <div class="report-section-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.case_name }}</td>
-              <td>{{ row.total_slots }}</td>
-              <td>{{ row.occupied_slots }}</td>
+              <th>Case</th>
+              <th>Total Slots</th>
+              <th>Occupied Slots</th>
             </tr>
-          {% else %}
-            <tr><td colspan="3">No case or slot data found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in cases %}
+              <tr>
+                <td>{{ row.case_name }}</td>
+                <td>{{ row.total_slots }}</td>
+                <td>{{ row.occupied_slots }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3">No case or slot data found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </details>
 {% endblock %}
