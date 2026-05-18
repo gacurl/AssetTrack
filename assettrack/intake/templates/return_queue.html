@@ -263,17 +263,6 @@
     {% endif %}
   </div>
 
-  {% if blocking_issues %}
-    <div class="card workflow-card">
-      <h2>Blocked Items</h2>
-      <div class="validation-messages">
-        {% for issue in blocking_issues %}
-          <p class="validation-message">{{ issue }}</p>
-        {% endfor %}
-      </div>
-    </div>
-  {% endif %}
-
   {% if issue_location_form is not defined %}
     <div class="card workflow-card">
       <div class="workflow-action-row">
@@ -303,6 +292,17 @@
       <p class="queue-empty">No assets queued.</p>
     {% endif %}
   </div>
+
+  {% if blocking_issues %}
+    <div class="card workflow-card">
+      <h2>Blocked Items</h2>
+      <div class="validation-messages">
+        {% for issue in blocking_issues %}
+          <p class="validation-message">{{ issue }}</p>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
