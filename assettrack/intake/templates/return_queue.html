@@ -69,6 +69,42 @@
       font-size: 0.85rem;
       cursor: pointer;
     }
+    .queue-control-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 0.75rem;
+    }
+    .queue-control-group form {
+      margin: 0;
+    }
+    .queue-control-group .queue-entry-form {
+      flex: 1 1 320px;
+      min-width: 0;
+      margin-top: 10px;
+    }
+    .queue-control-group .queue-entry-form .workflow-action-row {
+      margin-top: 0.65rem;
+    }
+    .queue-control-group .queue-clear-form .workflow-action-row--danger {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+    .queue-action-cluster {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .queue-preview-form {
+      margin: 0 0 0 auto;
+      flex: 0 0 auto;
+      align-self: end;
+    }
+    .queue-preview-form .workflow-action-row {
+      margin-top: 0;
+    }
   </style>
 {% endblock %}
 
@@ -167,30 +203,64 @@
       {% endfor %}
     {% endif %}
 
-    <div class="workflow-action-stack">
-      <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-        <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-        <input
-          id="scan-input"
-          type="text"
-          name="scan_text"
-          placeholder="Scan or enter asset tag"
-          {% if issue_location_form is not defined %}autofocus{% endif %}
-          data-timeout-lock-target
-        />
-        <div class="workflow-action-row">
-          <button type="submit" data-timeout-lock-target>Add to queue</button>
+    {% if issue_location_form is defined %}
+      <div class="queue-control-group">
+        <div class="queue-entry-form">
+          <form id="issue-queue-form" method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+            <input
+              id="scan-input"
+              type="text"
+              name="scan_text"
+              placeholder="Scan or enter asset tag"
+              {% if issue_location_form is not defined %}autofocus{% endif %}
+              data-timeout-lock-target
+            />
+          </form>
+          <div class="workflow-action-row queue-action-cluster">
+              <button type="submit" form="issue-queue-form" data-timeout-lock-target>Add to queue</button>
+              <form method="post" action="{{ url_for('intake') }}" class="queue-clear-form">
+                <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+                <input type="hidden" name="action" value="clear" />
+                <div class="workflow-action-row workflow-action-row--danger">
+                  <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+                </div>
+              </form>
+            </div>
         </div>
-      </form>
 
-      <form method="post" action="{{ url_for('intake') }}">
-        <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-        <input type="hidden" name="action" value="clear" />
-        <div class="workflow-action-row workflow-action-row--danger">
-          <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
-        </div>
-      </form>
-    </div>
+        <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
+          <div class="workflow-action-row">
+            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</button>
+          </div>
+        </form>
+      </div>
+    {% else %}
+      <div class="workflow-action-stack">
+        <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+          <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+          <input
+            id="scan-input"
+            type="text"
+            name="scan_text"
+            placeholder="Scan or enter asset tag"
+            {% if issue_location_form is not defined %}autofocus{% endif %}
+            data-timeout-lock-target
+          />
+          <div class="workflow-action-row">
+            <button type="submit" data-timeout-lock-target>Add to queue</button>
+          </div>
+        </form>
+
+        <form method="post" action="{{ url_for('intake') }}">
+          <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+          <input type="hidden" name="action" value="clear" />
+          <div class="workflow-action-row workflow-action-row--danger">
+            <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+          </div>
+        </form>
+      </div>
+    {% endif %}
   </div>
 
   {% if blocking_issues %}
@@ -204,11 +274,13 @@
     </div>
   {% endif %}
 
-  <div class="card workflow-card">
-    <div class="workflow-action-row">
-      <a class="preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
+  {% if issue_location_form is not defined %}
+    <div class="card workflow-card">
+      <div class="workflow-action-row">
+        <a class="preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
+      </div>
     </div>
-  </div>
+  {% endif %}
 
   <div class="card workflow-card" id="queue-section">
     <h2>Queue ({{ queue_len }})</h2>
