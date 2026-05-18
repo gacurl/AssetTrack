@@ -8,6 +8,17 @@
   <style>
     pre { white-space: pre-wrap; word-break: break-word; }
     .pill.good { background: var(--color-primary-soft); border: 1px solid var(--color-primary); }
+    .preview-secondary-card {
+      border-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
+      background: color-mix(in srgb, var(--color-surface-bg) 82%, var(--color-panel-bg));
+    }
+    .preview-secondary-card h2 {
+      color: var(--color-text-muted);
+    }
+    .preview-secondary-copy {
+      margin: 0.55rem 0 0 0;
+      color: var(--color-text-muted);
+    }
   </style>
 {% endblock %}
 
@@ -90,7 +101,7 @@
     </form>
   </div>
 
-  <div class="card">
+  <div class="card preview-secondary-card">
     <h2>Issue Mode</h2>
 
     <form method="post" action="{{ url_for('preview_mode') }}" style="margin-top: 10px;">
@@ -104,24 +115,24 @@
     </form>
 
     {% if issue_mode %}
-      <p style="margin-top: 12px;"><strong>Issue mode:</strong> ON</p>
+      <p class="preview-secondary-copy"><strong>Issue mode:</strong> ON</p>
       {% if selected_holder %}
-        <p>
-          <strong>Selected holder:</strong>
+        <p class="preview-secondary-copy">
+          <strong>Holder:</strong>
           {{ holder_display_name(selected_holder) }}
           {% if selected_holder["identifier"] %}
             ({{ selected_holder["identifier"] }})
           {% endif %}
         </p>
       {% else %}
-        <p><strong>No holder selected.</strong></p>
+        <p class="preview-secondary-copy"><strong>No holder selected.</strong></p>
       {% endif %}
       <nav class="workflow-local-nav workflow-action-row workflow-action-row--quiet" aria-label="Issue mode navigation">
         <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Search/select holder</a>
         <a class="nav-link action-quiet" href="{{ url_for('issue_preview') }}">Review issue details</a>
       </nav>
     {% else %}
-      <p style="margin-top: 12px;"><strong>Issue mode:</strong> OFF</p>
+      <p class="preview-secondary-copy"><strong>Issue mode:</strong> OFF</p>
     {% endif %}
   </div>
 {% endblock %}
