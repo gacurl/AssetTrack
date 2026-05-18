@@ -153,8 +153,8 @@ Operators must understand state and next action in seconds under pressure.
 Codex must ONLY rely on:
 
 - AGENTS.md
-- PROJECT_MEMORY.md
-- CURRENT_STATE.md
+- docs/codex/PROJECT_MEMORY.md
+- docs/codex/CURRENT_STATE.md
 
 Do NOT:
 
