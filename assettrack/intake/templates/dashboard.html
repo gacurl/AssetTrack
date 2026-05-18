@@ -95,62 +95,59 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
-    .custody-map-tree,
-    .custody-map-tree ul {
+    .custody-map-tree {
+      display: grid;
+      gap: 0.9rem;
       list-style: none;
       margin: 0;
       padding-left: 0;
     }
-    .custody-map-tree {
-      display: grid;
-      gap: 0.9rem;
+    .custody-map-tree > li {
+      list-style: none;
     }
-    .custody-map-tree ul {
-      display: grid;
-      gap: 0.55rem;
-      margin-top: 0.55rem;
-      padding-left: 1.15rem;
-      border-left: 2px solid color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+    .custody-map-node {
+      margin-top: 0;
+      background: var(--color-panel-bg);
+      border-color: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
     }
-    .custody-map-building,
-    .custody-map-domain,
-    .custody-map-holder {
-      display: grid;
-      gap: 0.18rem;
+    .custody-map-node + .custody-map-node {
+      margin-top: 0.65rem;
     }
-    .custody-map-building-label,
-    .custody-map-domain-label,
-    .custody-map-holder-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
+    .custody-map-node > summary {
+      background: var(--color-panel-bg);
+    }
+    .custody-map-node > summary:hover {
+      background: color-mix(in srgb, var(--color-primary-soft) 28%, var(--color-panel-bg));
+    }
+    .custody-map-node > .disclosure-body {
+      padding-top: 0.25rem;
+    }
+    .custody-map-label {
+      flex: 1 1 auto;
       font-weight: 700;
       line-height: 1.35;
-    }
-    .custody-map-building-label::before,
-    .custody-map-domain-label::before,
-    .custody-map-holder-label::before {
-      content: "";
-      width: 0.55rem;
-      height: 0.55rem;
-      border-radius: 999px;
-      flex: 0 0 auto;
-      background: color-mix(in srgb, var(--color-primary) 26%, var(--color-surface));
-    }
-    .custody-map-domain-label::before {
-      background: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
-    }
-    .custody-map-holder-label::before {
-      background: color-mix(in srgb, var(--color-success) 32%, var(--color-surface));
+      text-align: left;
     }
     .custody-map-hint {
       color: var(--color-text-muted);
       font-size: 0.9rem;
       font-weight: 600;
     }
+    .custody-map-children {
+      display: grid;
+      gap: 0.65rem;
+      margin: 0;
+      padding-left: 1rem;
+      border-left: 2px solid color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+      list-style: none;
+    }
     .custody-map-assets {
       display: grid;
       gap: 0.45rem;
+      margin: 0;
+      padding-left: 1rem;
+      border-left: 2px solid color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+      list-style: none;
     }
     .custody-map-asset {
       display: flex;
@@ -273,39 +270,57 @@
         <p class="dashboard-thread-label">{{ custody_map.thread_label }}</p>
         <ul class="custody-map-tree">
           {% for building in custody_map.buildings %}
-            <li class="custody-map-building">
-              <span class="custody-map-building-label">{{ building.label }}</span>
-              <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
-              <ul>
-                {% for domain in building.domains %}
-                  <li class="custody-map-domain">
-                    <span class="custody-map-domain-label">{{ domain.label }}</span>
-                    <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
-                    <ul>
-                      {% for holder in domain.holders %}
-                        <li class="custody-map-holder">
-                          <span class="custody-map-holder-label">
-                            {% if holder.holder_detail_id %}
-                              <a class="nav-link" href="{{ url_for('holder_detail', holder_id=holder.holder_detail_id) }}">{{ holder.label }}</a>
-                            {% else %}
-                              {{ holder.label }}
-                            {% endif %}
-                          </span>
-                          <span class="custody-map-hint">{{ holder.asset_count }} asset{% if holder.asset_count != 1 %}s{% endif %}</span>
-                          <ul class="custody-map-assets">
-                            {% for asset in holder.assets %}
-                              <li class="custody-map-asset">
-                                <code>{{ asset.asset_tag }}</code>
-                                <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
-                              </li>
-                            {% endfor %}
-                          </ul>
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  </li>
-                {% endfor %}
-              </ul>
+            <li>
+              <details class="disclosure-section custody-map-node">
+                <summary>
+                  <span class="custody-map-label">Building: {{ building.label }}</span>
+                  <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
+                </summary>
+                <div class="disclosure-body">
+                  <ul class="custody-map-children">
+                    {% for domain in building.domains %}
+                      <li>
+                        <details class="disclosure-section custody-map-node">
+                          <summary>
+                            <span class="custody-map-label">Domain: {{ domain.label }}</span>
+                            <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
+                          </summary>
+                          <div class="disclosure-body">
+                            <ul class="custody-map-children">
+                              {% for holder in domain.holders %}
+                                <li>
+                                  <details class="disclosure-section custody-map-node">
+                                    <summary>
+                                      <span class="custody-map-label">Holder:
+                                        {% if holder.holder_detail_id %}
+                                          <a class="nav-link" href="{{ url_for('holder_detail', holder_id=holder.holder_detail_id) }}">{{ holder.label }}</a>
+                                        {% else %}
+                                          {{ holder.label }}
+                                        {% endif %}
+                                      </span>
+                                      <span class="custody-map-hint">{{ holder.asset_count }} asset{% if holder.asset_count != 1 %}s{% endif %}</span>
+                                    </summary>
+                                    <div class="disclosure-body">
+                                      <ul class="custody-map-assets">
+                                        {% for asset in holder.assets %}
+                                          <li class="custody-map-asset">
+                                            <span class="custody-map-label">Asset: <code>{{ asset.asset_tag }}</code></span>
+                                            <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
+                                          </li>
+                                        {% endfor %}
+                                      </ul>
+                                    </div>
+                                  </details>
+                                </li>
+                              {% endfor %}
+                            </ul>
+                          </div>
+                        </details>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              </details>
             </li>
           {% endfor %}
         </ul>
