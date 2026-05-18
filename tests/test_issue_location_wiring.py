@@ -107,6 +107,8 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"Add to Queue" in issue_page.data
     assert b"Scan or enter asset tag" in issue_page.data
     assert b"Add to queue" in issue_page.data
+    assert b"Review Before Issue" in issue_page.data
+    assert b"Preview Queue" not in issue_page.data
     assert b"#issue-building," in issue_page.data
     assert b"max-width: 520px;" in issue_page.data
     assert b"box-sizing: border-box;" in issue_page.data

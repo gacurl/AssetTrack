@@ -110,6 +110,7 @@
 
 {% block content %}
   {% set queue_return_to = return_to or url_for('return_queue') %}
+  {% set review_action_label = "Review Before Issue" if issue_location_form is defined else "Review Before Return" %}
   {% set flashed_messages = get_flashed_messages(with_categories=true) %}
   {% set message_ns = namespace(global_messages=[], scan_messages=[], location_messages=[]) %}
   {% for category, message in flashed_messages %}
@@ -231,45 +232,44 @@
 
         <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
           <div class="workflow-action-row">
-            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</button>
+            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or review_action_label }}</button>
           </div>
         </form>
       </div>
     {% else %}
-      <div class="workflow-action-stack">
-        <form method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
-          <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-          <input
-            id="scan-input"
-            type="text"
-            name="scan_text"
-            placeholder="Scan or enter asset tag"
-            {% if issue_location_form is not defined %}autofocus{% endif %}
-            data-timeout-lock-target
-          />
-          <div class="workflow-action-row">
-            <button type="submit" data-timeout-lock-target>Add to queue</button>
+      <div class="queue-control-group">
+        <div class="queue-entry-form">
+          <form id="return-queue-form" method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+            <input
+              id="scan-input"
+              type="text"
+              name="scan_text"
+              placeholder="Scan or enter asset tag"
+              {% if issue_location_form is not defined %}autofocus{% endif %}
+              data-timeout-lock-target
+            />
+          </form>
+          <div class="workflow-action-row queue-action-cluster">
+            <button type="submit" form="return-queue-form" data-timeout-lock-target>Add to queue</button>
+            <form method="post" action="{{ url_for('intake') }}" class="queue-clear-form">
+              <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+              <input type="hidden" name="action" value="clear" />
+              <div class="workflow-action-row workflow-action-row--danger">
+                <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
 
-        <form method="post" action="{{ url_for('intake') }}">
-          <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-          <input type="hidden" name="action" value="clear" />
-          <div class="workflow-action-row workflow-action-row--danger">
-            <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+        <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
+          <div class="workflow-action-row">
+            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or review_action_label }}</button>
           </div>
         </form>
       </div>
     {% endif %}
   </div>
-
-  {% if issue_location_form is not defined %}
-    <div class="card workflow-card">
-      <div class="workflow-action-row">
-        <a class="preview-step" href="{{ preview_url or url_for('return_preview') }}" data-timeout-lock-target>{{ preview_label or "Preview Queue" }}</a>
-      </div>
-    </div>
-  {% endif %}
 
   <div class="card workflow-card" id="queue-section">
     <h2>Queue ({{ queue_len }})</h2>
@@ -303,6 +303,7 @@
       </div>
     </div>
   {% endif %}
+
 {% endblock %}
 
 {% block extra_scripts %}
