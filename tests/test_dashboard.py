@@ -210,6 +210,11 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Operational Domain", response.data)
         self.assertIn(b"SysAdmins", response.data)
         self.assertIn(b"Alex Holder", response.data)
+        self.assertIn(b"Building: HQ", response.data)
+        self.assertIn(b"Domain: SysAdmins", response.data)
+        self.assertIn(b"Holder:", response.data)
+        self.assertIn(b"Asset: <code>AT-CUST</code>", response.data)
+        self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 3)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertIn(b'id="problems-panel" open', response.data)
         self.assertIn(b"Available Space by Case", response.data)
@@ -563,3 +568,35 @@ class DashboardTests(unittest.TestCase):
         unknown_building = custody_map["buildings"][1]
         self.assertEqual(unknown_building["domains"][0]["label"], "Unclassified Asset")
         self.assertEqual(unknown_building["domains"][0]["holders"][0]["assets"][0]["asset_tag"], "AT-UNKNOWN")
+
+    def test_custody_map_render_is_collapsible_at_each_hierarchy_level(self) -> None:
+        self._insert_holder(1, "Alex Holder")
+        self._insert_asset(
+            "AT-LAPTOP",
+            location_type="IN_CUSTODY",
+            current_holder_id=1,
+            equipment_type="laptop",
+            building="HQ North",
+            room="210",
+        )
+        self._insert_asset(
+            "AT-SWITCH",
+            location_type="STORAGE",
+            equipment_type="switch",
+            building="HQ North",
+            room="Closet",
+        )
+        self.conn.commit()
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'aria-label="Field operational custody map"', response.data)
+        self.assertIn(b"Building: HQ North", response.data)
+        self.assertIn(b"Domain: SysAdmins", response.data)
+        self.assertIn(b"Domain: Network", response.data)
+        self.assertIn(b"Holder:", response.data)
+        self.assertIn(b"Asset: <code>AT-LAPTOP</code>", response.data)
+        self.assertIn(b"Asset: <code>AT-SWITCH</code>", response.data)
+        self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
+        self.assertIn(b'class="custody-map-asset"', response.data)
