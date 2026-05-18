@@ -172,12 +172,17 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert b"Current location set to HQ North / 210." in location_response.data
     assert b"flash success" in location_response.data
 
-    scan_response = client_with_temp_db.post(
+    scan_redirect = client_with_temp_db.post(
         "/",
         data={"scan_text": "ISSUE-100", "return_to": "/issue"},
-        follow_redirects=True,
+        follow_redirects=False,
     )
+    assert scan_redirect.status_code == 302
+    assert (scan_redirect.headers.get("Location") or "").endswith("/issue#queue-actions")
+
+    scan_response = client_with_temp_db.get("/issue#queue-actions")
     assert scan_response.status_code == 200
+    assert b'id="queue-actions"' in scan_response.data
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
 
     preview = client_with_temp_db.get("/issue/preview")
