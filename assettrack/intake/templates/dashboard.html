@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block title %}AssetTrack Dashboard{% endblock %}
-{% block page_heading %}Dashboard Summary Metrics{% endblock %}
+{% block page_heading %}Dashboard{% endblock %}
 {% block page_class %} page-wide{% endblock %}
 
 {% block extra_head %}
@@ -13,215 +13,207 @@
       line-height: 1.3;
     }
 
-    .topbar { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem; }
-    .subtitle { margin: 0; }
-
-    .status-overview {
+    .dashboard-intro {
       margin-bottom: 1rem;
-      border-width: 2px;
-      border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
-      background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-accent-soft) 100%);
+      display: grid;
+      gap: 0.35rem;
     }
-    .status-overview.calm {
-      border-color: var(--color-surface);
-      background: linear-gradient(180deg, var(--color-surface-bg) 0%, var(--color-surface-soft) 100%);
+    .dashboard-subtitle,
+    .dashboard-note {
+      margin: 0;
+      color: var(--color-text-muted);
     }
-    .status-overview summary {
-      cursor: pointer;
-      list-style: none;
-      display: flex;
-      align-items: flex-start;
-      justify-content: flex-start;
-      gap: 0.75rem;
-      padding: 1rem;
-    }
-    .status-overview summary::-webkit-details-marker { display: none; }
-    .status-overview summary::before {
-      content: "▾";
-      flex: 0 0 auto;
-      color: var(--color-primary);
-      font-size: 1rem;
-      line-height: 1;
-      transform: translateY(0.02rem);
-    }
-    .status-overview:not([open]) summary::before {
-      content: "▸";
-    }
-    .status-overview-body {
-      display: flex;
-      flex-direction: column;
+
+    .dashboard-primary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 0.85rem;
-      padding: 0 1rem 1rem;
+      margin-bottom: 1rem;
     }
-    .status-lead {
+    .dashboard-primary-card {
+      display: grid;
+      gap: 0.45rem;
+      padding: 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 14px;
+      background: var(--color-surface-bg);
+      min-width: 0;
+    }
+    .dashboard-primary-card strong {
+      display: block;
+      font-size: 2rem;
+      line-height: 1;
+      color: var(--color-text);
+    }
+    .dashboard-primary-label {
+      margin: 0;
+      color: var(--color-text-muted);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .dashboard-primary-copy {
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.35;
+    }
+    .dashboard-primary-link {
+      display: inline-flex;
+      margin-top: 0.15rem;
+      font-weight: 700;
+    }
+    .dashboard-action-card {
+      background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--color-primary-soft) 45%, var(--color-surface-bg)),
+        var(--color-surface-bg)
+      );
+      border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
+      align-content: space-between;
+    }
+    .dashboard-action-card .action-secondary {
+      width: fit-content;
+      min-height: 2.75rem;
+      padding: 0.65rem 1rem;
+      font-weight: 700;
+    }
+
+    .dashboard-map-card {
+      margin-bottom: 1rem;
+    }
+    .dashboard-map-intro {
+      margin: 0 0 0.9rem 0;
+      color: var(--color-text-muted);
+      max-width: 60rem;
+    }
+    .dashboard-thread-label {
+      margin: 0 0 0.85rem 0;
+      color: var(--color-text-muted);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .custody-map-tree,
+    .custody-map-tree ul {
+      list-style: none;
+      margin: 0;
+      padding-left: 0;
+    }
+    .custody-map-tree {
+      display: grid;
+      gap: 0.9rem;
+    }
+    .custody-map-tree ul {
+      display: grid;
+      gap: 0.55rem;
+      margin-top: 0.55rem;
+      padding-left: 1.15rem;
+      border-left: 2px solid color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+    }
+    .custody-map-building,
+    .custody-map-domain,
+    .custody-map-holder {
+      display: grid;
+      gap: 0.18rem;
+    }
+    .custody-map-building-label,
+    .custody-map-domain-label,
+    .custody-map-holder-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .custody-map-building-label::before,
+    .custody-map-domain-label::before,
+    .custody-map-holder-label::before {
+      content: "";
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--color-primary) 26%, var(--color-surface));
+    }
+    .custody-map-domain-label::before {
+      background: color-mix(in srgb, var(--color-accent) 38%, var(--color-surface));
+    }
+    .custody-map-holder-label::before {
+      background: color-mix(in srgb, var(--color-success) 32%, var(--color-surface));
+    }
+    .custody-map-hint {
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .custody-map-assets {
+      display: grid;
+      gap: 0.45rem;
+    }
+    .custody-map-asset {
       display: flex;
       flex-wrap: wrap;
-      align-items: flex-start;
-      justify-content: flex-start;
-      gap: 0.5rem 1rem;
-    }
-    .status-kicker {
-      margin: 0;
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--color-text-muted);
-    }
-    .status-title {
-      margin: 0;
-      font-size: 1.45rem;
-      line-height: 1.2;
-    }
-    .status-note {
-      margin: 0;
-      color: var(--color-text-muted);
-      max-width: 44rem;
-      flex-basis: 100%;
-    }
-    .status-strip {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 0.75rem;
-    }
-    .status-pill {
+      gap: 0.35rem 0.55rem;
+      align-items: center;
+      padding: 0.55rem 0.7rem;
       border: 1px solid var(--color-surface);
       border-radius: 10px;
-      padding: 0.8rem 0.9rem;
-      background: var(--color-bg);
-    }
-    .status-pill strong {
-      display: block;
-      font-size: 1.4rem;
-      line-height: 1.1;
-    }
-    .status-pill span {
-      display: block;
-      margin-top: 0.2rem;
-      color: var(--color-text-muted);
-      font-size: 0.9rem;
-      line-height: 1.25;
-    }
-    .status-pill .nav-link {
-      display: inline-flex;
-      margin-top: 0.55rem;
-      font-size: 0.9rem;
-    }
-    .status-pill.priority {
-      grid-column: span 2;
-      border-color: color-mix(in srgb, var(--color-accent) 70%, var(--color-surface));
-      background: var(--color-surface-bg);
-      box-shadow: 0 10px 24px rgba(29, 53, 87, 0.08);
-    }
-    .status-pill.priority.calm {
-      border-color: var(--color-surface);
       background: var(--color-panel-bg);
-      box-shadow: none;
     }
-    .status-pill.priority strong {
-      font-size: 2rem;
-    }
-    .status-pill.priority span {
-      font-size: 1rem;
-    }
-    .priority-action {
-      margin-top: 0.9rem;
-    }
-    .priority-action .chip {
-      padding: 0.65rem 1rem;
-      font-size: 1rem;
-      background: var(--color-primary);
-      border-color: var(--color-primary);
-      color: #fff;
-    }
-    .priority-action .chip.secondary {
-      background: var(--color-primary);
-      border-color: var(--color-primary);
-      color: #fff;
-    }
-    .priority-action .chip:hover {
-      text-decoration: none;
-      background: color-mix(in srgb, var(--color-primary) 88%, black);
-    }
-
-    .card-link {
-      margin-top: 0.7rem;
-    }
-    .card-link .nav-link {
+    .custody-map-asset code {
+      font-size: 0.95rem;
       font-weight: 700;
     }
-    .actions { margin: 0.75rem 0 1rem 0; }
-    .chip.secondary { background: var(--color-panel-bg); }
-    .actions-note {
-      margin: 0;
+    .custody-map-asset-type {
       color: var(--color-text-muted);
+      font-size: 0.9rem;
     }
 
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1rem; }
-    .grid > .card {
-      padding: 0.9rem 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.05rem;
+    .dashboard-secondary-grid {
+      display: grid;
+      gap: 1rem;
     }
-    .metric { margin: 0.15rem 0; line-height: 1.25; }
-    .section { margin-top: 1rem; }
-
-    .table-wrap { background: var(--color-panel-bg); border: 1px solid var(--color-surface); border-radius: 10px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 0.7rem 0.75rem; border-bottom: 1px solid var(--color-surface); vertical-align: top; }
-    th {
+    .dashboard-section-table {
+      background: var(--color-panel-bg);
+      border: 1px solid var(--color-surface);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .dashboard-section-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .dashboard-section-table th,
+    .dashboard-section-table td {
+      text-align: left;
+      padding: 0.7rem 0.75rem;
+      border-bottom: 1px solid var(--color-surface);
+      vertical-align: top;
+    }
+    .dashboard-section-table th {
       background: var(--color-primary-soft);
       font-size: 0.88rem;
       font-weight: 700;
       line-height: 1.25;
     }
-    tr:last-child td { border-bottom: 0; }
-
-    details.collapsible {
-      background: var(--color-panel-bg);
-      border: 1px solid var(--color-surface);
-      border-radius: 10px;
-      overflow: hidden;
-      margin-top: 1rem;
+    .dashboard-section-table tr:last-child td {
+      border-bottom: 0;
     }
-    details.collapsible summary {
-      cursor: pointer;
-      list-style: none;
-      padding: 0.9rem 1rem;
-      background: var(--color-primary-soft);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      font-weight: 700;
-      color: var(--color-primary-soft-text);
-    }
-    details.collapsible summary::-webkit-details-marker { display: none; }
-    .summary-hint { font-weight: 500; font-size: 0.9rem; color: var(--color-text-muted); }
-    .collapsible-body { padding: 0.9rem 1rem 1rem 1rem; }
-    .collapsible-body .table-wrap { margin-top: 0.25rem; }
     .status-dot.full { background: var(--color-primary); }
     .status-dot.low { background: var(--color-surface); }
     .status-dot.open { background: var(--color-accent); }
 
-    .section-title { margin-top: 1.5rem; }
-    .accent {
-      height: 3px;
-      width: 64px;
-      background: var(--color-accent);
-      border-radius: 999px;
-      margin: 0.25rem 0 0.55rem 0;
+    @media (max-width: 1180px) {
+      .dashboard-primary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
     }
-
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
-      .status-strip { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
-      .status-pill.priority { grid-column: span 2; }
-    }
-    @media (max-width: 600px) {
-      .status-strip { grid-template-columns: 1fr; }
-      .status-pill.priority { grid-column: span 1; }
+    @media (max-width: 760px) {
+      .dashboard-primary-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 {% endblock %}
@@ -229,342 +221,264 @@
 {% block content %}
   {% set overview = dashboard.summary.overview %}
   {% set exception_total = overview.attention_count %}
-  <div class="topbar">
-    <p class="muted subtitle">Problems first. System state stays below.</p>
+  {% set custody_map = dashboard.snapshots.custody_map %}
+  <div class="dashboard-intro">
+    <p class="dashboard-subtitle">Calm operational state first. Use Issue or Return when you are ready to act.</p>
+    <p class="dashboard-note">The custody map below is read-only orientation only. It does not create custody state.</p>
   </div>
 
-  <details class="card status-overview{% if exception_total == 0 %} calm{% endif %}" id="at-a-glance-panel" {% if exception_total > 0 %}open{% endif %}>
-    <summary aria-label="At a Glance dashboard summary">
-      <div class="status-lead">
-        <div>
-          <p class="status-kicker">At a Glance</p>
-          {% if exception_total == 0 %}
-            <h2 class="status-title">No problems</h2>
-          {% else %}
-            <h2 class="status-title">{{ exception_total }} items need attention</h2>
-          {% endif %}
-        </div>
-        <p class="status-note">
-          {% if exception_total == 0 %}
-            Custody, storage, and slot checks are clear right now.
-          {% else %}
-            Review problems first. Then confirm custody load and storage space.
-          {% endif %}
-        </p>
-      </div>
+  <div class="dashboard-primary-grid" aria-label="Primary dashboard cards">
+    <section class="dashboard-primary-card">
+      <p class="dashboard-primary-label">Assets Out</p>
+      <strong>{{ overview.issued_assets }}</strong>
+      <p class="dashboard-primary-copy">Assets currently in custody.</p>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('dashboard_holders') }}">Open holder follow-up</a>
+    </section>
+
+    <section class="dashboard-primary-card">
+      <p class="dashboard-primary-label">Assets Remaining</p>
+      <strong>{{ overview.in_storage_assets }}</strong>
+      <p class="dashboard-primary-copy">Assets currently available in storage.</p>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
+    </section>
+
+    <section class="dashboard-primary-card">
+      <p class="dashboard-primary-label">Total Assets</p>
+      <strong>{{ overview.total_assets }}</strong>
+      <p class="dashboard-primary-copy">Total assets recorded in the system.</p>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('asset_search') }}">Search assets</a>
+    </section>
+
+    <section class="dashboard-primary-card dashboard-action-card">
+      <p class="dashboard-primary-label">Issue Assets</p>
+      <p class="dashboard-primary-copy">Start the issue workflow for assets leaving storage.</p>
+      <a class="action-secondary" href="{{ url_for('issue') }}">Open Issue Workflow</a>
+    </section>
+
+    <section class="dashboard-primary-card dashboard-action-card">
+      <p class="dashboard-primary-label">Return Assets</p>
+      <p class="dashboard-primary-copy">Start the return workflow for assets coming back in.</p>
+      <a class="action-secondary" href="{{ url_for('return_queue') }}">Open Return Workflow</a>
+    </section>
+  </div>
+
+  <details class="disclosure-section dashboard-map-card">
+    <summary aria-label="Field operational custody map">
+      <span class="disclosure-title">Field Operational Custody Map</span>
+      <span class="disclosure-hint">{{ custody_map.thread_label }} → Building → Operational Domain → Custody Holder → Asset</span>
     </summary>
-    <div class="status-overview-body">
-      <div class="status-strip">
-        <div class="status-pill priority{% if exception_total == 0 %} calm{% endif %}">
-          {% if exception_total == 0 %}
-            <strong>0</strong>
-            <span>No problems</span>
-            <p class="actions-note" style="margin-top: 0.45rem;">Nothing needs immediate review.</p>
-            <div class="priority-action">
-              <a class="chip secondary" href="{{ url_for('human_report') }}">Open current status report</a>
-            </div>
-          {% else %}
-            <strong>{{ overview.attention_count }}</strong>
-            <span>Problems to review</span>
-            <p class="actions-note" style="margin-top: 0.45rem;">Start here before reviewing custody load or storage capacity.</p>
-            <div class="priority-action">
-              <a class="chip" href="#problems-panel">Review problems</a>
-            </div>
-          {% endif %}
-        </div>
-        <div class="status-pill">
-          <strong>{{ overview.total_assets }}</strong>
-          <span>Total assets in the system</span>
-          <a class="nav-link" href="{{ url_for('asset_search') }}">Search assets</a>
-        </div>
-        <div class="status-pill">
-          <strong>{{ overview.in_storage_assets }}</strong>
-          <span>In storage now</span>
-          <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
-        </div>
-        <div class="status-pill">
-          <strong>{{ overview.issued_assets }}</strong>
-          <span>Issued / out now</span>
-          <a class="nav-link" href="{{ url_for('dashboard_holders') }}">Open holder follow-up</a>
-        </div>
-        <div class="status-pill">
-          <strong>{{ overview.holders_with_assets_out }}</strong>
-          <span>Holders with assets out</span>
-        </div>
-        <div class="status-pill">
-          <strong>{{ overview.open_storage_slots }}</strong>
-          <span>Open storage slots</span>
-        </div>
-      </div>
+    <div class="disclosure-body">
+      <p class="dashboard-map-intro">Use this map for rough inventory orientation only. It does not represent network topology or create new custody records.</p>
+      {% if custody_map.buildings %}
+        <p class="dashboard-thread-label">{{ custody_map.thread_label }}</p>
+        <ul class="custody-map-tree">
+          {% for building in custody_map.buildings %}
+            <li class="custody-map-building">
+              <span class="custody-map-building-label">{{ building.label }}</span>
+              <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
+              <ul>
+                {% for domain in building.domains %}
+                  <li class="custody-map-domain">
+                    <span class="custody-map-domain-label">{{ domain.label }}</span>
+                    <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
+                    <ul>
+                      {% for holder in domain.holders %}
+                        <li class="custody-map-holder">
+                          <span class="custody-map-holder-label">
+                            {% if holder.holder_detail_id %}
+                              <a class="nav-link" href="{{ url_for('holder_detail', holder_id=holder.holder_detail_id) }}">{{ holder.label }}</a>
+                            {% else %}
+                              {{ holder.label }}
+                            {% endif %}
+                          </span>
+                          <span class="custody-map-hint">{{ holder.asset_count }} asset{% if holder.asset_count != 1 %}s{% endif %}</span>
+                          <ul class="custody-map-assets">
+                            {% for asset in holder.assets %}
+                              <li class="custody-map-asset">
+                                <code>{{ asset.asset_tag }}</code>
+                                <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </li>
+                {% endfor %}
+              </ul>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="dashboard-note">No active assets in the custody map.</p>
+      {% endif %}
     </div>
   </details>
 
-  <div class="grid">
-    <section class="card">
-      <h2>Exceptions Summary</h2>
-      <div class="accent"></div>
-      <p class="metric">Unslotted Assets: <strong>{{ dashboard.summary.exceptions.unslotted_assets }}</strong></p>
-      <p class="metric">Slot Conflicts: <strong>{{ dashboard.summary.exceptions.slot_conflicts }}</strong></p>
-      <p class="metric">In Custody &gt; {{ custody_days_threshold }} Days: <strong>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</strong></p>
-    </section>
-
-    <section class="card">
-      <h2>Custody Summary</h2>
-      <div class="accent"></div>
-      <p class="metric">Issued / Out: <strong>{{ overview.issued_assets }}</strong></p>
-      <p class="metric">In Storage: <strong>{{ overview.in_storage_assets }}</strong></p>
-      <p class="metric">Unique Holders: <strong>{{ dashboard.summary.custody.unique_holders }}</strong></p>
-      <p class="metric">
-        Top Holder:
-        {% if dashboard.summary.custody.top_holder %}
-          <strong>
-            {% if dashboard.summary.custody.top_holder.holder_detail_id %}
-              <a href="{{ url_for('holder_detail', holder_id=dashboard.summary.custody.top_holder.holder_detail_id) }}">{{ dashboard.summary.custody.top_holder.holder_name }}</a>
-            {% else %}
-              {{ dashboard.summary.custody.top_holder.holder_name }}
-            {% endif %}
-            ({{ dashboard.summary.custody.top_holder.asset_count }})
-          </strong>
-        {% else %}
-          <strong>None</strong>
-        {% endif %}
-      </p>
-    </section>
-
-    <section class="card">
-      <h2>Inventory Summary</h2>
-      <div class="accent"></div>
-      <p class="metric">Total Assets: <strong>{{ dashboard.summary.inventory.total_assets }}</strong></p>
-      <p class="metric">Active Assets: <strong>{{ dashboard.summary.inventory.active_assets }}</strong></p>
-      <p class="metric">Disposed Assets: <strong>{{ dashboard.summary.inventory.disposed_assets }}</strong></p>
-      <p class="metric">In Storage: <strong>{{ dashboard.summary.inventory.in_storage_assets }}</strong></p>
-      <p class="metric">In Custody: <strong>{{ dashboard.summary.inventory.in_custody_assets }}</strong></p>
-      <p class="metric">Unslotted (Storage): <strong>{{ dashboard.summary.inventory.unslotted_assets }}</strong></p>
-    </section>
-
-    <section class="card">
-      <h2>Slot Summary</h2>
-      <div class="accent"></div>
-      <p class="metric">Total Slots: <strong>{{ dashboard.summary.slots.total_slots }}</strong></p>
-      <p class="metric">Occupied Slots: <strong>{{ dashboard.summary.slots.occupied_slots }}</strong></p>
-      <p class="metric">Empty Slots: <strong>{{ dashboard.summary.slots.empty_slots }}</strong></p>
-      <p class="metric">Utilization %: <strong>{{ dashboard.summary.slots.utilization_percent }}%</strong></p>
-    </section>
-  </div>
-
-  <h2 class="section-title">Snapshots</h2>
-  <p class="muted">Immediate reference for holder accountability, available space, and problems that need attention.</p>
-
-  <details class="collapsible">
-    <summary>
-      <span>Outstanding Holders Summary</span>
-      <span class="summary-hint">
-        {% if dashboard.snapshots.top_custody_holders %}
-          {{ dashboard.snapshots.top_custody_holders|length }} holders, {{ dashboard.snapshots.top_custody_holders|sum(attribute='asset_count') }} assets out
-        {% else %}
-          No assets currently issued
-        {% endif %}
-      </span>
-    </summary>
-    <div class="collapsible-body">
-      <div class="accent"></div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Holder Name</th>
-              <th>Outstanding Assets</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in dashboard.snapshots.top_custody_holders %}
+  <div class="dashboard-secondary-grid">
+    <details class="disclosure-section" id="problems-panel" {% if exception_total > 0 %}open{% endif %}>
+      <summary>
+        <span class="disclosure-title">Problems</span>
+        <span class="disclosure-hint">
+          {% if dashboard.summary.exceptions.unslotted_assets == 0 and dashboard.summary.exceptions.in_custody_over_threshold == 0 and dashboard.summary.exceptions.slot_conflicts == 0 %}
+            No current problems.
+          {% else %}
+            {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
+          {% endif %}
+        </span>
+      </summary>
+      <div class="disclosure-body">
+        <div class="dashboard-section-table">
+          <table>
+            <thead>
               <tr>
+                <th>Problem</th>
+                <th>Count</th>
+                <th>Preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Unslotted Assets</td>
+                <td>{{ dashboard.summary.exceptions.unslotted_assets }}</td>
                 <td>
-                  {% if row.holder_detail_id %}
-                    <a href="{{ url_for('holder_detail', holder_id=row.holder_detail_id) }}">{{ row.holder_name }}</a>
+                  {% if dashboard.snapshots.exceptions.unslotted_assets %}
+                    {% for asset_tag in dashboard.snapshots.exceptions.unslotted_assets %}
+                      <span class="mono">{{ asset_tag }}</span>{% if not loop.last %}, {% endif %}
+                    {% endfor %}
                   {% else %}
-                    {{ row.holder_name }}
+                    No unslotted assets.
                   {% endif %}
                 </td>
-                <td>{{ row.asset_count }}</td>
               </tr>
-            {% else %}
               <tr>
-                <td colspan="2">No assets currently issued.</td>
+                <td>In Custody &gt; {{ custody_days_threshold }} Days</td>
+                <td>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</td>
+                <td>
+                  {% if dashboard.snapshots.exceptions.in_custody_over_threshold %}
+                    {% for row in dashboard.snapshots.exceptions.in_custody_over_threshold %}
+                      <span class="mono">{{ row.asset_tag }}</span> ({{ row.days_out }} days){% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    No overdue in-custody assets.
+                  {% endif %}
+                </td>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+              <tr>
+                <td>Slot Conflicts</td>
+                <td>{{ dashboard.summary.exceptions.slot_conflicts }}</td>
+                <td>
+                  {% if dashboard.snapshots.exceptions.slot_conflicts %}
+                    {% for row in dashboard.snapshots.exceptions.slot_conflicts %}
+                      Slot {{ row.slot_id }}{% if row.case_name %} in {{ row.case_name }}{% endif %}{% if row.slot_position is not none %} position {{ row.slot_position }}{% endif %}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    No slot conflicts detected.
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  </details>
+    </details>
 
-  <details class="collapsible">
-    <summary>
-      <span>Available Space by Case</span>
-      <span class="summary-hint">
-        {% if dashboard.snapshots.case_utilization %}
-          {% set ns = namespace(best_case=None, best_available=-1) %}
-          {% for row in dashboard.snapshots.case_utilization %}
-            {% set available_slots = row.total_slots - row.occupied_slots %}
-            {% if available_slots > ns.best_available %}
-              {% set ns.best_case = row %}
-              {% set ns.best_available = available_slots %}
+    <details class="disclosure-section">
+      <summary>
+        <span class="disclosure-title">Available Space by Case</span>
+        <span class="disclosure-hint">
+          {% if dashboard.snapshots.case_utilization %}
+            {% set ns = namespace(best_case=None, best_available=-1) %}
+            {% for row in dashboard.snapshots.case_utilization %}
+              {% set available_slots = row.total_slots - row.occupied_slots %}
+              {% if available_slots > ns.best_available %}
+                {% set ns.best_case = row %}
+                {% set ns.best_available = available_slots %}
+              {% endif %}
+            {% endfor %}
+            {% if ns.best_available > 0 %}
+              Based on open slots. Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
+            {% else %}
+              No cases have available space.
             {% endif %}
-          {% endfor %}
-          {% if ns.best_available > 0 %}
-            Based on open slots. Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
           {% else %}
-            No cases have available space.
+            No case data available.
           {% endif %}
-        {% else %}
-          No case data available.
-        {% endif %}
-      </span>
-    </summary>
-    <div class="collapsible-body">
-      <div class="accent"></div>
-      <div class="table-wrap">
-        <table>
-        <thead>
-          <tr>
-            <th>Case Name</th>
-            <th>Available Slots</th>
-            <th>Stoplight Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in dashboard.snapshots.case_utilization %}
-            {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
-            <tr>
-              <td>{{ row.case_name }}</td>
-              <td>{{ status.available_slots }} open</td>
-              <td class="status-cell">
-                <span class="status-badge">
-                  <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
-                  <span>{{ status.text }}</span>
-                </span>
-              </td>
-            </tr>
+        </span>
+      </summary>
+      <div class="disclosure-body">
+        <div class="dashboard-section-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Case Name</th>
+                <th>Available Slots</th>
+                <th>Stoplight Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard.snapshots.case_utilization %}
+                {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
+                <tr>
+                  <td>{{ row.case_name }}</td>
+                  <td>{{ status.available_slots }} open</td>
+                  <td class="status-cell">
+                    <span class="status-badge">
+                      <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
+                      <span>{{ status.text }}</span>
+                    </span>
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="3">No case data available.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <details class="disclosure-section">
+      <summary>
+        <span class="disclosure-title">Recent Activity</span>
+        <span class="disclosure-hint">
+          {% if dashboard.snapshots.recent_activity %}
+            {{ dashboard.snapshots.recent_activity|length }} latest event{% if dashboard.snapshots.recent_activity|length != 1 %}s{% endif %}
           {% else %}
-            <tr>
-              <td colspan="3">No case data available.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  </details>
-
-  <details class="collapsible">
-    <summary>
-      <span>Recent Activity</span>
-      <span class="summary-hint">
-        {% if dashboard.snapshots.recent_activity %}
-          {{ dashboard.snapshots.recent_activity|length }} latest event{% if dashboard.snapshots.recent_activity|length != 1 %}s{% endif %}
-        {% else %}
-          No recent activity.
-        {% endif %}
-      </span>
-    </summary>
-    <div class="collapsible-body">
-      <div class="accent"></div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Action</th>
-              <th>Asset</th>
-              <th>Holder</th>
-              <th>When (UTC)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in dashboard.snapshots.recent_activity %}
+            No recent activity.
+          {% endif %}
+        </span>
+      </summary>
+      <div class="disclosure-body">
+        <div class="dashboard-section-table">
+          <table>
+            <thead>
               <tr>
-                <td>{{ row.event_label }}</td>
-                <td><code>{{ row.asset_tag }}</code></td>
-                <td>{{ row.holder_label or "—" }}</td>
-                <td>{{ row.event_timestamp_display }}</td>
+                <th>Action</th>
+                <th>Asset</th>
+                <th>Holder</th>
+                <th>When (UTC)</th>
               </tr>
-            {% else %}
-              <tr>
-                <td colspan="4">No recent activity.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for row in dashboard.snapshots.recent_activity %}
+                <tr>
+                  <td>{{ row.event_label }}</td>
+                  <td><code>{{ row.asset_tag }}</code></td>
+                  <td>{{ row.holder_label or "—" }}</td>
+                  <td>{{ row.event_timestamp_display }}</td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="4">No recent activity.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  </details>
-
-  <details class="collapsible" id="problems-panel" {% if exception_total > 0 %}open{% endif %}>
-    <summary>
-      <span>Problems</span>
-      <span class="summary-hint">
-        {% if dashboard.summary.exceptions.unslotted_assets == 0 and dashboard.summary.exceptions.in_custody_over_threshold == 0 and dashboard.summary.exceptions.slot_conflicts == 0 %}
-          No current problems.
-        {% else %}
-          {{ dashboard.summary.exceptions.unslotted_assets }} unslotted, {{ dashboard.summary.exceptions.in_custody_over_threshold }} over {{ custody_days_threshold }} days, {{ dashboard.summary.exceptions.slot_conflicts }} conflicts
-        {% endif %}
-      </span>
-    </summary>
-    <div class="collapsible-body">
-      <div class="accent"></div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Problem</th>
-              <th>Count</th>
-              <th>Preview</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Unslotted Assets</td>
-              <td>{{ dashboard.summary.exceptions.unslotted_assets }}</td>
-              <td>
-                {% if dashboard.snapshots.exceptions.unslotted_assets %}
-                  {% for asset_tag in dashboard.snapshots.exceptions.unslotted_assets %}
-                    <span class="mono">{{ asset_tag }}</span>{% if not loop.last %}, {% endif %}
-                  {% endfor %}
-                {% else %}
-                  No unslotted assets.
-                {% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>In Custody &gt; {{ custody_days_threshold }} Days</td>
-              <td>{{ dashboard.summary.exceptions.in_custody_over_threshold }}</td>
-              <td>
-                {% if dashboard.snapshots.exceptions.in_custody_over_threshold %}
-                  {% for row in dashboard.snapshots.exceptions.in_custody_over_threshold %}
-                    <span class="mono">{{ row.asset_tag }}</span> ({{ row.days_out }} days){% if not loop.last %}, {% endif %}
-                  {% endfor %}
-                {% else %}
-                  No overdue in-custody assets.
-                {% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>Slot Conflicts</td>
-              <td>{{ dashboard.summary.exceptions.slot_conflicts }}</td>
-              <td>
-                {% if dashboard.snapshots.exceptions.slot_conflicts %}
-                  {% for row in dashboard.snapshots.exceptions.slot_conflicts %}
-                    Slot {{ row.slot_id }}{% if row.case_name %} in {{ row.case_name }}{% endif %}{% if row.slot_position is not none %} position {{ row.slot_position }}{% endif %}{% if not loop.last %}, {% endif %}
-                  {% endfor %}
-                {% else %}
-                  No slot conflicts detected.
-                {% endif %}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </details>
+    </details>
+  </div>
 {% endblock %}

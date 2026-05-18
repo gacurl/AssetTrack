@@ -12,6 +12,9 @@ MAX_DASHBOARD_TOP_HOLDERS = 5
 MAX_DASHBOARD_CASE_SUMMARIES = 10
 MAX_DASHBOARD_RECENT_ACTIVITY = 10
 MAX_DASHBOARD_EXCEPTION_PREVIEW = 10
+DOMAIN_SYSADMINS = "SysAdmins"
+DOMAIN_NETWORK = "Network"
+DOMAIN_UNCLASSIFIED = "Unclassified Asset"
 
 
 def get_custody_days_threshold(raw_value: object, default: int = 30) -> int:
@@ -70,6 +73,51 @@ def _event_type_label(raw_event_type: object) -> str:
     if not normalized:
         return "Unknown"
     return normalized.replace("_", " ").title()
+
+
+def _building_label(value: object) -> str:
+    label = str(value or "").strip()
+    return label or "Unknown Building"
+
+
+def _domain_label(equipment_type: object) -> str:
+    normalized = str(equipment_type or "").strip().lower()
+    if normalized in {"switch", "other network equipment", "voip"}:
+        return DOMAIN_NETWORK
+    if normalized in {"laptop", "monitor", "peripheral"}:
+        return DOMAIN_SYSADMINS
+    return DOMAIN_UNCLASSIFIED
+
+
+def _domain_sort_key(value: object) -> tuple[int, str]:
+    label = str(value or "").strip()
+    order = {
+        DOMAIN_SYSADMINS: 0,
+        DOMAIN_NETWORK: 1,
+        DOMAIN_UNCLASSIFIED: 2,
+    }
+    return (order.get(label, 99), label)
+
+
+def _equipment_type_label(value: object) -> str:
+    label = str(value or "").strip()
+    if not label:
+        return DOMAIN_UNCLASSIFIED
+    return label.replace("_", " ").title()
+
+
+def _asset_map_label(asset_tag: object) -> str:
+    label = str(asset_tag or "").strip()
+    return label or DOMAIN_UNCLASSIFIED
+
+
+def _map_holder_label(holder_name: object, holder_organization: object, current_holder_id: object) -> str:
+    holder_label = _holder_label(holder_name, holder_organization)
+    if holder_label:
+        return holder_label
+    if current_holder_id is not None:
+        return f"ID {current_holder_id}"
+    return "Unassigned Holder"
 
 
 def get_recent_activity(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
@@ -438,6 +486,101 @@ def _overview_summary(
     }
 
 
+def _custody_map(conn: sqlite3.Connection) -> dict:
+    rows = conn.execute(
+        """
+        SELECT
+            a.asset_tag,
+            a.equipment_type,
+            a.building,
+            a.location_type,
+            a.current_holder_id,
+            h.id AS holder_detail_id,
+            h.name AS holder_name,
+            h.organization AS holder_organization
+        FROM assets a
+        LEFT JOIN holders h
+          ON h.id = a.current_holder_id
+        WHERE COALESCE(a.location_type, '') <> 'DISPOSED'
+        ORDER BY
+            COALESCE(NULLIF(TRIM(a.building), ''), 'Unknown Building') ASC,
+            a.asset_tag ASC,
+            a.id ASC;
+        """
+    ).fetchall()
+
+    building_nodes: dict[str, dict] = {}
+    for row in rows:
+        building_label = _building_label(row["building"])
+        domain_label = _domain_label(row["equipment_type"])
+        holder_label = _map_holder_label(row["holder_name"], row["holder_organization"], row["current_holder_id"])
+
+        building_node = building_nodes.setdefault(
+            building_label,
+            {"label": building_label, "_domains": {}},
+        )
+        domain_node = building_node["_domains"].setdefault(
+            domain_label,
+            {"label": domain_label, "_holders": {}},
+        )
+        holder_node = domain_node["_holders"].setdefault(
+            holder_label,
+            {
+                "label": holder_label,
+                "holder_detail_id": None if row["holder_detail_id"] is None else int(row["holder_detail_id"]),
+                "assets": [],
+            },
+        )
+        holder_node["assets"].append(
+            {
+                "asset_tag": _asset_map_label(row["asset_tag"]),
+                "equipment_type_label": _equipment_type_label(row["equipment_type"]),
+                "location_type": str(row["location_type"] or "").strip(),
+            }
+        )
+
+    buildings: list[dict] = []
+    for building_label in sorted(building_nodes):
+        building_node = building_nodes[building_label]
+        domains: list[dict] = []
+        for domain_label, domain_node in sorted(
+            building_node["_domains"].items(),
+            key=lambda item: _domain_sort_key(item[0]),
+        ):
+            holders: list[dict] = []
+            for holder_label in sorted(domain_node["_holders"]):
+                holder_node = domain_node["_holders"][holder_label]
+                holder_node["assets"].sort(key=lambda asset: (asset["asset_tag"], asset["equipment_type_label"]))
+                holders.append(
+                    {
+                        "label": holder_node["label"],
+                        "holder_detail_id": holder_node["holder_detail_id"],
+                        "asset_count": len(holder_node["assets"]),
+                        "assets": holder_node["assets"],
+                    }
+                )
+            domains.append(
+                {
+                    "label": domain_label,
+                    "holders": holders,
+                    "asset_count": sum(holder["asset_count"] for holder in holders),
+                }
+            )
+        buildings.append(
+            {
+                "label": building_label,
+                "domains": domains,
+                "asset_count": sum(domain["asset_count"] for domain in domains),
+            }
+        )
+
+    return {
+        "thread_label": "THREAD",
+        "buildings": buildings,
+        "asset_count": sum(building["asset_count"] for building in buildings),
+    }
+
+
 def build_dashboard_data(
     conn: sqlite3.Connection,
     *,
@@ -479,6 +622,7 @@ def build_dashboard_data(
             "top_custody_holders": _top_custody_holders(conn, limit=MAX_DASHBOARD_TOP_HOLDERS),
             "case_utilization": _dashboard_case_utilization(conn, limit=MAX_DASHBOARD_CASE_SUMMARIES),
             "recent_activity": get_recent_activity(conn, limit=MAX_DASHBOARD_RECENT_ACTIVITY),
+            "custody_map": _custody_map(conn),
             "exceptions": {
                 "unslotted_assets": _unslotted_assets(conn, limit=MAX_DASHBOARD_EXCEPTION_PREVIEW),
                 "in_custody_over_threshold": [

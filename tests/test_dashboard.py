@@ -74,6 +74,9 @@ class DashboardTests(unittest.TestCase):
         location_type: str,
         home_slot_id: int | None = None,
         current_holder_id: int | None = None,
+        equipment_type: str = "laptop",
+        building: str = "HQ",
+        room: str = "100",
     ) -> int:
         cursor = self.conn.execute(
             """
@@ -94,9 +97,19 @@ class DashboardTests(unittest.TestCase):
                 current_holder_id,
                 home_slot_id
             )
-            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '100', 'HQ/100', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?);
+            VALUES (?, ?, 'Dell', ?, ?, ?, ?, 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?);
             """,
-            (asset_tag, f"SN-{asset_tag}", location_type, current_holder_id, home_slot_id),
+            (
+                asset_tag,
+                f"SN-{asset_tag}",
+                equipment_type,
+                building,
+                room,
+                f"{building}/{room}" if building and room else "",
+                location_type,
+                current_holder_id,
+                home_slot_id,
+            ),
         )
         return int(cursor.lastrowid)
 
@@ -182,32 +195,26 @@ class DashboardTests(unittest.TestCase):
 
         response = self.client.get("/dashboard")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Dashboard Summary Metrics", response.data)
-        self.assertIn(b"At a Glance", response.data)
-        self.assertIn(b'id="at-a-glance-panel"', response.data)
-        self.assertIn(b'id="at-a-glance-panel" open', response.data)
-        self.assertNotIn(b'id="at-a-glance-panel" class="card status-overview calm"', response.data)
-        self.assertIn(b'aria-label="At a Glance dashboard summary"', response.data)
-        self.assertIn(b"2 items need attention", response.data)
-        self.assertIn(b"Problems to review", response.data)
-        self.assertIn(b"Review problems", response.data)
+        self.assertIn(b"Dashboard", response.data)
+        self.assertNotIn(b"Dashboard Summary Metrics", response.data)
+        self.assertNotIn(b"At a Glance", response.data)
+        self.assertIn(b"Assets Out", response.data)
+        self.assertIn(b"Assets Remaining", response.data)
+        self.assertIn(b"Total Assets", response.data)
+        self.assertIn(b"Issue Assets", response.data)
+        self.assertIn(b"Return Assets", response.data)
+        self.assertIn(b"Open Issue Workflow", response.data)
+        self.assertIn(b"Open Return Workflow", response.data)
+        self.assertIn(b"Field Operational Custody Map", response.data)
+        self.assertIn(b"THREAD", response.data)
+        self.assertIn(b"Operational Domain", response.data)
+        self.assertIn(b"SysAdmins", response.data)
+        self.assertIn(b"Alex Holder", response.data)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertIn(b'id="problems-panel" open', response.data)
-        self.assertIn(b"Total assets in the system", response.data)
-        self.assertIn(b"In storage now", response.data)
-        self.assertIn(b"Issued / out now", response.data)
-        self.assertIn(b"Open storage slots", response.data)
-        self.assertIn(b"Holders with assets out", response.data)
-        self.assertNotIn(b"Dashboard References", response.data)
-        self.assertIn(b"Inventory Summary", response.data)
-        self.assertIn(b"Slot Summary", response.data)
-        self.assertIn(b"Custody Summary", response.data)
-        self.assertIn(b"Exceptions Summary", response.data)
-        self.assertIn(b"Outstanding Holders Summary", response.data)
         self.assertIn(b"Available Space by Case", response.data)
         self.assertIn(b"Recent Activity", response.data)
         self.assertIn(b"Problems", response.data)
-        self.assertIn(b"1 holders, 1 assets out", response.data)
         self.assertIn(b"No cases have available space.", response.data)
         self.assertIn(b"1 unslotted, 1 over 30 days, 0 conflicts", response.data)
         self.assertIn(b"0 open", response.data)
@@ -220,7 +227,6 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'href="/dashboard/holders"', response.data)
         self.assertIn(b'href="/dashboard/cases"', response.data)
         self.assertIn(b'href="/report"', response.data)
-        self.assertIn(b'href="#problems-panel"', response.data)
         self.assertNotIn(b"Workflow Shortcuts", response.data)
         self.assertNotIn(b'href="/issue/preview">Issue</a>', response.data)
 
@@ -228,21 +234,15 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"No problems", response.data)
-        self.assertIn(b'id="at-a-glance-panel"', response.data)
-        self.assertNotIn(b'id="at-a-glance-panel" open', response.data)
-        self.assertIn(b'class="card status-overview calm"', response.data)
-        self.assertIn(b"Custody, storage, and slot checks are clear right now.", response.data)
-        self.assertIn(b"Nothing needs immediate review.", response.data)
-        self.assertIn(b"Open current status report", response.data)
-        self.assertIn(b'href="/report"', response.data)
-        self.assertIn(b'class="chip secondary"', response.data)
+        self.assertNotIn(b"At a Glance", response.data)
+        self.assertIn(b"Assets Out", response.data)
+        self.assertIn(b"Open Issue Workflow", response.data)
+        self.assertIn(b"Open Return Workflow", response.data)
+        self.assertIn(b"Field Operational Custody Map", response.data)
+        self.assertIn(b"No active assets in the custody map.", response.data)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertNotIn(b'id="problems-panel" open', response.data)
-        self.assertIn(b"Total assets in the system", response.data)
-        self.assertIn(b"Issued / out now", response.data)
-        self.assertIn(b"No assets currently issued", response.data)
-        self.assertIn(b"No assets currently issued.", response.data)
+        self.assertIn(b"Search assets", response.data)
         self.assertIn(b"No case data available.", response.data)
         self.assertIn(b"No recent activity.", response.data)
         self.assertIn(b"No current problems.", response.data)
@@ -428,7 +428,7 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Utilization %: <strong>100%</strong>", response.data)
+        self.assertIn(b"FULL - No space", response.data)
 
     def test_root_redirects_to_dashboard_when_logged_in(self):
         resp = self.client.get("/", follow_redirects=False)
@@ -515,3 +515,51 @@ class DashboardTests(unittest.TestCase):
         data = build_dashboard_data(self.conn, custody_days_threshold=30)
 
         self.assertEqual(len(data["snapshots"]["recent_activity"]), MAX_DASHBOARD_RECENT_ACTIVITY)
+
+    def test_custody_map_groups_assets_by_building_domain_holder_with_fallbacks(self) -> None:
+        self._insert_holder(1, "Alex Holder")
+        self._insert_asset(
+            "AT-LAPTOP",
+            location_type="IN_CUSTODY",
+            current_holder_id=1,
+            equipment_type="laptop",
+            building="HQ North",
+            room="210",
+        )
+        self._insert_asset(
+            "AT-SWITCH",
+            location_type="STORAGE",
+            equipment_type="switch",
+            building="HQ North",
+            room="Closet",
+        )
+        self._insert_asset(
+            "AT-UNKNOWN",
+            location_type="STORAGE",
+            equipment_type="other",
+            building="",
+            room="",
+        )
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+
+        custody_map = data["snapshots"]["custody_map"]
+        self.assertEqual(custody_map["thread_label"], "THREAD")
+        self.assertEqual(custody_map["asset_count"], 3)
+        self.assertEqual([building["label"] for building in custody_map["buildings"]], ["HQ North", "Unknown Building"])
+
+        hq_building = custody_map["buildings"][0]
+        self.assertEqual([domain["label"] for domain in hq_building["domains"]], ["SysAdmins", "Network"])
+        sysadmins_holder = hq_building["domains"][0]["holders"][0]
+        self.assertEqual(sysadmins_holder["label"], "Alex Holder")
+        self.assertEqual(sysadmins_holder["assets"][0]["asset_tag"], "AT-LAPTOP")
+        self.assertEqual(sysadmins_holder["assets"][0]["equipment_type_label"], "Laptop")
+
+        network_holder = hq_building["domains"][1]["holders"][0]
+        self.assertEqual(network_holder["label"], "Unassigned Holder")
+        self.assertEqual(network_holder["assets"][0]["asset_tag"], "AT-SWITCH")
+
+        unknown_building = custody_map["buildings"][1]
+        self.assertEqual(unknown_building["domains"][0]["label"], "Unclassified Asset")
+        self.assertEqual(unknown_building["domains"][0]["holders"][0]["assets"][0]["asset_tag"], "AT-UNKNOWN")
