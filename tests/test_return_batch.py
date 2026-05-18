@@ -88,6 +88,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Add to Queue", render.data)
         self.assertIn(b"Scan or enter asset tag", render.data)
         self.assertIn(b"Add to queue", render.data)
+        self.assertIn(b"Review Before Return", render.data)
+        self.assertNotIn(b"Preview Queue", render.data)
         self.assertIn(b"Home location: Home slots", render.data)
         self.assertIn(b"1 asset queued", render.data)
 
