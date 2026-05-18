@@ -1179,6 +1179,8 @@ def _queue_redirect_target(return_to: str) -> str:
         return target
 
     path, sep, fragment = target.partition("#")
+    if path == "/issue" and not fragment:
+        return f"{path}#queue-actions"
     if path == "/return" and not fragment:
         return f"{path}#queue-section"
     return target
