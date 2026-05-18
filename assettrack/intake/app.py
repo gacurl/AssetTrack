@@ -3708,7 +3708,7 @@ def intake():
                     return redirect(url_for("holders_search", return_to=url_for("issue")))
                 if issue_location_errors:
                     flash(
-                        f"Scan not added. {issue_location_errors[0]} Set the current location, then scan again.",
+                        f"Scan not added. {issue_location_errors[0]}",
                         "error scan-feedback",
                     )
                     touch_session()

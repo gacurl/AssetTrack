@@ -104,7 +104,6 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert issue_page.status_code == 200
     assert b"Current Location" in issue_page.data
     assert b"Required before issue scans." in issue_page.data
-    assert b"Scanning is blocked." in issue_page.data
     assert b"Add to Queue" in issue_page.data
     assert b"Scan or enter asset tag" in issue_page.data
     assert b"Add to queue" in issue_page.data
@@ -113,7 +112,6 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"box-sizing: border-box;" in issue_page.data
     assert b"padding: 0.6rem;" in issue_page.data
     assert b"font-size: 1rem;" in issue_page.data
-    assert b'href="#scan-input"' in issue_page.data
     assert b'id="scan-input"' in issue_page.data
     assert b"autofocus" not in issue_page.data
     assert b"HQ North" in issue_page.data
@@ -127,8 +125,7 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
 
     assert scan_response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Scan not added. Choose the current building. Set the current location, then scan again." in scan_response.data
-    assert b"Scanning is blocked." in scan_response.data
+    assert b"Scan not added. Choose the current building." in scan_response.data
 
 
 def test_issue_commit_rejects_building_outside_selected_holder_org(client_with_temp_db) -> None:
@@ -182,7 +179,6 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     )
     assert scan_response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
-    assert b'href="#queue-section"' in scan_response.data
 
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200

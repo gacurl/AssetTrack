@@ -107,61 +107,60 @@
   {% if issue_location_form is defined %}
     <div class="card workflow-card">
       <h2>Current Location</h2>
-      <p class="workflow-summary">
-        <strong>Current location:</strong>
-        {% if issue_location_ready %}
-          <code>{{ issue_location_label }}</code>
-        {% else %}
-          <span class="pill bad">required</span>
-        {% endif %}
-      </p>
-      <p class="workflow-summary">Required before issue scans.</p>
-      {% if message_ns.location_messages %}
-        {% for category, message in message_ns.location_messages %}
-          <div class="flash {{ category|e }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-      {% if issue_location_constrained_by_org %}
-        <p>Building choices are limited to the selected holder's organization.</p>
-      {% endif %}
-      {% if issue_location_errors %}
-        <div class="validation-messages">
-          {% for issue in issue_location_errors %}
-            <p class="validation-message">{{ issue }}</p>
-          {% endfor %}
-        </div>
-      {% endif %}
-      <form method="post" action="{{ url_for('issue_location_update') }}" style="margin-top: 10px;">
-        <label for="issue-building"><strong>Current building</strong></label><br />
-        {% if issue_location_building_options %}
-          <select id="issue-building" name="building" data-timeout-lock-target>
-            <option value="">Choose building</option>
-            {% for building_name in issue_location_building_options %}
-              <option value="{{ building_name }}" {% if issue_location_form.building == building_name %}selected{% endif %}>{{ building_name }}</option>
+      <div class="issue-location-layout">
+        <form method="post" action="{{ url_for('issue_location_update') }}" class="issue-location-form">
+          <label for="issue-building"><strong>Current building</strong></label><br />
+          {% if issue_location_building_options %}
+            <select id="issue-building" name="building" data-timeout-lock-target>
+              <option value="">Choose building</option>
+              {% for building_name in issue_location_building_options %}
+                <option value="{{ building_name }}" {% if issue_location_form.building == building_name %}selected{% endif %}>{{ building_name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input id="issue-building" type="text" name="building" value="{{ issue_location_form.building }}" data-timeout-lock-target />
+          {% endif %}
+          <br /><br />
+          <label for="issue-room"><strong>Current room / area</strong></label><br />
+          <input id="issue-room" type="text" name="room" value="{{ issue_location_form.room }}" data-timeout-lock-target />
+          <br /><br />
+          <div class="workflow-action-row">
+            <button type="submit" data-timeout-lock-target>Save current location</button>
+          </div>
+        </form>
+
+        <aside class="issue-location-status-panel" aria-label="Current location status">
+          <div class="workflow-summary workflow-summary--prereq">
+            <strong class="issue-location-status-title">Current location</strong>
+            {% if issue_location_ready %}
+              <code class="issue-location-status-value">{{ issue_location_label }}</code>
+            {% else %}
+              <span class="issue-location-status-value">Required before issue scans.</span>
+            {% endif %}
+          </div>
+          {% if message_ns.location_messages %}
+            {% for category, message in message_ns.location_messages %}
+              <div class="flash {{ category|e }}">{{ message }}</div>
             {% endfor %}
-          </select>
-        {% else %}
-          <input id="issue-building" type="text" name="building" value="{{ issue_location_form.building }}" data-timeout-lock-target />
-        {% endif %}
-        <br /><br />
-        <label for="issue-room"><strong>Current room / area</strong></label><br />
-        <input id="issue-room" type="text" name="room" value="{{ issue_location_form.room }}" data-timeout-lock-target />
-        <br /><br />
-        <div class="workflow-action-row">
-          <button type="submit" data-timeout-lock-target>Save current location</button>
-        </div>
-      </form>
+          {% endif %}
+          {% if issue_location_constrained_by_org %}
+            <p class="workflow-summary issue-location-status-note">Building choices are limited to the selected holder's organization.</p>
+          {% endif %}
+          {% if issue_location_errors %}
+            <div class="validation-messages">
+              {% for issue in issue_location_errors %}
+                <p class="validation-message">{{ issue }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </aside>
+      </div>
     </div>
   {% endif %}
 
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
     <p class="card-intro">Stage scans in the queue, then review the batch before commit.</p>
-    {% if issue_location_form is defined and not issue_location_ready %}
-      <div class="flash error">
-        <strong>Scanning is blocked.</strong> Set current location first.
-      </div>
-    {% endif %}
     {% if message_ns.scan_messages %}
       {% for category, message in message_ns.scan_messages %}
         <div class="flash {{ category|e }}">{{ message }}</div>
