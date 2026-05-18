@@ -79,6 +79,64 @@
   line-height: 1.55;
 }
 
+.workflow-summary--prereq {
+  margin-bottom: 0.35rem;
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.workflow-summary--prereq strong {
+  color: var(--color-primary);
+}
+
+.issue-location-status-title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.84rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.issue-location-status-value {
+  display: block;
+  width: 100%;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.issue-location-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.issue-location-form {
+  margin: 0;
+  min-width: 0;
+}
+
+.issue-location-status-panel {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  align-content: start;
+  justify-items: stretch;
+  align-self: stretch;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary-soft) 30%, var(--color-surface-bg));
+}
+
+.issue-location-status-panel > * {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.issue-location-status-note {
+  color: var(--color-text-muted);
+}
+
 .workflow-table td strong {
   color: var(--color-primary);
 }
@@ -410,6 +468,13 @@ button.warn-button:focus-visible {
     margin-top: 0.4rem;
     min-width: 0;
     box-shadow: none;
+  }
+}
+
+@media (min-width: 821px) {
+  .issue-location-layout {
+    grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.95fr);
+    align-items: start;
   }
 }
 
