@@ -119,6 +119,9 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Open Operational Report" in response.data
     assert b"Restore Database Backup" in response.data
     assert b"Download Database Backup" in response.data
+    assert response.data.count(b"<details class=\"disclosure-section") >= 3
+    assert b"System Snapshot" in response.data
+    assert b"Restore History" in response.data
 
 
 def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
@@ -173,6 +176,19 @@ def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:
 
     assert holder is not None
     assert dict(holder) == {"name": "Jane Doe", "organization": "Ops Alpha", "email": "jane@example.org"}
+
+
+def test_admin_holder_import_page_exposes_collapsible_csv_requirements(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-import-page", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get("/admin/holders/import")
+
+    assert response.status_code == 200
+    assert b"Holder CSV Import" in response.data
+    assert b"CSV requirements" in response.data
+    assert b"Columns and import behavior" in response.data
+    assert b'<details class="disclosure-section">' in response.data
 
 
 def test_admin_holder_import_surfaces_existing_validation_errors(client_with_temp_db) -> None:
@@ -406,6 +422,7 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
     assert b"Current Custody" in response.data
     assert b"Last 10 Events" in response.data
     assert b"Location and Case Data" in response.data
+    assert response.data.count(b"<details class=\"report-section\"") >= 5
     assert b"AT-100" in response.data
     assert b"Jane Operator" in response.data
     assert b"Report Ops" in response.data

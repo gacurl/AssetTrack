@@ -26,7 +26,6 @@
 
   <div class="card">
     <h2>Holder CSV Import</h2>
-    <p class="import-help">Required columns: <code>organization</code>, <code>name</code>, <code>email</code>.</p>
     <form method="post" enctype="multipart/form-data">
       <div class="row">
         <label for="csv_file"><strong>CSV file</strong></label><br />
@@ -35,6 +34,17 @@
       <button type="submit">Import Holders</button>
     </form>
   </div>
+
+  <details class="disclosure-section">
+    <summary>
+      <span class="disclosure-title">CSV requirements</span>
+      <span class="disclosure-hint">Columns and import behavior</span>
+    </summary>
+    <div class="disclosure-body">
+      <p class="import-help">Required columns: <code>organization</code>, <code>name</code>, <code>email</code>.</p>
+      <p class="import-help">Matching email addresses update existing holder records. New email addresses create new holders.</p>
+    </div>
+  </details>
 
   {% if report is not none %}
     <div class="card">
