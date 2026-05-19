@@ -6,10 +6,10 @@ from assettrack.audit import ACTIVE_EVENTS_WHERE
 from assettrack.event_types import issue_event_type_values, normalize_event_type
 
 from datetime import datetime, timezone
+import re
 import sqlite3
 
 MAX_DASHBOARD_TOP_HOLDERS = 5
-MAX_DASHBOARD_CASE_SUMMARIES = 10
 MAX_DASHBOARD_RECENT_ACTIVITY = 10
 MAX_DASHBOARD_EXCEPTION_PREVIEW = 10
 DOMAIN_SYSADMINS = "SysAdmins"
@@ -289,7 +289,23 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
     ]
 
 
-def _dashboard_case_utilization(conn: sqlite3.Connection, limit: int) -> list[dict]:
+def _case_name_natural_sort_key(case_name: object) -> tuple[int, int, str]:
+    label = str(case_name or "").strip()
+    match = re.fullmatch(r"CASE-(\d+)", label.upper())
+    if match:
+        return (0, int(match.group(1)), label.upper())
+    return (1, 0, label.upper())
+
+
+def _case_space_status_flag(available_slots: int) -> tuple[str, str]:
+    if available_slots <= 0:
+        return ("FULL", "full")
+    if available_slots <= 2:
+        return ("LOW", "low")
+    return ("OPEN", "open")
+
+
+def _dashboard_case_utilization(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """
         SELECT
@@ -300,21 +316,29 @@ def _dashboard_case_utilization(conn: sqlite3.Connection, limit: int) -> list[di
         LEFT JOIN slot_occupancy so
           ON so.slot_id = s.id
         GROUP BY s.case_name
-        ORDER BY (COUNT(*) - COUNT(DISTINCT so.slot_id)) DESC, s.case_name ASC
-        LIMIT ?;
+        ORDER BY s.case_name ASC;
         """,
-        (limit,),
     ).fetchall()
 
-    return [
-        {
-            "case_name": str(row["case_name"]),
-            "total_slots": int(row["total_slots"] or 0),
-            "occupied_slots": int(row["occupied_slots"] or 0),
-            "empty_slots": max(0, int(row["total_slots"] or 0) - int(row["occupied_slots"] or 0)),
-        }
-        for row in rows
-    ]
+    results: list[dict] = []
+    for row in rows:
+        total_slots = int(row["total_slots"] or 0)
+        occupied_slots = int(row["occupied_slots"] or 0)
+        empty_slots = max(0, total_slots - occupied_slots)
+        status_flag, status_class = _case_space_status_flag(empty_slots)
+        results.append(
+            {
+                "case_name": str(row["case_name"]),
+                "total_slots": total_slots,
+                "occupied_slots": occupied_slots,
+                "empty_slots": empty_slots,
+                "status_flag": status_flag,
+                "status_class": status_class,
+            }
+        )
+
+    results.sort(key=lambda row: _case_name_natural_sort_key(row["case_name"]))
+    return results
 
 
 def _custody_summary(conn: sqlite3.Connection) -> dict:
@@ -648,7 +672,7 @@ def build_dashboard_data(
         },
         "snapshots": {
             "top_custody_holders": _top_custody_holders(conn, limit=MAX_DASHBOARD_TOP_HOLDERS),
-            "case_utilization": _dashboard_case_utilization(conn, limit=MAX_DASHBOARD_CASE_SUMMARIES),
+            "case_utilization": _dashboard_case_utilization(conn),
             "recent_activity": get_recent_activity(conn, limit=MAX_DASHBOARD_RECENT_ACTIVITY),
             "custody_map": _custody_map(conn),
             "exceptions": {

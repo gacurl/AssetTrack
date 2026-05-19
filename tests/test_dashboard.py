@@ -8,7 +8,6 @@ from pathlib import Path
 
 import assettrack.db as db
 from assettrack.dashboard import (
-    MAX_DASHBOARD_CASE_SUMMARIES,
     MAX_DASHBOARD_RECENT_ACTIVITY,
     build_dashboard_data,
 )
@@ -258,7 +257,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"No overdue in-custody assets.", response.data)
         self.assertIn(b"No slot conflicts detected.", response.data)
 
-    def test_available_space_summary_and_stoplight_statuses(self) -> None:
+    def test_available_space_summary_flags_and_case_links(self) -> None:
         self._insert_slot(1, "CASE-B", 1)
         self._insert_slot(2, "CASE-B", 2)
         self._insert_slot(3, "CASE-B", 3)
@@ -268,6 +267,8 @@ class DashboardTests(unittest.TestCase):
         self._insert_slot(12, "CASE-C", 3)
         self._insert_slot(13, "CASE-C", 4)
         self._insert_slot(14, "CASE-C", 5)
+        self._insert_slot(15, "CASE-D", 1)
+        self._insert_slot(16, "CASE-D", 2)
         self._insert_slot(20, "CASE-A", 1)
         self._insert_slot(21, "CASE-A", 2)
 
@@ -302,20 +303,47 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Based on open slots. Best available case: CASE-B with 3 open", response.data)
         self.assertIn(b'href="/dashboard/cases/CASE-A">CASE-A</a>', response.data)
         self.assertIn(b"0 open", response.data)
-        self.assertIn(b"FULL - No space", response.data)
+        self.assertIn(b"FULL", response.data)
         self.assertIn(b'href="/dashboard/cases/CASE-B">CASE-B</a>', response.data)
         self.assertIn(b"3 open", response.data)
-        self.assertIn(b"LOW - Getting tight", response.data)
+        self.assertIn(b"OPEN", response.data)
         self.assertIn(b'href="/dashboard/cases/CASE-C">CASE-C</a>', response.data)
         self.assertIn(b"1 open", response.data)
+        self.assertIn(b"LOW", response.data)
+        self.assertIn(b'href="/dashboard/cases/CASE-D">CASE-D</a>', response.data)
+        self.assertIn(b"2 open", response.data)
+        self.assertNotIn(b"OPEN - Use now", response.data)
+        self.assertNotIn(b"LOW - Getting tight", response.data)
+        self.assertNotIn(b"FULL - No space", response.data)
+        self.assertNotIn(b"Stoplight Status", response.data)
         self.assertNotIn(b"0 / 2", response.data)
-        self.assertIn(b".status-dot.full { background: var(--color-primary); }", response.data)
-        self.assertIn(b".status-dot.low { background: var(--color-surface); }", response.data)
-        self.assertIn(b".status-dot.open { background: var(--color-accent); }", response.data)
+        self.assertIn(b".status-dot.full { background: #c2410c; }", response.data)
+        self.assertIn(b".status-dot.low { background: #f59e0b; }", response.data)
+        self.assertIn(b".status-dot.open { background: #16a34a; }", response.data)
         self.assertIn(b'status-dot full', response.data)
         self.assertIn(b'status-dot low', response.data)
 
-    def test_dashboard_case_snapshot_is_bounded_and_keeps_best_available_case(self) -> None:
+    def test_available_space_cases_sort_naturally_by_case_number(self) -> None:
+        for slot_id, case_name in enumerate(
+            ["CASE-13", "CASE-2", "CASE-111", "CASE-1", "CASE-16", "ALPHA"],
+            start=1,
+        ):
+            self._insert_slot(slot_id, case_name, 1)
+        self.conn.commit()
+
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(
+            [row["case_name"] for row in data["snapshots"]["case_utilization"]],
+            ["CASE-1", "CASE-2", "CASE-13", "CASE-16", "CASE-111", "ALPHA"],
+        )
+        self.assertLess(
+            response.data.index(b'href="/dashboard/cases/CASE-16">CASE-16</a>'),
+            response.data.index(b'href="/dashboard/cases/CASE-111">CASE-111</a>'),
+        )
+
+    def test_dashboard_case_snapshot_keeps_all_cases_and_best_available_case(self) -> None:
         slot_id = 1
         cases: list[tuple[str, int]] = []
         for index in range(1, 16):
@@ -341,15 +369,19 @@ class DashboardTests(unittest.TestCase):
         data = build_dashboard_data(self.conn, custody_days_threshold=30)
         rendered = self.client.get("/dashboard")
 
-        self.assertLessEqual(len(data["snapshots"]["case_utilization"]), MAX_DASHBOARD_CASE_SUMMARIES)
-        self.assertIn("CASE-6", [row["case_name"] for row in data["snapshots"]["case_utilization"]])
+        self.assertEqual(len(data["snapshots"]["case_utilization"]), 15)
+        self.assertEqual(
+            [row["case_name"] for row in data["snapshots"]["case_utilization"]],
+            [f"CASE-{index}" for index in range(1, 16)],
+        )
         self.assertEqual(
             next(row for row in data["snapshots"]["case_utilization"] if row["case_name"] == "CASE-6")["empty_slots"],
             10,
         )
         self.assertEqual(rendered.status_code, 200)
         self.assertIn(b"Based on open slots. Best available case: CASE-6 with 10 open", rendered.data)
-        self.assertIn(b"CASE-6", rendered.data)
+        self.assertIn(b'href="/dashboard/cases/CASE-6">CASE-6</a>', rendered.data)
+        self.assertIn(b'href="/dashboard/cases/CASE-15">CASE-15</a>', rendered.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()
@@ -436,7 +468,8 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"FULL - No space", response.data)
+        self.assertIn(b"FULL", response.data)
+        self.assertNotIn(b"FULL - No space", response.data)
 
     def test_root_redirects_to_dashboard_when_logged_in(self):
         resp = self.client.get("/", follow_redirects=False)
