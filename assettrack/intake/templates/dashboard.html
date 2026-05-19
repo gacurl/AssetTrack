@@ -260,52 +260,65 @@
   </div>
 
   <details class="disclosure-section dashboard-map-card">
-    <summary aria-label="Field operational custody map">
-      <span class="disclosure-title">Field Operational Custody Map</span>
-      <span class="disclosure-hint">{{ custody_map.thread_label }} → Building → Operational Domain → Custody Holder → Asset</span>
+    <summary aria-label="Custody map">
+      <span class="disclosure-title">Custody Map</span>
+      <span class="disclosure-hint">Thread → Building → Operational Domain → Custody Holder → Asset</span>
     </summary>
     <div class="disclosure-body">
       <p class="dashboard-map-intro">Use this map for rough inventory orientation only. It does not represent network topology or create new custody records.</p>
-      {% if custody_map.buildings %}
-        <p class="dashboard-thread-label">{{ custody_map.thread_label }}</p>
+      {% if custody_map.threads %}
         <ul class="custody-map-tree">
-          {% for building in custody_map.buildings %}
+          {% for thread in custody_map.threads %}
             <li>
               <details class="disclosure-section custody-map-node">
                 <summary>
-                  <span class="custody-map-label">Building: {{ building.label }}</span>
-                  <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
+                  <span class="custody-map-label">Thread: {{ thread.label }}</span>
+                  <span class="custody-map-hint">{{ thread.asset_count }} asset{% if thread.asset_count != 1 %}s{% endif %}</span>
                 </summary>
                 <div class="disclosure-body">
                   <ul class="custody-map-children">
-                    {% for domain in building.domains %}
+                    {% for building in thread.buildings %}
                       <li>
                         <details class="disclosure-section custody-map-node">
                           <summary>
-                            <span class="custody-map-label">Domain: {{ domain.label }}</span>
-                            <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
+                            <span class="custody-map-label">Building: {{ building.label }}</span>
+                            <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
                           </summary>
                           <div class="disclosure-body">
                             <ul class="custody-map-children">
-                              {% for holder in domain.holders %}
+                              {% for domain in building.domains %}
                                 <li>
                                   <details class="disclosure-section custody-map-node">
                                     <summary>
-                                      <span class="custody-map-label">Holder:
-                                        {% if holder.holder_detail_id %}
-                                          <a class="nav-link" href="{{ url_for('holder_detail', holder_id=holder.holder_detail_id) }}">{{ holder.label }}</a>
-                                        {% else %}
-                                          {{ holder.label }}
-                                        {% endif %}
-                                      </span>
-                                      <span class="custody-map-hint">{{ holder.asset_count }} asset{% if holder.asset_count != 1 %}s{% endif %}</span>
+                                      <span class="custody-map-label">Operational Domain: {{ domain.label }}</span>
+                                      <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
                                     </summary>
                                     <div class="disclosure-body">
-                                      <ul class="custody-map-assets">
-                                        {% for asset in holder.assets %}
-                                          <li class="custody-map-asset">
-                                            <span class="custody-map-label">Asset: <code>{{ asset.asset_tag }}</code></span>
-                                            <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
+                                      <ul class="custody-map-children">
+                                        {% for holder in domain.holders %}
+                                          <li>
+                                            <details class="disclosure-section custody-map-node">
+                                              <summary>
+                                                <span class="custody-map-label">Custody Holder:
+                                                  {% if holder.holder_detail_id %}
+                                                    <a class="nav-link" href="{{ url_for('holder_detail', holder_id=holder.holder_detail_id) }}">{{ holder.label }}</a>
+                                                  {% else %}
+                                                    {{ holder.label }}
+                                                  {% endif %}
+                                                </span>
+                                                <span class="custody-map-hint">{{ holder.asset_count }} asset{% if holder.asset_count != 1 %}s{% endif %}</span>
+                                              </summary>
+                                              <div class="disclosure-body">
+                                                <ul class="custody-map-assets">
+                                                  {% for asset in holder.assets %}
+                                                    <li class="custody-map-asset">
+                                                      <span class="custody-map-label">Asset: <code>{{ asset.asset_tag }}</code></span>
+                                                      <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
+                                                    </li>
+                                                  {% endfor %}
+                                                </ul>
+                                              </div>
+                                            </details>
                                           </li>
                                         {% endfor %}
                                       </ul>
