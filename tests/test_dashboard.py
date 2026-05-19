@@ -57,14 +57,14 @@ class DashboardTests(unittest.TestCase):
         self.conn.close()
         self.temp_dir.cleanup()
 
-    def _insert_holder(self, holder_id: int, name: str) -> None:
+    def _insert_holder(self, holder_id: int, name: str, *, organization: str | None = None) -> None:
         now = "2026-01-01T00:00:00Z"
         self.conn.execute(
             """
-            INSERT INTO holders (id, holder_type, name, identifier, contact_info, created_at, updated_at)
-            VALUES (?, 'PERSON', ?, NULL, NULL, ?, ?);
+            INSERT INTO holders (id, holder_type, name, organization, identifier, contact_info, created_at, updated_at)
+            VALUES (?, 'PERSON', ?, ?, NULL, NULL, ?, ?);
             """,
-            (holder_id, name, now, now),
+            (holder_id, name, organization, now, now),
         )
 
     def _insert_asset(
@@ -177,7 +177,7 @@ class DashboardTests(unittest.TestCase):
         self.conn.commit()
 
     def test_dashboard_route_smoke_renders_summary_sections(self) -> None:
-        self._insert_holder(1, "Alex Holder")
+        self._insert_holder(1, "Alex Holder", organization="CISR")
         self._insert_slot(10, "CASE-A", 1)
         storage_asset_id = self._insert_asset("AT-STORED", location_type="STORAGE", home_slot_id=10)
         self._insert_asset("AT-UNSLOT", location_type="STORAGE", home_slot_id=None)
@@ -205,16 +205,18 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Return Assets", response.data)
         self.assertIn(b"Open Issue Workflow", response.data)
         self.assertIn(b"Open Return Workflow", response.data)
-        self.assertIn(b"Field Operational Custody Map", response.data)
-        self.assertIn(b"THREAD", response.data)
+        self.assertIn(b"Custody Map", response.data)
+        self.assertNotIn(b"Field Operational Custody Map", response.data)
+        self.assertIn(b"Thread: CISR", response.data)
+        self.assertNotIn(b"Thread: <a", response.data)
         self.assertIn(b"Operational Domain", response.data)
         self.assertIn(b"SysAdmins", response.data)
         self.assertIn(b"Alex Holder", response.data)
         self.assertIn(b"Building: HQ", response.data)
-        self.assertIn(b"Domain: SysAdmins", response.data)
-        self.assertIn(b"Holder:", response.data)
+        self.assertIn(b"Operational Domain: SysAdmins", response.data)
+        self.assertIn(b"Custody Holder:", response.data)
         self.assertIn(b"Asset: <code>AT-CUST</code>", response.data)
-        self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 3)
+        self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertIn(b'id="problems-panel" open', response.data)
         self.assertIn(b"Available Space by Case", response.data)
@@ -244,7 +246,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Assets Out", response.data)
         self.assertIn(b"Open Issue Workflow", response.data)
         self.assertIn(b"Open Return Workflow", response.data)
-        self.assertIn(b"Field Operational Custody Map", response.data)
+        self.assertIn(b"Custody Map", response.data)
         self.assertIn(b"No active assets in the custody map.", response.data)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertNotIn(b'id="problems-panel" open', response.data)
@@ -442,7 +444,7 @@ class DashboardTests(unittest.TestCase):
         self.assertTrue((resp.headers.get("Location") or "").endswith("/dashboard"))
 
     def test_dashboard_holder_name_links_to_existing_holder_detail_page(self) -> None:
-        self._insert_holder(1, "Alex Holder")
+        self._insert_holder(1, "Alex Holder", organization="CISR")
         self._insert_asset("AT-CUST-1", location_type="IN_CUSTODY", current_holder_id=1)
         self.conn.commit()
 
@@ -523,7 +525,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(len(data["snapshots"]["recent_activity"]), MAX_DASHBOARD_RECENT_ACTIVITY)
 
     def test_custody_map_groups_assets_by_building_domain_holder_with_fallbacks(self) -> None:
-        self._insert_holder(1, "Alex Holder")
+        self._insert_holder(1, "Alex Holder", organization="CISR")
         self._insert_asset(
             "AT-LAPTOP",
             location_type="IN_CUSTODY",
@@ -551,27 +553,34 @@ class DashboardTests(unittest.TestCase):
         data = build_dashboard_data(self.conn, custody_days_threshold=30)
 
         custody_map = data["snapshots"]["custody_map"]
-        self.assertEqual(custody_map["thread_label"], "THREAD")
         self.assertEqual(custody_map["asset_count"], 3)
-        self.assertEqual([building["label"] for building in custody_map["buildings"]], ["HQ North", "Unknown Building"])
+        self.assertEqual([thread["label"] for thread in custody_map["threads"]], ["CISR", "Unknown Thread"])
 
-        hq_building = custody_map["buildings"][0]
-        self.assertEqual([domain["label"] for domain in hq_building["domains"]], ["SysAdmins", "Network"])
+        cisr_thread = custody_map["threads"][0]
+        self.assertEqual([building["label"] for building in cisr_thread["buildings"]], ["HQ North"])
+
+        hq_building = cisr_thread["buildings"][0]
+        self.assertEqual([domain["label"] for domain in hq_building["domains"]], ["SysAdmins"])
         sysadmins_holder = hq_building["domains"][0]["holders"][0]
         self.assertEqual(sysadmins_holder["label"], "Alex Holder")
         self.assertEqual(sysadmins_holder["assets"][0]["asset_tag"], "AT-LAPTOP")
         self.assertEqual(sysadmins_holder["assets"][0]["equipment_type_label"], "Laptop")
 
-        network_holder = hq_building["domains"][1]["holders"][0]
+        unknown_thread = custody_map["threads"][1]
+        self.assertEqual([building["label"] for building in unknown_thread["buildings"]], ["HQ North", "Unknown Building"])
+
+        hq_building = unknown_thread["buildings"][0]
+        self.assertEqual([domain["label"] for domain in hq_building["domains"]], ["Network"])
+        network_holder = hq_building["domains"][0]["holders"][0]
         self.assertEqual(network_holder["label"], "Unassigned Holder")
         self.assertEqual(network_holder["assets"][0]["asset_tag"], "AT-SWITCH")
 
-        unknown_building = custody_map["buildings"][1]
+        unknown_building = unknown_thread["buildings"][1]
         self.assertEqual(unknown_building["domains"][0]["label"], "Unclassified Asset")
         self.assertEqual(unknown_building["domains"][0]["holders"][0]["assets"][0]["asset_tag"], "AT-UNKNOWN")
 
     def test_custody_map_render_is_collapsible_at_each_hierarchy_level(self) -> None:
-        self._insert_holder(1, "Alex Holder")
+        self._insert_holder(1, "Alex Holder", organization="CISR")
         self._insert_asset(
             "AT-LAPTOP",
             location_type="IN_CUSTODY",
@@ -592,11 +601,14 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'aria-label="Field operational custody map"', response.data)
+        self.assertIn(b'aria-label="Custody map"', response.data)
+        self.assertIn(b"Thread: CISR", response.data)
+        self.assertIn(b"Thread: Unknown Thread", response.data)
+        self.assertNotIn(b"Thread: <a", response.data)
         self.assertIn(b"Building: HQ North", response.data)
-        self.assertIn(b"Domain: SysAdmins", response.data)
-        self.assertIn(b"Domain: Network", response.data)
-        self.assertIn(b"Holder:", response.data)
+        self.assertIn(b"Operational Domain: SysAdmins", response.data)
+        self.assertIn(b"Operational Domain: Network", response.data)
+        self.assertIn(b"Custody Holder:", response.data)
         self.assertIn(b"Asset: <code>AT-LAPTOP</code>", response.data)
         self.assertIn(b"Asset: <code>AT-SWITCH</code>", response.data)
         self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)

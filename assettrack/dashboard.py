@@ -120,6 +120,20 @@ def _map_holder_label(holder_name: object, holder_organization: object, current_
     return "Unassigned Holder"
 
 
+def _custody_map_thread_label(holder_organization: object) -> str:
+    label = str(holder_organization or "").strip()
+    return label or "Unknown Thread"
+
+
+def _custody_map_holder_label(holder_name: object, current_holder_id: object) -> str:
+    holder_label = str(holder_name or "").strip()
+    if holder_label:
+        return holder_label
+    if current_holder_id is not None:
+        return f"ID {current_holder_id}"
+    return "Unassigned Holder"
+
+
 def get_recent_activity(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
     active_events_where = ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)
     rows = conn.execute(
@@ -509,13 +523,18 @@ def _custody_map(conn: sqlite3.Connection) -> dict:
         """
     ).fetchall()
 
-    building_nodes: dict[str, dict] = {}
+    thread_nodes: dict[str, dict] = {}
     for row in rows:
+        thread_label = _custody_map_thread_label(row["holder_organization"])
         building_label = _building_label(row["building"])
         domain_label = _domain_label(row["equipment_type"])
-        holder_label = _map_holder_label(row["holder_name"], row["holder_organization"], row["current_holder_id"])
+        holder_label = _custody_map_holder_label(row["holder_name"], row["current_holder_id"])
 
-        building_node = building_nodes.setdefault(
+        thread_node = thread_nodes.setdefault(
+            thread_label,
+            {"label": thread_label, "_buildings": {}},
+        )
+        building_node = thread_node["_buildings"].setdefault(
             building_label,
             {"label": building_label, "_domains": {}},
         )
@@ -539,45 +558,54 @@ def _custody_map(conn: sqlite3.Connection) -> dict:
             }
         )
 
-    buildings: list[dict] = []
-    for building_label in sorted(building_nodes):
-        building_node = building_nodes[building_label]
-        domains: list[dict] = []
-        for domain_label, domain_node in sorted(
-            building_node["_domains"].items(),
-            key=lambda item: _domain_sort_key(item[0]),
-        ):
-            holders: list[dict] = []
-            for holder_label in sorted(domain_node["_holders"]):
-                holder_node = domain_node["_holders"][holder_label]
-                holder_node["assets"].sort(key=lambda asset: (asset["asset_tag"], asset["equipment_type_label"]))
-                holders.append(
+    threads: list[dict] = []
+    for thread_label in sorted(thread_nodes):
+        thread_node = thread_nodes[thread_label]
+        buildings: list[dict] = []
+        for building_label in sorted(thread_node["_buildings"]):
+            building_node = thread_node["_buildings"][building_label]
+            domains: list[dict] = []
+            for domain_label, domain_node in sorted(
+                building_node["_domains"].items(),
+                key=lambda item: _domain_sort_key(item[0]),
+            ):
+                holders: list[dict] = []
+                for holder_label in sorted(domain_node["_holders"]):
+                    holder_node = domain_node["_holders"][holder_label]
+                    holder_node["assets"].sort(key=lambda asset: (asset["asset_tag"], asset["equipment_type_label"]))
+                    holders.append(
+                        {
+                            "label": holder_node["label"],
+                            "holder_detail_id": holder_node["holder_detail_id"],
+                            "asset_count": len(holder_node["assets"]),
+                            "assets": holder_node["assets"],
+                        }
+                    )
+                domains.append(
                     {
-                        "label": holder_node["label"],
-                        "holder_detail_id": holder_node["holder_detail_id"],
-                        "asset_count": len(holder_node["assets"]),
-                        "assets": holder_node["assets"],
+                        "label": domain_label,
+                        "holders": holders,
+                        "asset_count": sum(holder["asset_count"] for holder in holders),
                     }
                 )
-            domains.append(
+            buildings.append(
                 {
-                    "label": domain_label,
-                    "holders": holders,
-                    "asset_count": sum(holder["asset_count"] for holder in holders),
+                    "label": building_label,
+                    "domains": domains,
+                    "asset_count": sum(domain["asset_count"] for domain in domains),
                 }
             )
-        buildings.append(
+        threads.append(
             {
-                "label": building_label,
-                "domains": domains,
-                "asset_count": sum(domain["asset_count"] for domain in domains),
+                "label": thread_label,
+                "buildings": buildings,
+                "asset_count": sum(building["asset_count"] for building in buildings),
             }
         )
 
     return {
-        "thread_label": "THREAD",
-        "buildings": buildings,
-        "asset_count": sum(building["asset_count"] for building in buildings),
+        "threads": threads,
+        "asset_count": sum(thread["asset_count"] for thread in threads),
     }
 
 
