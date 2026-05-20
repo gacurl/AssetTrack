@@ -223,7 +223,8 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
         SELECT
             s.id AS slot_id,
             s.slot_position,
-            a.asset_tag
+            a.asset_tag,
+            a.location_type AS asset_location_type
         FROM slots s
         LEFT JOIN (
             SELECT so.slot_id, so.asset_id
@@ -244,6 +245,22 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
         (case_name,),
     ).fetchall()
 
+    return_candidate_rows = conn.execute(
+        """
+        SELECT
+            a.asset_tag,
+            a.location_type,
+            s.slot_position
+        FROM assets a
+        JOIN slots s
+          ON s.id = a.home_slot_id
+        WHERE s.case_name = ?
+          AND UPPER(COALESCE(a.location_type, '')) = 'IN_CUSTODY'
+        ORDER BY s.slot_position ASC, UPPER(a.asset_tag) ASC, a.id ASC;
+        """,
+        (case_name,),
+    ).fetchall()
+
     return {
         "case_name": case_name,
         "slots": [
@@ -251,7 +268,16 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
                 "slot_id": int(row["slot_id"]),
                 "slot_position": int(row["slot_position"]),
                 "asset_tag": row["asset_tag"],
+                "asset_location_type": "" if row["asset_location_type"] is None else str(row["asset_location_type"]),
             }
             for row in slot_rows
+        ],
+        "return_candidates": [
+            {
+                "asset_tag": str(row["asset_tag"] or ""),
+                "location_type": str(row["location_type"] or ""),
+                "slot_position": int(row["slot_position"]),
+            }
+            for row in return_candidate_rows
         ],
     }

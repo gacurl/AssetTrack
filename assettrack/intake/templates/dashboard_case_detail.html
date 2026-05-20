@@ -24,6 +24,32 @@
     .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
     .status-dot.open { background: #b42318; }
+    .workflow-note {
+      margin: 0.35rem 0 0;
+      color: var(--color-text-muted);
+    }
+    .case-action-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    .select-cell {
+      width: 4.5rem;
+      text-align: center;
+    }
+    .case-section-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .case-section-header h2 {
+      margin-bottom: 0.25rem;
+    }
   </style>
 {% endblock %}
 
@@ -41,6 +67,14 @@
     </nav>
   </div>
 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   <section class="card status-card">
     <h2>Case Status</h2>
     <p>
@@ -56,26 +90,122 @@
   </section>
 
   <section class="card">
-    <h2>Slot Layout</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Slot Position</th>
-          <th>Asset Tag</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in case_detail.slots %}
+    <div class="case-section-header">
+      <div>
+        <h2>Slot Layout</h2>
+        <p class="workflow-note">Check boxes to select assets.</p>
+      </div>
+      <button type="button" class="action-secondary" data-select-all-eligible="issue">Select all</button>
+    </div>
+    <form id="case-issue-selection-form" method="post" action="{{ url_for('dashboard_case_queue_start', case_name=case_detail.case_name) }}">
+      {% if return_to %}
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
+      <table>
+        <thead>
           <tr>
-            <td>{{ row.slot_position }}</td>
-            <td class="mono">{{ row.asset_tag if row.asset_tag else "Empty" }}</td>
+            <th class="select-cell">Issue</th>
+            <th>Slot Position</th>
+            <th>Asset Tag</th>
           </tr>
-        {% else %}
-          <tr>
-            <td colspan="2">None</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for row in case_detail.slots %}
+            {% set can_issue = row.asset_tag and row.asset_location_type|upper == "STORAGE" %}
+            <tr>
+              <td class="select-cell">
+                {% if can_issue %}
+                  <input type="checkbox" name="asset_tag" value="{{ row.asset_tag }}" aria-label="Select {{ row.asset_tag }} for issue" data-eligible-asset="issue" />
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>{{ row.slot_position }}</td>
+              <td class="mono">{{ row.asset_tag if row.asset_tag else "Empty" }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="3">None</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="case-action-row">
+        <button type="submit" name="workflow_action" value="issue">Start Issue</button>
+        <p class="workflow-note">Selected assets will be reviewed before commit.</p>
+      </div>
+    </form>
   </section>
+
+  <section class="card">
+    <div class="case-section-header">
+      <div>
+        <h2>Assets Issued Out</h2>
+        <p class="workflow-note">Check boxes to select assets.</p>
+      </div>
+      <button type="button" class="action-secondary" data-select-all-eligible="return">Select all</button>
+    </div>
+    <form id="case-return-selection-form" method="post" action="{{ url_for('dashboard_case_queue_start', case_name=case_detail.case_name) }}">
+      {% if return_to %}
+        <input type="hidden" name="return_to" value="{{ return_to }}" />
+      {% endif %}
+      <table>
+        <thead>
+          <tr>
+            <th class="select-cell">Return</th>
+            <th>Home Slot</th>
+            <th>Asset Tag</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in case_detail.return_candidates %}
+            <tr>
+              <td class="select-cell">
+                <input type="checkbox" name="asset_tag" value="{{ row.asset_tag }}" aria-label="Select {{ row.asset_tag }} for return" data-eligible-asset="return" />
+              </td>
+              <td>{{ row.slot_position }}</td>
+              <td class="mono">{{ row.asset_tag }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="3">No assets currently out from this case.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="case-action-row">
+        <button type="submit" name="workflow_action" value="return">Start Return</button>
+        <p class="workflow-note">Selected assets will be reviewed before commit.</p>
+      </div>
+    </form>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    const caseIssueSelectAll = document.querySelector('[data-select-all-eligible="issue"]');
+    const caseReturnSelectAll = document.querySelector('[data-select-all-eligible="return"]');
+    const caseIssueForm = document.getElementById("case-issue-selection-form");
+    const caseReturnForm = document.getElementById("case-return-selection-form");
+
+    if (caseIssueSelectAll && caseIssueForm) {
+      caseIssueSelectAll.addEventListener("click", () => {
+        caseIssueForm
+          .querySelectorAll('input[type="checkbox"][data-eligible-asset="issue"]:not(:disabled)')
+          .forEach((checkbox) => {
+            checkbox.checked = true;
+          });
+      });
+    }
+
+    if (caseReturnSelectAll && caseReturnForm) {
+      caseReturnSelectAll.addEventListener("click", () => {
+        caseReturnForm
+          .querySelectorAll('input[type="checkbox"][data-eligible-asset="return"]:not(:disabled)')
+          .forEach((checkbox) => {
+            checkbox.checked = true;
+          });
+      });
+    }
+  </script>
 {% endblock %}
