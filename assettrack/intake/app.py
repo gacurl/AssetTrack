@@ -4250,16 +4250,22 @@ def dashboard_holder_detail(holder_id: int):
 @require_login
 def dashboard_cases():
     return_to = _safe_local_return_to(request.args.get("return_to") or "")
+    case_query = (request.args.get("q") or "").strip()
     conn = get_connection()
     try:
         cases = list_case_summaries(conn)
     finally:
         conn.close()
 
+    if case_query:
+        query_upper = case_query.upper()
+        cases = [row for row in cases if query_upper in str(row.get("case_name") or "").upper()]
+
     return render_template(
         "dashboard_cases.html",
         cases=cases,
         return_to=return_to,
+        case_query=case_query,
     )
 
 

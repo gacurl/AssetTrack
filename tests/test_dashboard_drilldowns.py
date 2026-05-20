@@ -179,6 +179,41 @@ def test_dashboard_cases_route_200_and_missing_case_404(app_client) -> None:
     assert missing_response.status_code == 404
 
 
+def test_dashboard_cases_renders_case_filter_input(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 15, "CASE-FILTER", 1)
+    conn.commit()
+
+    response = client.get("/dashboard/cases")
+    assert response.status_code == 200
+    assert b'name="q"' in response.data
+    assert b"Find case" not in response.data
+
+
+def test_dashboard_cases_case_name_filter_shows_only_matches_and_keeps_read_only(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 21, "CASE-111", 1)
+    _insert_slot(conn, 22, "CASE-999", 1)
+    conn.commit()
+
+    response = client.get("/dashboard/cases?q=111")
+    assert response.status_code == 200
+    assert b'href="/dashboard/cases/CASE-111"' in response.data
+    assert b'CASE-999' not in response.data
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_dashboard_cases_case_name_filter_no_match_message(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 23, "CASE-ABC", 1)
+    conn.commit()
+
+    response = client.get("/dashboard/cases?q=ZZZ")
+    assert response.status_code == 200
+    assert b"No cases match that search." in response.data
+
+
 def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) -> None:
     conn, client = app_client
     _insert_slot(conn, 10, "CASE-A", 1)
