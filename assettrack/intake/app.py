@@ -5711,11 +5711,11 @@ def _build_receipt_pdf(receipt: dict[str, object], *, for_email: bool = False) -
     if for_email:
         status_text = "Receipt attached for your records."
     elif delivery_state == "failed":
-        status_text = "Receipt email failed. Resend recommended."
+        status_text = "Receipt delivery failed. Custody is already recorded."
     elif delivery_state == "pending":
-        status_text = "Receipt email queued. No action needed unless delivery stalls."
+        status_text = "Receipt delivery queued. Custody is already recorded."
     else:
-        status_text = "No action needed."
+        status_text = "Custody is already recorded."
 
     recorded_at = _receipt_display_timestamp(ack_timestamp or receipt.get("commit_at"))
     summary_rows = [

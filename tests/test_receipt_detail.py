@@ -699,7 +699,7 @@ def test_issue_receipt_pdf_download_uses_stored_snapshot_data(client_with_temp_d
     pdf_text = _extract_pdf_text(response.data)
     assert "Issue Receipt" in pdf_text
     assert "1 asset issued to Issue Holder" in pdf_text
-    assert "Receipt email queued. No action needed unless delivery stalls." in pdf_text
+    assert "Receipt delivery queued. Custody is already recorded." in pdf_text
     assert "What Happened" in pdf_text
     assert "Action" in pdf_text
     assert "Assets in this receipt" in pdf_text
@@ -1108,7 +1108,7 @@ def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.Mon
     assert "Receipt key" not in pdf_text
     assert "Recipient email" not in pdf_text
     assert "Delivery issue" not in pdf_text
-    assert "Receipt email queued. No action needed unless delivery stalls." not in pdf_text
+    assert "Receipt delivery queued. Custody is already recorded." not in pdf_text
 
 
 def test_send_receipt_email_omits_cc_when_config_is_blank(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -598,7 +598,7 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Current State" in response.data
     assert b"Active custody and storage first." in response.data
     assert b"Report Scope" not in response.data
-    assert b"Open holder follow-up" in response.data
+    assert b"Open manual holder follow-up" in response.data
     assert b"Review case space" in response.data
     assert b"Search active asset records" in response.data
     assert b"Utilities" in response.data
