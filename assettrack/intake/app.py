@@ -2941,7 +2941,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
             home_slot_id = asset_row["home_slot_id"]
             if home_slot_id is None:
-                row["asset_issues"].append("Asset has no home slot")
+                row["asset_issues"].append("No assigned home slot. Return cannot commit until a home slot is assigned.")
                 no_home_slot.append(canon_tag)
                 assets.append(row)
                 continue
@@ -2955,7 +2955,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 (home_slot_id,),
             ).fetchone()
             if not slot:
-                row["asset_issues"].append("Home slot not found")
+                row["asset_issues"].append("Assigned home slot not found. Return cannot commit until a valid home slot is assigned.")
                 no_home_slot.append(canon_tag)
                 assets.append(row)
                 continue
@@ -2963,7 +2963,9 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
             row["destination_case_name"] = str(slot["case_name"])
             row["destination_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
             if slot["current_asset_tag"] is not None:
-                row["asset_issues"].append(f"Home slot occupied by {slot['current_asset_tag']}")
+                row["asset_issues"].append(
+                    f"Assigned home slot {row['destination_slot']} is occupied by {slot['current_asset_tag']}."
+                )
                 occupied_home_slot.append(canon_tag)
                 row["before_slot_occupancy"] = "occupied"
 
@@ -2979,9 +2981,9 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
     if retired_assets:
         blocking_issues.append(f"Retired/disposed: {', '.join(retired_assets)}")
     if no_home_slot:
-        blocking_issues.append(f"Missing home slot: {', '.join(no_home_slot)}")
+        blocking_issues.append(f"No assigned home slot: {', '.join(no_home_slot)}")
     if occupied_home_slot:
-        blocking_issues.append(f"Home slot occupied: {', '.join(occupied_home_slot)}")
+        blocking_issues.append(f"Assigned home slot occupied: {', '.join(occupied_home_slot)}")
 
     ready_count = sum(1 for row in assets if row["ready"])
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
@@ -3700,9 +3702,9 @@ def _return_batch(
                 if retired_assets:
                     parts.append(f"Retired/disposed: {', '.join(retired_assets)}")
                 if no_home_slot:
-                    parts.append(f"Missing home slot: {', '.join(no_home_slot)}")
+                    parts.append(f"No assigned home slot: {', '.join(no_home_slot)}")
                 if occupied_home_slot:
-                    parts.append(f"Home slot occupied: {', '.join(occupied_home_slot)}")
+                    parts.append(f"Assigned home slot occupied: {', '.join(occupied_home_slot)}")
                 raise ValueError("; ".join(parts))
 
             now_iso = datetime.now(timezone.utc).isoformat()

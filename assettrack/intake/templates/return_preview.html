@@ -24,12 +24,12 @@
     {% endif %}
   {% endwith %}
 
-  {% if workflow_banner_title %}
-    {% include "_workflow_context_banner.html" %}
-  {% endif %}
-
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Needs Review{% else %}Ready to Return{% endif %}</h2>
+    <p class="card-intro">
+      Returns go to each asset's assigned home slot.<br />
+      Review the destination below before commit.
+    </p>
   </div>
 
   {% if blocking_issues %}
@@ -52,7 +52,7 @@
           <tr>
             <th>Asset</th>
             <th>Current State</th>
-            <th>After Return</th>
+            <th>Return Destination</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -74,10 +74,10 @@
 
               <td>
                 <div class="state-block">
-                  <strong>After Return</strong><br />
+                  <strong>Return Destination</strong><br />
                   Location: {{ row.after_location_type }}<br />
                   Issued to: Not assigned<br />
-                  Home location: {{ destination_slot_display }}
+                  Assigned home slot: {{ destination_slot_display }}
                 </div>
               </td>
 

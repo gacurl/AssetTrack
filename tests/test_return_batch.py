@@ -98,13 +98,16 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Return Preview", preview_render.data)
         self.assertIn(b"Commit", preview_render.data)
         self.assertIn(b"Ready to Return", preview_render.data)
-        self.assertIn(b"Home location: Home slots", preview_render.data)
-        self.assertIn(b"1 asset queued", preview_render.data)
+        self.assertNotIn(b"Home location: Home slots", preview_render.data)
+        self.assertNotIn(b"1 asset queued", preview_render.data)
         self.assertIn(b"Current State", preview_render.data)
-        self.assertIn(b"After Return", preview_render.data)
+        self.assertIn(b"Returns go to each asset's assigned home slot.", preview_render.data)
+        self.assertIn(b"Review the destination below before commit.", preview_render.data)
+        self.assertIn(b"Return Destination", preview_render.data)
         self.assertIn(b"Location: IN_CUSTODY", preview_render.data)
         self.assertIn(b"Issued to: Return Holder Five", preview_render.data)
         self.assertIn(b"Home location: A / 1", preview_render.data)
+        self.assertIn(b"Assigned home slot: A / 1", preview_render.data)
         self.assertIn(b'name="confirm_responsibility_ack"', preview_render.data)
         self.assertIn(b"responsibility for this return batch was acknowledged before commit", preview_render.data)
         self.assertNotIn(b"null", preview_render.data)
@@ -241,6 +244,37 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIsNone(receipt_row["sent_at"])
         self.assertIsNone(receipt_row["last_attempt_at"])
         self.assertIsNone(receipt_row["last_error"])
+
+    def test_return_preview_explains_missing_assigned_home_slot_blocker(self) -> None:
+        self._insert_asset("NO-HOME", location_type="IN_CUSTODY", holder_id=5, home_slot_id=None)
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="NO-HOME", equipment_type="laptop"))
+
+        preview = self.client.get("/return/preview")
+
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Returns go to each asset's assigned home slot.", preview.data)
+        self.assertIn(b"Review the destination below before commit.", preview.data)
+        self.assertIn(b"No assigned home slot: NO-HOME", preview.data)
+        self.assertIn(
+            b"No assigned home slot. Return cannot commit until a home slot is assigned.",
+            preview.data,
+        )
+        self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
+
+    def test_return_preview_explains_occupied_assigned_home_slot_blocker(self) -> None:
+        self._insert_slot(12, "CASE-BLOCKED", 4, "OTHER-ASSET")
+        self._insert_asset("OCCUPIED-HOME", location_type="IN_CUSTODY", holder_id=5, home_slot_id=12)
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="OCCUPIED-HOME", equipment_type="laptop"))
+
+        preview = self.client.get("/return/preview")
+
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Assigned home slot occupied: OCCUPIED-HOME", preview.data)
+        self.assertIn(
+            b"Assigned home slot CASE-BLOCKED / 4 is occupied by OTHER-ASSET.",
+            preview.data,
+        )
+        self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
 
     def test_return_queue_and_preview_empty_states_show_next_step_guidance(self) -> None:
         render = self.client.get("/return")
