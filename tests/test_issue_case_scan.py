@@ -7,7 +7,7 @@ import pytest
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from tests.auth_test_utils import create_test_user
+from tests.auth_test_utils import create_test_user, login_session
 
 
 @pytest.fixture
@@ -31,8 +31,8 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def _login_issue_operator(client, username: str) -> None:
     operator_id = create_test_user(username=username, password="op-pass", role="operator")
+    login_session(client, operator_id)
     with client.session_transaction() as sess:
-        sess["user_id"] = operator_id
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"

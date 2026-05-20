@@ -40,7 +40,9 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     client = intake_app.app.test_client()
     operator_user_id = create_test_user(username="operator", password="op-pass", role="operator")
     login_session(client, operator_user_id)
+    intake_app.SCAN_QUEUE.clear()
     yield conn, client
+    intake_app.SCAN_QUEUE.clear()
     conn.close()
 
 
@@ -106,6 +108,20 @@ def _insert_slot(conn, slot_id: int, case_name: str, slot_position: int) -> None
     )
 
 
+def _occupy_slot(conn, slot_id: int, asset_id: int) -> None:
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (?, ?, '2026-01-01T00:00:00Z');
+        """,
+        (slot_id, asset_id),
+    )
+
+
+def _count_rows(conn, table_name: str) -> int:
+    return int(conn.execute(f"SELECT COUNT(*) AS c FROM {table_name};").fetchone()["c"])
+
+
 def test_dashboard_holders_route_returns_200_and_is_read_only(app_client) -> None:
     conn, client = app_client
     _insert_holder(conn, 1, "Alpha")
@@ -167,7 +183,9 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     conn, client = app_client
     _insert_slot(conn, 10, "CASE-A", 1)
     _insert_slot(conn, 11, "CASE-A", 2)
+    _insert_slot(conn, 12, "CASE-A", 3)
     asset_id = _insert_asset(conn, "AT-SLOTTED", location_type="STORAGE")
+    _insert_asset(conn, "AT-OUT", location_type="IN_CUSTODY", holder_id=1, home_slot_id=12)
     conn.execute(
         """
         INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
@@ -182,14 +200,167 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     assert b"Case Status" in response.data
     assert b"LOW - Getting tight" in response.data
     assert b"status-dot low" in response.data
-    assert b"Total slots:</strong> 2" in response.data
+    assert b"Total slots:</strong> 3" in response.data
     assert b"Occupied slots:</strong> 1" in response.data
-    assert b"Empty slots:</strong> 1" in response.data
+    assert b"Empty slots:</strong> 2" in response.data
+    assert b"Check boxes to select assets." in response.data
+    assert b"Select all" in response.data
+    assert b"Select all eligible assets" not in response.data
+    assert b'data-select-all-eligible="issue"' in response.data
+    assert b'data-select-all-eligible="return"' in response.data
+    assert b'data-eligible-asset="issue"' in response.data
+    assert b'data-eligible-asset="return"' in response.data
+    assert b'case-return-selection-form' in response.data
+    assert b"Assets Issued Out" in response.data
+    assert b"Assets Out From This Case" not in response.data
     assert b"Slot Position" in response.data
     assert b">1<" in response.data
     assert b">2<" in response.data
     assert b"AT-SLOTTED" in response.data
+    assert b"AT-OUT" in response.data
     assert b"Empty" in response.data
+
+
+def test_case_detail_start_issue_populates_queue_without_events_or_receipts(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 20, "CASE-I", 1)
+    asset_id = _insert_asset(conn, "ISSUE-READY", location_type="STORAGE", home_slot_id=20)
+    _occupy_slot(conn, 20, asset_id)
+    conn.commit()
+
+    response = client.post(
+        "/dashboard/cases/CASE-I/queue",
+        data={"workflow_action": "issue", "asset_tag": "ISSUE-READY"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/issue")
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE-READY"]
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_case_detail_start_return_populates_queue_without_events_or_receipts(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 30, "CASE-R", 1)
+    _insert_asset(conn, "RETURN-READY", location_type="IN_CUSTODY", holder_id=1, home_slot_id=30)
+    conn.commit()
+
+    response = client.post(
+        "/dashboard/cases/CASE-R/queue",
+        data={"workflow_action": "return", "asset_tag": "RETURN-READY"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/return")
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["RETURN-READY"]
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_case_detail_rejects_stale_or_ineligible_issue_selection(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 40, "CASE-STALE", 1)
+    asset_id = _insert_asset(conn, "STALE-ISSUE", location_type="IN_CUSTODY", holder_id=1, home_slot_id=40)
+    _occupy_slot(conn, 40, asset_id)
+    conn.commit()
+
+    response = client.post(
+        "/dashboard/cases/CASE-STALE/queue",
+        data={"workflow_action": "issue", "asset_tag": "STALE-ISSUE"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Queue not started." in response.data
+    assert intake_app.SCAN_QUEUE == []
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_case_detail_mixed_issue_selection_does_not_queue_partial_batch(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 50, "CASE-MIX", 1)
+    _insert_slot(conn, 51, "CASE-MIX", 2)
+    ready_asset_id = _insert_asset(conn, "MIX-READY", location_type="STORAGE", home_slot_id=50)
+    blocked_asset_id = _insert_asset(conn, "MIX-BLOCKED", location_type="IN_CUSTODY", holder_id=1, home_slot_id=51)
+    _occupy_slot(conn, 50, ready_asset_id)
+    _occupy_slot(conn, 51, blocked_asset_id)
+    conn.commit()
+
+    response = client.post(
+        "/dashboard/cases/CASE-MIX/queue",
+        data={"workflow_action": "issue", "asset_tag": ["MIX-READY", "MIX-BLOCKED"]},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Queue not started." in response.data
+    assert intake_app.SCAN_QUEUE == []
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_case_detail_blocks_return_when_issue_queue_exists(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 60, "CASE-BLOCK", 1)
+    _insert_slot(conn, 61, "CASE-BLOCK", 2)
+    issue_asset_id = _insert_asset(conn, "BLOCK-ISSUE", location_type="STORAGE", home_slot_id=60)
+    _insert_asset(conn, "BLOCK-RETURN", location_type="IN_CUSTODY", holder_id=1, home_slot_id=61)
+    _occupy_slot(conn, 60, issue_asset_id)
+    conn.commit()
+
+    issue_response = client.post(
+        "/dashboard/cases/CASE-BLOCK/queue",
+        data={"workflow_action": "issue", "asset_tag": "BLOCK-ISSUE"},
+        follow_redirects=False,
+    )
+    assert issue_response.status_code == 302
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["BLOCK-ISSUE"]
+
+    return_response = client.post(
+        "/dashboard/cases/CASE-BLOCK/queue",
+        data={"workflow_action": "return", "asset_tag": "BLOCK-RETURN"},
+        follow_redirects=True,
+    )
+
+    assert return_response.status_code == 200
+    assert b"Finish or clear the current queue before starting a different action." in return_response.data
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["BLOCK-ISSUE"]
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
+
+
+def test_case_detail_blocks_issue_when_return_queue_exists(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 70, "CASE-BLOCK-R", 1)
+    _insert_slot(conn, 71, "CASE-BLOCK-R", 2)
+    issue_asset_id = _insert_asset(conn, "BLOCK-R-ISSUE", location_type="STORAGE", home_slot_id=70)
+    _insert_asset(conn, "BLOCK-R-RETURN", location_type="IN_CUSTODY", holder_id=1, home_slot_id=71)
+    _occupy_slot(conn, 70, issue_asset_id)
+    conn.commit()
+
+    return_response = client.post(
+        "/dashboard/cases/CASE-BLOCK-R/queue",
+        data={"workflow_action": "return", "asset_tag": "BLOCK-R-RETURN"},
+        follow_redirects=False,
+    )
+    assert return_response.status_code == 302
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["BLOCK-R-RETURN"]
+
+    issue_response = client.post(
+        "/dashboard/cases/CASE-BLOCK-R/queue",
+        data={"workflow_action": "issue", "asset_tag": "BLOCK-R-ISSUE"},
+        follow_redirects=True,
+    )
+
+    assert issue_response.status_code == 200
+    assert b"Finish or clear the current queue before starting a different action." in issue_response.data
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["BLOCK-R-RETURN"]
+    assert _count_rows(conn, "asset_events") == 0
+    assert _count_rows(conn, "receipt_queue") == 0
 
 
 def test_holders_and_cases_deterministic_ordering(app_client) -> None:

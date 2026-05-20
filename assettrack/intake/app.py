@@ -105,6 +105,7 @@ bootstrap_db(db_module.DB_PATH)
 
 # In-memory only: wiped on restart
 SCAN_QUEUE: list[Scan] = []
+CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY = "case_detail_queue_workflow"
 
 INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", str(SESSION_IDLE_TIMEOUT_SECONDS)))
 TERMINAL_LOCATION_TYPE = "DISPOSED"
@@ -920,6 +921,159 @@ def _find_return_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]
         "case_name": case_name,
         "assets": assets,
     }
+
+
+def _selected_case_asset_tags() -> list[str]:
+    seen: set[str] = set()
+    selected: list[str] = []
+    for raw in request.form.getlist("asset_tag"):
+        normalized = sanitize_scan(str(raw or ""))
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        selected.append(str(raw or "").strip())
+    return selected
+
+
+def _case_detail_existing_queue_workflow() -> str:
+    if not SCAN_QUEUE:
+        return ""
+
+    session_workflow = str(session.get(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY) or "").strip().lower()
+    if session_workflow in {"issue", "return"}:
+        return session_workflow
+
+    if bool(session.get("issue_mode")):
+        return "issue"
+
+    return ""
+
+
+def _queue_case_detail_issue_selection(conn: sqlite3.Connection, case_name: str, selected_tags: list[str]) -> tuple[int, list[str]]:
+    invalid: list[str] = []
+    queued_rows: list[dict[str, object]] = []
+
+    for selected_tag in selected_tags:
+        normalized = sanitize_scan(selected_tag)
+        row = conn.execute(
+            """
+            SELECT
+                a.id AS asset_id,
+                a.asset_tag,
+                a.location_type,
+                s.id AS slot_id,
+                s.case_name,
+                s.slot_position
+            FROM assets a
+            JOIN slot_occupancy so
+              ON so.asset_id = a.id
+            JOIN slots s
+              ON s.id = so.slot_id
+            WHERE s.case_name = ?
+              AND (
+                UPPER(a.asset_tag) = UPPER(?)
+                OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(?)
+              )
+            LIMIT 1;
+            """,
+            (case_name, selected_tag, normalized),
+        ).fetchone()
+        if row is None:
+            invalid.append(normalized)
+            continue
+
+        location_type = str(row["location_type"] or "").strip().upper()
+        if location_type != "STORAGE" or _is_terminal_location_type(location_type):
+            invalid.append(str(row["asset_tag"] or normalized))
+            continue
+
+        queued_rows.append(dict(row))
+
+    if invalid:
+        return 0, invalid
+
+    added_count = 0
+    for row in queued_rows:
+        asset_tag = str(row["asset_tag"] or "").strip().upper()
+        if _queue_contains_asset_tag(asset_tag):
+            continue
+        SCAN_QUEUE.append(
+            Scan.now(
+                asset_tag,
+                equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+                home_slot_id=int(row["slot_id"]),
+                case_name=str(row["case_name"] or ""),
+                slot_position=int(row["slot_position"]),
+            )
+        )
+        added_count += 1
+
+    return added_count, []
+
+
+def _queue_case_detail_return_selection(conn: sqlite3.Connection, case_name: str, selected_tags: list[str]) -> tuple[int, list[str]]:
+    invalid: list[str] = []
+    queued_rows: list[dict[str, object]] = []
+
+    for selected_tag in selected_tags:
+        normalized = sanitize_scan(selected_tag)
+        row = conn.execute(
+            """
+            SELECT
+                a.id AS asset_id,
+                a.asset_tag,
+                a.location_type,
+                a.home_slot_id,
+                s.case_name,
+                s.slot_position,
+                s.current_asset_tag,
+                so.asset_id AS occupied_asset_id
+            FROM assets a
+            JOIN slots s
+              ON s.id = a.home_slot_id
+            LEFT JOIN slot_occupancy so
+              ON so.slot_id = s.id
+            WHERE s.case_name = ?
+              AND (
+                UPPER(a.asset_tag) = UPPER(?)
+                OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(?)
+              )
+            LIMIT 1;
+            """,
+            (case_name, selected_tag, normalized),
+        ).fetchone()
+        if row is None:
+            invalid.append(normalized)
+            continue
+
+        location_type = str(row["location_type"] or "").strip().upper()
+        home_slot_occupied = row["current_asset_tag"] is not None or row["occupied_asset_id"] is not None
+        if location_type != "IN_CUSTODY" or _is_terminal_location_type(location_type) or home_slot_occupied:
+            invalid.append(str(row["asset_tag"] or normalized))
+            continue
+
+        queued_rows.append(dict(row))
+
+    if invalid:
+        return 0, invalid
+
+    added_count = 0
+    for row in queued_rows:
+        asset_tag = str(row["asset_tag"] or "").strip().upper()
+        if _queue_contains_asset_tag(asset_tag):
+            continue
+        SCAN_QUEUE.append(
+            Scan.now(
+                asset_tag,
+                equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
+                home_slot_id=int(row["home_slot_id"]),
+                case_name=str(row["case_name"] or ""),
+                slot_position=int(row["slot_position"]),
+            )
+        )
+        added_count += 1
+
+    return added_count, []
 
 
 def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
@@ -3676,6 +3830,7 @@ def intake():
 
         if action == "clear":
             SCAN_QUEUE.clear()
+            session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
         elif action == "remove":
             try:
                 queue_index = int(queue_index_raw)
@@ -4126,6 +4281,67 @@ def dashboard_case_detail(case_name: str):
     )
 
 
+@app.post("/dashboard/cases/<case_name>/queue")
+@require_login
+def dashboard_case_queue_start(case_name: str):
+    action = str(request.form.get("workflow_action") or "").strip().lower()
+    return_to = _safe_local_return_to(request.form.get("return_to") or "")
+    selected_tags = _selected_case_asset_tags()
+
+    def _case_detail_redirect():
+        if return_to is not None:
+            return redirect(url_for("dashboard_case_detail", case_name=case_name, return_to=return_to))
+        return redirect(url_for("dashboard_case_detail", case_name=case_name))
+
+    if action not in {"issue", "return"}:
+        flash("Choose Start Issue or Start Return.", "error")
+        return _case_detail_redirect()
+
+    if not selected_tags:
+        flash("Select at least one asset before starting a queue.", "error")
+        return _case_detail_redirect()
+
+    existing_queue_workflow = _case_detail_existing_queue_workflow()
+    if existing_queue_workflow and existing_queue_workflow != action:
+        flash("Finish or clear the current queue before starting a different action.", "error")
+        return _case_detail_redirect()
+
+    conn = get_connection()
+    try:
+        detail = get_case_slot_detail(conn, case_name)
+        if detail is None:
+            abort(404)
+        if action == "issue":
+            added_count, invalid_tags = _queue_case_detail_issue_selection(conn, case_name, selected_tags)
+        else:
+            added_count, invalid_tags = _queue_case_detail_return_selection(conn, case_name, selected_tags)
+    finally:
+        conn.close()
+
+    if invalid_tags:
+        flash(
+            "Queue not started. These assets are no longer eligible: "
+            + ", ".join(invalid_tags)
+            + ".",
+            "error",
+        )
+        return _case_detail_redirect()
+
+    if added_count == 0:
+        flash("Selected assets are already queued.", "error")
+        return _case_detail_redirect()
+
+    touch_session()
+    session[CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY] = action
+    if action == "issue":
+        session["issue_mode"] = True
+        flash(f"Added {added_count} selected assets to the Issue queue.", "success")
+        return redirect(url_for("issue"))
+
+    flash(f"Added {added_count} selected assets to the Return queue.", "success")
+    return redirect(url_for("return_queue"))
+
+
 @app.get("/assets/search")
 @require_login
 def asset_search():
@@ -4236,6 +4452,7 @@ def preview_discard():
 
     discarded = len(SCAN_QUEUE)
     SCAN_QUEUE.clear()
+    session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
     if return_to_path != "/issue":
         session.pop("holder_id", None)
 
@@ -4315,6 +4532,7 @@ def preview_commit():
             return redirect(url_for("preview"))
 
         SCAN_QUEUE.clear()
+        session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
         session.pop("holder_id", None)  # keep tidy; holder is only meaningful for issue mode
         touch_session()
 
@@ -4379,6 +4597,7 @@ def preview_commit():
         return redirect(url_for("preview"))
 
     SCAN_QUEUE.clear()
+    session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
     touch_session()
 
     if wants_json():
@@ -4626,6 +4845,7 @@ def issue_commit():
         return redirect(url_for("issue_preview"))
 
     SCAN_QUEUE.clear()
+    session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
     touch_session()
 
     if wants_json():
@@ -4771,6 +4991,7 @@ def return_commit():
         return redirect(url_for("return_preview"))
 
     SCAN_QUEUE.clear()
+    session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
     touch_session()
     returned_cases: list[str] = []
     for row in state["assets"]:
