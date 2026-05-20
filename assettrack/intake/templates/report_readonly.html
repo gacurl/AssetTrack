@@ -101,7 +101,7 @@
       <a class="report-stat report-stat-link" href="{{ url_for('dashboard_holders', return_to=report_return_to) }}">
         In custody
         <strong>{{ asset_summary.in_custody_assets }}</strong>
-        <span class="nav-link report-stat-action">Open holder follow-up</span>
+        <span class="nav-link report-stat-action">Open manual holder follow-up</span>
       </a>
       <div class="report-stat">
         {% if include_retired_assets %}Retired shown{% else %}Retired hidden{% endif %}

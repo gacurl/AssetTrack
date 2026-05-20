@@ -222,16 +222,16 @@
     {% set context_parts = context_parts + ["Recorded by " ~ operator.username] %}
   {% endif %}
   {% if receipt.delivery.state == "failed" %}
-    {% set receipt_status_text = "Email failed — resend recommended" %}
+    {% set receipt_status_text = "Receipt delivery failed — custody already recorded" %}
     {% set receipt_status_tone = "action" %}
   {% elif receipt.delivery.state == "pending" %}
-    {% set receipt_status_text = "Email queued — no action needed unless delivery stalls" %}
+    {% set receipt_status_text = "Receipt delivery queued — custody already recorded" %}
     {% set receipt_status_tone = "calm" %}
   {% elif receipt.delivery.state == "sent" %}
-    {% set receipt_status_text = "No action needed" %}
+    {% set receipt_status_text = "Receipt delivered — custody already recorded" %}
     {% set receipt_status_tone = "calm" %}
   {% else %}
-    {% set receipt_status_text = "No action needed" %}
+    {% set receipt_status_text = "Custody already recorded" %}
     {% set receipt_status_tone = "calm" %}
   {% endif %}
   <nav class="actions nav-row mixed-nav-row" aria-label="Receipt navigation">
@@ -272,6 +272,7 @@
             · {{ email_timing_label }} {{ email_timing_value }}
           {% endif %}
         </p>
+        <p class="receipt-context-line">Holder follow-up emails are manual reminders only. They do not record or change custody.</p>
         {% if send_blocked_by_recovery %}
           <p class="receipt-context-line">Receipt resend and retry actions are paused until an admin acknowledges recovery mode.</p>
         {% endif %}
