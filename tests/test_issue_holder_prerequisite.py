@@ -57,7 +57,7 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
     assert b"Issue" in issue_page.data
-    assert b"Preview Queue" in issue_page.data
+    assert b"Review Before Issue" in issue_page.data
 
 
 def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_holder(client_with_temp_db) -> None:
@@ -129,6 +129,21 @@ def test_issue_preview_without_issue_mode_redirects_to_issue_entry(client_with_t
     with client_with_temp_db.session_transaction() as sess:
         sess["holder_id"] = 1
         sess["issue_mode"] = False
+
+    response = client_with_temp_db.get("/issue/preview")
+
+    assert response.status_code == 302
+    assert (response.headers.get("Location") or "").endswith("/issue")
+
+
+def test_issue_preview_with_empty_queue_redirects_to_issue_entry(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-empty-issue-preview", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+    with client_with_temp_db.session_transaction() as sess:
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
 
     response = client_with_temp_db.get("/issue/preview")
 

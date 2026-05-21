@@ -4737,6 +4737,9 @@ def issue_preview():
     session["issue_building"] = issue_location_form["building"]
     session["issue_room"] = issue_location_form["room"]
     asset_tags = _queue_asset_tags()
+    if not asset_tags:
+        flash("Queue is empty. Scan assets before opening Issue Preview.", "error")
+        return redirect(url_for("issue"))
     issue_preview_state = _build_issue_preview_state(asset_tags, selected_holder)
 
     return render_template(

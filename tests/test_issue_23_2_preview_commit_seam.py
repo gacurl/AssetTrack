@@ -142,7 +142,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert occupancy is None
 
 
-def test_issue_preview_empty_queue_shows_next_step_guidance(client_with_temp_db) -> None:
+def test_issue_preview_empty_queue_redirects_to_issue_entry(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-preview-empty", password="op-pass", role="operator")
     login_session(client_with_temp_db, operator_id)
 
@@ -154,8 +154,8 @@ def test_issue_preview_empty_queue_shows_next_step_guidance(client_with_temp_db)
 
     issue_preview = client_with_temp_db.get("/issue/preview")
 
-    assert issue_preview.status_code == 200
-    assert b"No assets queued." in issue_preview.data
+    assert issue_preview.status_code == 302
+    assert (issue_preview.headers.get("Location") or "").endswith("/issue")
 
 
 def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:

@@ -98,7 +98,7 @@ def test_scan_submission_refreshes_last_seen(client_with_temp_db, monkeypatch: p
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-actions")
     assert len(intake_app.SCAN_QUEUE) == 1
     with client_with_temp_db.session_transaction() as sess:
         assert sess["last_seen"] == 220
@@ -116,7 +116,7 @@ def test_queue_action_refreshes_last_seen(client_with_temp_db, monkeypatch: pyte
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-actions")
     assert len(intake_app.SCAN_QUEUE) == 0
     with client_with_temp_db.session_transaction() as sess:
         assert sess["last_seen"] == 230
