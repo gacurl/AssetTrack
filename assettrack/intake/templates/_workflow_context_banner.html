@@ -1,26 +1,38 @@
 <!-- file: assettrack/intake/templates/_workflow_context_banner.html -->
 <div class="card workflow-banner">
   <h2>{{ workflow_banner_title }}</h2>
-  <p class="workflow-summary" style="margin: 0;">
-    {% if selected_holder %}
-      <strong>{{ holder_display_name(selected_holder) }}</strong>
-      {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
-        ({{ selected_holder["organization"] }})
+  <div class="workflow-banner-main">
+    <p class="workflow-summary" style="margin: 0;">
+      {% if selected_holder %}
+        <strong>{{ holder_display_name(selected_holder) }}</strong>
+        {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+          ({{ selected_holder["organization"] }})
+        {% endif %}
+        {% if workflow_banner_destination or workflow_banner_outcome or workflow_banner_queued_count is not none %}
+          &nbsp;|&nbsp;
+        {% endif %}
       {% endif %}
-      {% if workflow_banner_destination or workflow_banner_outcome or workflow_banner_queued_count is not none %}
-        &nbsp;|&nbsp;
+      {% if workflow_banner_destination %}
+        Home location: {{ workflow_banner_destination }}
+        {% if workflow_banner_outcome or workflow_banner_queued_count is not none %}
+          &nbsp;|&nbsp;
+        {% endif %}
       {% endif %}
-    {% endif %}
-    {% if workflow_banner_destination %}
-      Home location: {{ workflow_banner_destination }}
-      {% if workflow_banner_outcome or workflow_banner_queued_count is not none %}
-        &nbsp;|&nbsp;
+      {% if workflow_banner_outcome %}
+        {{ workflow_banner_outcome }}
+      {% elif workflow_banner_queued_count is not none %}
+        {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %} queued
       {% endif %}
+    </p>
+    {% if workflow_banner_change_holder_href %}
+      <div class="workflow-banner-action">
+        <a class="action-secondary" href="{{ workflow_banner_change_holder_href }}">Change Holder</a>
+      </div>
     {% endif %}
-    {% if workflow_banner_outcome %}
-      {{ workflow_banner_outcome }}
-    {% elif workflow_banner_queued_count is not none %}
-      {{ workflow_banner_queued_count }} asset{% if workflow_banner_queued_count != 1 %}s{% endif %} queued
-    {% endif %}
-  </p>
+  </div>
+  {% if workflow_banner_change_holder_href %}
+    <div class="workflow-action-row workflow-action-row--quiet workflow-banner-action-mobile">
+      <a class="action-secondary" href="{{ workflow_banner_change_holder_href }}">Change Holder</a>
+    </div>
+  {% endif %}
 </div>
