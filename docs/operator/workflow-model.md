@@ -4,6 +4,19 @@ AssetTrack uses one operator workflow seam:
 
 `entry -> prerequisite selection -> scan queue -> preview -> commit`
 
+## Custody Model Terms
+
+- holder = custody actor
+- location = transaction context (where issue/return happened, or where an asset is currently recorded)
+- case/slot = storage logistics
+
+Operator guidance:
+
+- a holder can receive or return assets across multiple locations
+- holder identity does not change when location changes
+- location by itself does not create or transfer custody
+- custody truth comes from committed event history
+
 ## Primary / Global Destinations
 
 These pages begin or anchor work:
