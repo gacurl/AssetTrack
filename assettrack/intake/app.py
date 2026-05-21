@@ -581,6 +581,48 @@ def _send_demo_receipt_email(recipient_email: str) -> str:
     return recipient_email
 
 
+def _send_holder_followup_email(*, holder: dict, note: str, actor_username: str) -> str:
+    recipient_email = str(holder.get("email") or "").strip().lower()
+    if not recipient_email:
+        raise ValueError("Holder follow-up email requires a holder email address.")
+
+    smtp_host = str(os.getenv("ASSETTRACK_SMTP_HOST") or "").strip()
+    if not smtp_host:
+        raise ValueError("Follow-up email delivery is not configured.")
+
+    holder_name = _holder_display_name(holder) or "Holder"
+    organization = str(holder.get("organization") or "").strip()
+    identifier = str(holder.get("identifier") or "").strip()
+
+    subject = f"AssetTrack Holder Follow-Up: {holder_name}"
+    lines = [
+        f"Holder follow-up for: {holder_name}",
+    ]
+    if organization:
+        lines.append(f"Organization: {organization}")
+    if identifier:
+        lines.append(f"Identifier: {identifier}")
+    lines.extend(
+        [
+            "",
+            "This is a manual follow-up reminder from an operator.",
+            "It does not record, prove, or change custody.",
+        ]
+    )
+    if note:
+        lines.extend(["", "Operator note:", note])
+    lines.extend(["", f"Sent by: {actor_username}"])
+
+    from_address = str(os.getenv("ASSETTRACK_RECEIPT_FROM_EMAIL") or "assettrack@local").strip() or "assettrack@local"
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = from_address
+    message["To"] = recipient_email
+    message.set_content("\n".join(lines))
+    _send_email_message(message)
+    return recipient_email
+
+
 def _queue_contains_asset_tag(asset_tag: str) -> bool:
     normalized = sanitize_scan(asset_tag or "")
     if not normalized:
@@ -5096,6 +5138,48 @@ def holder_detail(holder_id: int):
         asset_count=len(assigned_assets),
         return_to=return_to,
     )
+
+
+@app.post("/holders/<int:holder_id>/follow-up-email")
+@require_login
+def holder_followup_email_send(holder_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    user = current_user()
+    if user is None:
+        return {"ok": False, "error": "Forbidden"}, 403
+    role = str(user.get("role") or "").strip().lower()
+    if role not in {"admin", "operator"}:
+        return {"ok": False, "error": "Forbidden"}, 403
+
+    holder = get_holder(holder_id)
+    if holder is None:
+        abort(404)
+
+    return_to = _safe_local_return_to(request.form.get("return_to") or "") or ""
+    note = (request.form.get("followup_note") or "").strip()
+    if len(note) > 2000:
+        flash("Follow-up note must be 2000 characters or fewer.", "error")
+        return redirect(url_for("holder_detail", holder_id=holder_id, return_to=return_to))
+
+    try:
+        sent_to = _send_holder_followup_email(
+            holder=holder,
+            note=note,
+            actor_username=str(user.get("username") or "unknown"),
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("holder_detail", holder_id=holder_id, return_to=return_to))
+    except Exception as exc:
+        flash(f"Holder follow-up email failed: {exc}", "error")
+        return redirect(url_for("holder_detail", holder_id=holder_id, return_to=return_to))
+
+    flash(f"Holder follow-up email sent to {sent_to}.", "success")
+    return redirect(url_for("holder_detail", holder_id=holder_id, return_to=return_to))
 
 
 @app.get("/receipts/<int:receipt_id>")
