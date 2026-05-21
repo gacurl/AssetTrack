@@ -49,6 +49,7 @@
               <a class="chip {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
               <a class="chip {% if request.path.startswith('/issue') %}active{% endif %}" href="{{ url_for('issue') }}">Issue</a>
               <a class="chip {% if request.path.startswith('/return') %}active{% endif %}" href="{{ url_for('return_queue') }}">Return</a>
+              <a class="chip {% if request.path.startswith('/holders') %}active{% endif %}" href="{{ url_for('holders_search') }}">Holders</a>
               <a class="chip {% if request.path.startswith('/report') or request.path.startswith('/receipts') or request.path.startswith('/assets/search') or request.path.startswith('/dashboard/holders') or request.path.startswith('/dashboard/cases') %}active{% endif %}" href="{{ url_for('human_report') }}">Reports</a>
               {% if authenticated_role == 'admin' %}
                 {% set admin_menu_active = request.path.startswith('/admin') or request.path.startswith('/add-assets') %}
