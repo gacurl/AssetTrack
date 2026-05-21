@@ -176,6 +176,8 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
     assert b"Issue" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Org" in response.data
+    assert b"Change Holder" in response.data
+    assert b'href="/holders?return_to=/issue"' in response.data
     assert b"0 assets queued" in response.data
 
 

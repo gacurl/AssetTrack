@@ -4707,6 +4707,7 @@ def issue():
         workflow_banner_title="Issue",
         workflow_banner_queued_count=len(asset_tags),
         workflow_banner_outcome=workflow_banner_outcome,
+        workflow_banner_change_holder_href=url_for("holders_search", return_to=url_for("issue")),
         return_to=url_for("issue"),
         preview_url=url_for("issue_preview"),
         preview_label="Review Before Issue",

@@ -79,6 +79,35 @@
   line-height: 1.55;
 }
 
+.workflow-banner-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.workflow-banner-main .workflow-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workflow-banner-action {
+  flex: 0 0 auto;
+}
+
+.workflow-banner-action-mobile {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .workflow-banner-main .workflow-banner-action {
+    display: none;
+  }
+  .workflow-banner-action-mobile {
+    display: flex;
+  }
+}
+
 .workflow-table td strong {
   color: var(--color-primary);
 }
