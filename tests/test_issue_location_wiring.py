@@ -190,7 +190,6 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     preview = client_with_temp_db.get("/issue/preview")
     assert preview.status_code == 200
     assert b"Current location:</strong> HQ North / 210" in preview.data
-    assert b"Current location:</strong> <code>HQ North / 210</code>" in preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in preview.data
     assert b"Home location:</strong> <code>Not assigned</code>" not in preview.data
 

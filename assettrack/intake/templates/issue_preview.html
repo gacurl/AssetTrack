@@ -26,6 +26,52 @@
       color: var(--color-text-muted);
       font-size: 0.94rem;
     }
+    .asset-review-list {
+      display: grid;
+      gap: 0.85rem;
+    }
+    .asset-review-card {
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      padding: 0.8rem 0.9rem;
+      background: var(--color-surface-bg);
+    }
+    .asset-review-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+    }
+    .asset-review-tag {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+    .asset-review-core {
+      margin: 0.6rem 0 0 0;
+      display: grid;
+      gap: 0.45rem;
+    }
+    .asset-review-core p {
+      margin: 0;
+      line-height: 1.45;
+    }
+    .asset-review-core code {
+      white-space: nowrap;
+    }
+    .asset-technical {
+      margin-top: 0.7rem;
+      color: var(--color-text-muted);
+    }
+    .asset-technical summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .asset-technical .state-block {
+      margin-top: 0.45rem;
+      line-height: 1.45;
+    }
   </style>
 {% endblock %}
 
@@ -114,61 +160,49 @@
     <h2>Assets</h2>
 
     {% if assets %}
-      <table class="workflow-table">
-        <thead>
-          <tr>
-            <th>Asset</th>
-            <th>Current State</th>
-            <th>After Issue</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in assets %}
-            {% set before_holder_display = "Not assigned" if row.before_holder == "null" else row.before_holder %}
-            {% set before_current_location_display = "Not assigned" if row.before_current_location == "null" else row.before_current_location %}
-            {% set after_current_location_display = "Not assigned" if row.after_current_location == "null" else row.after_current_location %}
-            {% set before_home_location_display = "Not assigned" if row.before_home_location == "null" else row.before_home_location %}
-            {% set after_home_location_display = "Not assigned" if row.after_home_location == "null" else row.after_home_location %}
-            <tr>
-              <td><code>{{ row.asset_tag }}</code></td>
+      <div class="asset-review-list">
+        {% for row in assets %}
+          {% set before_holder_display = "Not assigned" if row.before_holder == "null" else row.before_holder %}
+          {% set before_current_location_display = "Not assigned" if row.before_current_location == "null" else row.before_current_location %}
+          {% set after_current_location_display = "Not assigned" if row.after_current_location == "null" else row.after_current_location %}
+          {% set before_home_location_display = "Not assigned" if row.before_home_location == "null" else row.before_home_location %}
+          {% set after_home_location_display = "Not assigned" if row.after_home_location == "null" else row.after_home_location %}
+          <article class="asset-review-card">
+            <div class="asset-review-head">
+              <p class="asset-review-tag"><code>{{ row.asset_tag }}</code></p>
+              {% if row.asset_issues %}
+                <span class="pill bad">blocked</span>
+              {% else %}
+                <span class="pill good">ready</span>
+              {% endif %}
+            </div>
 
-              <td>
-                <div class="state-block">
-                  <strong>Location:</strong> <code>{{ row.before_location_type }}</code><br />
-                  <strong>Current location:</strong> <code>{{ before_current_location_display }}</code><br />
-                  <strong>Issued to:</strong> <code>{{ before_holder_display }}</code><br />
-                  <strong>Home location:</strong> <code>{{ before_home_location_display }}</code><br />
-                  <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code>
-                </div>
-              </td>
+            <div class="asset-review-core">
+              <p><strong>Issue to:</strong> <code>{{ row.after_holder }}</code></p>
+              <p><strong>Current location:</strong> <code>{{ before_current_location_display }}</code></p>
+              <p><strong>Issue result:</strong> <code>{{ row.after_location_type }}</code> at <code>{{ after_current_location_display }}</code></p>
+            </div>
 
-              <td>
-                <div class="state-block">
-                  <strong>Location:</strong> <code>{{ row.after_location_type }}</code><br />
-                  <strong>Current location:</strong> <code>{{ after_current_location_display }}</code><br />
-                  <strong>Issued to:</strong> <code>{{ row.after_holder }}</code><br />
-                  <strong>Home location:</strong> <code>{{ after_home_location_display }}</code><br />
-                  <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
-                </div>
-              </td>
+            {% if row.asset_issues %}
+              <ul>
+                {% for issue in row.asset_issues %}
+                  <li>{{ issue }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
 
-              <td>
-                {% if row.asset_issues %}
-                  <span class="pill bad">blocked</span>
-                  <ul><template>
-                    {% for issue in row.asset_issues %}
-                      <li>{{ issue }}</li>
-                    {% endfor %}
-                  </template></ul>
-                {% else %}
-                  <span class="pill good">ready</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            <details class="asset-technical">
+              <summary>Technical details</summary>
+              <div class="state-block">
+                <strong>Before location:</strong> <code>{{ row.before_location_type }}</code><br />
+                <strong>Before holder:</strong> <code>{{ before_holder_display }}</code><br />
+                <strong>Home location:</strong> <code>{{ before_home_location_display }}</code> → <code>{{ after_home_location_display }}</code><br />
+                <strong>Occupancy:</strong> <code>{{ row.before_slot_occupancy }}</code> → <code>{{ row.after_slot_occupancy }}</code>
+              </div>
+            </details>
+          </article>
+        {% endfor %}
+      </div>
     {% else %}
       <p>No assets queued.</p>
     {% endif %}

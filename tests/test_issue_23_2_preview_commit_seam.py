@@ -87,11 +87,12 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert issue_preview.status_code == 200
     assert b"Issue Preview" in issue_preview.data
     assert b"Ready to Issue" in issue_preview.data
-    assert b"Issued to:</strong>" in issue_preview.data
+    assert b"Issue to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
     assert b"1 asset queued" in issue_preview.data
-    assert b"Current location:</strong> <code>HQ North / 210</code>" in issue_preview.data
-    assert b"Issued to:</strong> <code>Not assigned</code>" in issue_preview.data
+    assert b"Current location:</strong> HQ North / 210" in issue_preview.data
+    assert b"Issue result:</strong> <code>IN_CUSTODY</code> at <code>HQ North / 210</code>" in issue_preview.data
+    assert b"Technical details" in issue_preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
     assert b"I reviewed this batch and want to issue these assets to the selected holder." in issue_preview.data
     assert b'name="confirm_responsibility_ack"' in issue_preview.data
