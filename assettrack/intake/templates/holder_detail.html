@@ -121,6 +121,24 @@
       background: #fde9e7;
       color: #8a2d2d;
     }
+    .holder-followup-form {
+      margin-top: 0.85rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 10px;
+      background: var(--color-surface-bg);
+    }
+    .holder-followup-form p {
+      margin: 0 0 0.55rem;
+    }
+    .holder-followup-form textarea {
+      width: 100%;
+      max-width: 640px;
+      min-height: 88px;
+      box-sizing: border-box;
+      padding: 0.6rem;
+      font-size: 0.95rem;
+    }
   </style>
 {% endblock %}
 
@@ -214,6 +232,23 @@
       </div>
     </div>
   </section>
+
+  {% if holder.email %}
+    <section class="card holder-details-card">
+      <h2>Send this Holder a Follow-Up Email</h2>
+      <form method="post" action="{{ url_for('holder_followup_email_send', holder_id=holder.id) }}" class="holder-followup-form">
+        {% if return_to and return_to != url_for('human_report') %}
+          <input type="hidden" name="return_to" value="{{ return_to }}" />
+        {% endif %}
+        <p class="muted">Follow-up emails are manual reminders. They do not record or change custody.</p>
+        <label for="followup_note"><strong>Operator note</strong> (optional)</label><br />
+        <textarea id="followup_note" name="followup_note" maxlength="2000" placeholder="Add optional reminder details for this holder."></textarea>
+        <div class="workflow-action-row" style="margin-top: 0.65rem;">
+          <button type="submit">Send Follow-Up Email</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
 
   <section class="card holder-assets-card">
     <h2>Assets In Custody ({{ asset_count }})</h2>
