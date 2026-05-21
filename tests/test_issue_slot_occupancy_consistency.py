@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import assettrack.auth as auth
 import assettrack.db as db
 from assettrack.intake import app as intake_app
 from assettrack.intake.scan import Scan
@@ -57,6 +58,9 @@ def test_issue_preview_and_commit_use_slot_occupancy_when_slot_marker_is_null(cl
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -101,6 +105,9 @@ def test_issue_commit_redirect_shows_success_without_holder_warning(client_with_
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"

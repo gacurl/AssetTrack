@@ -127,7 +127,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Stage in queue", response.data)
         self.assertIn(b"Preview Queue", response.data)
         self.assertIn(b'id="review-batch" class="preview-step"', response.data)
-        self.assertIn(b"Back to Return", response.data)
+        self.assertIn(b'href="/return"', response.data)
         self.assertNotIn(b"Open batch preview", response.data)
         self.assertNotIn(b"What this does:", response.data)
         self.assertNotIn(b"How to use:", response.data)

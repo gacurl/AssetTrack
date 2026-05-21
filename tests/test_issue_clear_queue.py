@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import assettrack.auth as auth
 import assettrack.db as db
 from assettrack.intake import app as intake_app
 from assettrack.intake.scan import Scan
@@ -43,6 +44,9 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -56,7 +60,7 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-actions")
     assert len(intake_app.SCAN_QUEUE) == 0
 
     with client_with_temp_db.session_transaction() as sess:
@@ -64,9 +68,9 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Issued to:</strong>" in issue_page.data
     assert b"Issue Holder" in issue_page.data
-    assert b"Queued assets:</strong> 0" in issue_page.data
+    assert b"Issue Holder" in issue_page.data
+    assert b"0 assets queued" in issue_page.data
 
     rescan = client_with_temp_db.post(
         "/",
@@ -76,7 +80,7 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
 
     assert rescan.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["RESCANAFTERCLEAR"]
-    assert b"Issued to:</strong>" in rescan.data
+    assert b"Issue Holder" in rescan.data
     assert b"Issue Holder" in rescan.data
     assert b"Queue (1)" in rescan.data
 
@@ -86,6 +90,9 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -105,7 +112,7 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
     )
 
     assert response.status_code == 302
-    assert (response.headers.get("Location") or "").endswith("/issue")
+    assert (response.headers.get("Location") or "").endswith("/issue#queue-actions")
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DUP-TAG", "KEEP-TAG"]
 
     issue_page = client_with_temp_db.get("/issue")
@@ -118,6 +125,9 @@ def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -137,9 +147,9 @@ def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_
 
     assert response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Issuing Assets" in response.data
+    assert b"<h2>Issue</h2>" in response.data
     assert b"Queue (0)" in response.data
-    assert b"Queued assets:</strong> 0" in response.data
+    assert b"0 assets queued" in response.data
 
 
 def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(client_with_temp_db) -> None:
@@ -157,6 +167,9 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -172,11 +185,11 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
 
     assert response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Issuing Assets" in response.data
-    assert b"Issued to:</strong>" in response.data
+    assert b"<h2>Issue</h2>" in response.data
+    assert b"Issue Holder" in response.data
     assert b"Issue Holder" in response.data
     assert b"Queue (0)" in response.data
-    assert b"Queued assets:</strong> 0" in response.data
+    assert b"0 assets queued" in response.data
 
     with client_with_temp_db.session_transaction() as sess:
         assert sess.get("holder_id") == 1
@@ -190,7 +203,7 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
     assert rescan.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["TAGRESCAN"]
     assert b"Queue (1)" in rescan.data
-    assert b"Issued to:</strong>" in rescan.data
+    assert b"Issue Holder" in rescan.data
     assert b"Issue Holder" in rescan.data
 
 
@@ -229,6 +242,9 @@ def test_issue_preview_discard_preserves_holder_through_rescan_preview_and_commi
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -269,7 +285,7 @@ def test_issue_preview_discard_preserves_holder_through_rescan_preview_and_commi
     )
 
     assert commit.status_code == 200
-    assert b"Issued 1 assets." in commit.data
+    assert b"Issue Receipt" in commit.data
     assert b"Issue Holder" in commit.data
     assert len(intake_app.SCAN_QUEUE) == 0
 
@@ -298,6 +314,9 @@ def test_non_issue_preview_discard_still_clears_holder_selection(client_with_tem
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
@@ -338,6 +357,9 @@ def test_issue_scan_normalizes_asset_tag_to_uppercase_and_blocks_case_variant_du
 
     with client_with_temp_db.session_transaction() as sess:
         sess["user_id"] = operator_id
+        current_time = auth.now_seconds()
+        sess["last_seen"] = current_time
+        sess["session_started_at"] = current_time
         sess["holder_id"] = 1
         sess["issue_mode"] = True
         sess["issue_building"] = "HQ North"
