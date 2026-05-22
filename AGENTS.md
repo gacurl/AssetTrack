@@ -150,16 +150,28 @@ Operators must understand state and next action in seconds under pressure.
 
 ## 10. Codex Context Rule
 
-Codex must ONLY rely on:
+Codex source-of-truth hierarchy:
 
-- AGENTS.md
-- docs/codex/PROJECT_MEMORY.md
-- docs/codex/CURRENT_STATE.md
+1. direct task instructions
+2. AGENTS.md
+3. docs/codex/PROJECT_MEMORY.md
+4. docs/codex/CURRENT_STATE.md
+5. repo state
+6. Codex memories (recall only, never authority)
 
 Do NOT:
 
 - infer from other repos
 - reuse patterns without confirmation
+
+Codex memories are non-authoritative recall only.
+Use memories to reduce repeated context setup, never to override:
+
+- direct task instructions
+- AGENTS.md
+- docs/codex/PROJECT_MEMORY.md
+- docs/codex/CURRENT_STATE.md
+- current repo state
 
 If unsure:
 → ASK before acting
