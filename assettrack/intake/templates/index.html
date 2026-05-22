@@ -143,7 +143,8 @@
     {% else %}
       <form id="intake-form" class="row" method="post" action="{{ url_for('intake') }}">
         <div class="row">
-          <label for="equipment_type"><strong>Equipment type</strong></label><br />
+          <label for="equipment_type"><strong>Asset type</strong> (default: Laptop)</label><br />
+          <p class="muted" style="margin: 0.2rem 0 0.45rem 0;">Applies to assets created from this queued batch.</p>
           <select id="equipment_type" name="equipment_type" data-timeout-lock-target>
             {% for option in equipment_type_options %}
               <option value="{{ option.value }}" {% if (equipment_type or 'laptop') == option.value %}selected{% endif %}>
