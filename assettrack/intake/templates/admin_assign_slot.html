@@ -4,6 +4,43 @@
 {% block title %}Admin Assign Slot{% endblock %}
 {% block page_heading %}Admin: Assign Slot to Unslotted Asset{% endblock %}
 {% block page_class %} admin-maintenance-standard-fields{% endblock %}
+{% block extra_head %}
+  <style>
+    .assign-slot-table td:last-child,
+    .assign-slot-table th:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .assign-slot-table th:last-child {
+      padding-right: 0.35rem;
+    }
+    .assign-slot-table .asset-tag-cell code {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .assign-slot-table .asset-meta {
+      color: var(--color-text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.15rem;
+    }
+    .compact-details {
+      margin-top: 0.75rem;
+    }
+    .compact-details summary {
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-weight: 600;
+    }
+    .compact-details .row {
+      margin-top: 0.65rem;
+    }
+    .asset-summary-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.4rem 0.9rem;
+    }
+  </style>
+{% endblock %}
 
 {% block content %}
   <nav class="workflow-local-nav" aria-label="Admin slot assignment navigation">
@@ -19,26 +56,29 @@
   {% endwith %}
 
   <div class="card">
-    <h2>1) Unslotted Assets</h2>
-    <p class="card-intro">Select an existing unslotted STORAGE asset to start assignment.</p>
+    <h2>Unslotted Assets</h2>
+    <p class="card-intro">Select an unslotted asset.</p>
     {% if unslotted_assets %}
-      <table>
+      <table class="assign-slot-table">
         <thead>
           <tr>
             <th>Asset tag</th>
             <th>Equipment type</th>
-            <th>Updated</th>
-            <th>Created</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           {% for row in unslotted_assets %}
             <tr>
-              <td><code>{{ row.asset_tag }}</code></td>
+              <td class="asset-tag-cell">
+                <code>{{ row.asset_tag }}</code>
+                {% if row.updated_date or row.created_date %}
+                  <div class="asset-meta">
+                    {% if row.updated_date %}Updated {{ row.updated_date }}{% elif row.created_date %}Created {{ row.created_date }}{% endif %}
+                  </div>
+                {% endif %}
+              </td>
               <td>{{ row.equipment_type or "Unknown" }}</td>
-              <td>{{ row.updated_date or "N/A" }}</td>
-              <td>{{ row.created_date or "N/A" }}</td>
               <td>
                 <form method="post" action="{{ url_for('admin_assign_slot') }}">
                   <input type="hidden" name="action" value="lookup" />
@@ -55,10 +95,8 @@
     {% endif %}
   </div>
 
-  <div class="card">
-    <h2>2) Scan or enter asset tag</h2>
-    <p class="card-intro">Use this fallback when the asset is not selected from the unslotted list.</p>
-    <p class="muted"><a href="{{ url_for('admin_slot_provision') }}">Create empty slots</a> first if needed.</p>
+  <details class="card compact-details">
+    <summary>Scan or enter asset tag</summary>
     <form method="post" action="{{ url_for('admin_assign_slot') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
@@ -75,32 +113,20 @@
       </div>
       <button type="submit">Lookup Asset</button>
     </form>
-  </div>
+  </details>
 
   {% if asset %}
     <div class="card">
-      <h2>3) Asset Details</h2>
-      <div class="admin-maintenance-grid">
+      <h2>Selected Asset</h2>
+      <div class="asset-summary-row">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
-        <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
-        <div><strong>model:</strong> {{ asset.model or "" }}</div>
-        <div><strong>serial:</strong> {{ asset.serial or "" }}</div>
+        <div><strong>equipment type:</strong> {{ asset.model or asset.manufacturer or "Unknown" }}</div>
         <div><strong>location_type:</strong> <code>{{ asset.location_type or "" }}</code></div>
-        <div><strong>current_holder:</strong> {{ asset.current_holder }}</div>
-        <div>
-          <strong>current slot:</strong>
-          {% if asset.current_slot %}
-            <code>{{ asset.current_slot.case_name }} / {{ asset.current_slot.slot_position }} (id {{ asset.current_slot.slot_id }})</code>
-          {% else %}
-            none
-          {% endif %}
-        </div>
-        <div><strong>home_slot_id:</strong> {{ asset.home_slot_id if asset.home_slot_id is not none else "none" }}</div>
       </div>
     </div>
 
     <div class="card">
-      <h2>4) Assign Slot</h2>
+      <h2>Assign Slot</h2>
       <form method="post" action="{{ url_for('admin_assign_slot') }}">
         <input type="hidden" name="action" value="assign" />
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
@@ -170,6 +196,7 @@
 
         <button type="submit">Assign Slot</button>
       </form>
+      <p class="muted" style="margin-top: 0.65rem;"><a href="{{ url_for('admin_slot_provision') }}">Create empty slots</a></p>
     </div>
   {% endif %}
 {% endblock %}
