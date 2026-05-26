@@ -106,42 +106,54 @@
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
 
         <div class="row">
-          <label for="building_room"><strong>building/room</strong> (required)</label><br />
+          <label for="building"><strong>building</strong> (required)</label><br />
+          <select id="building" name="building" required>
+            <option value="">Select building</option>
+            {% for option in building_options %}
+              <option value="{{ option }}" {% if building == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="room"><strong>room/area</strong> (required)</label><br />
           <input
             type="text"
-            id="building_room"
-            name="building_room"
-            value="{{ building_room or '' }}"
-            placeholder="e.g. BQ26-101"
+            id="room"
+            name="room"
+            value="{{ room or '' }}"
+            placeholder="e.g. 101"
             autocomplete="off"
             required
           />
         </div>
 
         <div class="row">
-          <label for="case_number"><strong>case_number</strong> (required)</label><br />
-          <input
-            type="text"
-            id="case_number"
-            name="case_number"
-            value="{{ case_number or '' }}"
-            placeholder="e.g. CASE-01"
-            autocomplete="off"
-            required
-          />
+          <label for="case_name"><strong>case</strong> (required)</label><br />
+          <select id="case_name" name="case_name" required>
+            <option value="">Select case</option>
+            {% for option in case_options %}
+              <option value="{{ option }}" {% if case_name == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
         </div>
 
         <div class="row">
-          <label for="slot_number"><strong>slot_number</strong> (required)</label><br />
-          <input
-            type="text"
-            id="slot_number"
-            name="slot_number"
-            value="{{ slot_number or '' }}"
-            placeholder="e.g. 2"
-            autocomplete="off"
-            required
-          />
+          <label for="slot_id"><strong>slot</strong> (required)</label><br />
+          <select id="slot_id" name="slot_id" required>
+            <option value="">Select slot</option>
+            {% for slot in slot_options %}
+              {% set occupied = slot.occupied_asset_tag %}
+              <option
+                value="{{ slot.id }}"
+                data-case="{{ slot.case_name }}"
+                {% if slot_id == (slot.id|string) %}selected{% endif %}
+                {% if occupied %}disabled{% endif %}
+              >
+                {{ slot.case_name }} / Slot {{ slot.slot_position }}{% if occupied %} - occupied{% endif %}
+              </option>
+            {% endfor %}
+          </select>
         </div>
 
         <div class="row">
@@ -160,4 +172,38 @@
       </form>
     </div>
   {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    const assignCaseSelect = document.getElementById("case_name");
+    const assignSlotSelect = document.getElementById("slot_id");
+
+    if (assignCaseSelect && assignSlotSelect) {
+      const assignSlotOptions = Array.from(assignSlotSelect.options);
+
+      function syncAssignSlotOptions() {
+        const selectedCase = assignCaseSelect.value;
+        const selectedSlot = assignSlotSelect.value;
+
+        assignSlotOptions.forEach((option) => {
+          if (!option.value) {
+            option.hidden = false;
+            return;
+          }
+          const matchesCase = !selectedCase || option.dataset.case === selectedCase;
+          const isSelected = option.value === selectedSlot;
+          option.hidden = !matchesCase && !isSelected;
+        });
+
+        const selectedOption = assignSlotSelect.selectedOptions[0];
+        if (selectedOption && selectedOption.value && selectedOption.dataset.case !== selectedCase) {
+          assignSlotSelect.value = "";
+        }
+      }
+
+      assignCaseSelect.addEventListener("change", syncAssignSlotOptions);
+      syncAssignSlotOptions();
+    }
+  </script>
 {% endblock %}
