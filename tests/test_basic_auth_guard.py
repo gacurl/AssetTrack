@@ -562,6 +562,13 @@ def test_operator_denied_admin_endpoint(client_with_temp_db) -> None:
 
     reference_data_response = client_with_temp_db.get("/admin/reference-data")
     assert reference_data_response.status_code == 403
+    slot_provision_response = client_with_temp_db.get("/admin/slots/provision")
+    assert slot_provision_response.status_code == 403
+    slot_provision_post_response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={"case_number": "CASE-X", "slot_count": "2"},
+    )
+    assert slot_provision_post_response.status_code == 403
 
 def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     create_user("admin", "admin-pass", "admin", True)
@@ -574,6 +581,8 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     assert retire_response.status_code == 200
     reference_data_response = client_with_temp_db.get("/admin/reference-data")
     assert reference_data_response.status_code == 200
+    slot_provision_response = client_with_temp_db.get("/admin/slots/provision")
+    assert slot_provision_response.status_code == 200
 
 
 def test_asset_search_requires_login(client_with_temp_db) -> None:

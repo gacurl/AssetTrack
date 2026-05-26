@@ -1625,6 +1625,41 @@ def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
     return view, errors
 
 
+def _list_unslotted_storage_assets(conn: sqlite3.Connection) -> list[dict]:
+    asset_columns = get_asset_table_columns(conn)
+    select_fields = [
+        "a.asset_tag AS asset_tag",
+        "a.equipment_type AS equipment_type",
+        "a.created_date AS created_date",
+    ]
+    if "updated_date" in asset_columns:
+        select_fields.append("a.updated_date AS updated_date")
+    else:
+        select_fields.append("NULL AS updated_date")
+
+    rows = conn.execute(
+        f"""
+        SELECT {", ".join(select_fields)}
+        FROM assets a
+        LEFT JOIN slot_occupancy so ON so.asset_id = a.id
+        WHERE UPPER(COALESCE(a.location_type, '')) = 'STORAGE'
+          AND a.home_slot_id IS NULL
+          AND so.asset_id IS NULL
+        ORDER BY COALESCE(NULLIF(a.updated_date, ''), a.created_date, '') DESC, a.asset_tag ASC
+        LIMIT 200;
+        """
+    ).fetchall()
+    return [
+        {
+            "asset_tag": str(row["asset_tag"] or ""),
+            "equipment_type": str(row["equipment_type"] or ""),
+            "created_date": str(row["created_date"] or ""),
+            "updated_date": str(row["updated_date"] or ""),
+        }
+        for row in rows
+    ]
+
+
 def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     asset = _find_asset_for_scan_tag(conn, scan_tag)
     if not asset:
@@ -6459,6 +6494,82 @@ def admin_system():
     )
 
 
+@app.route("/admin/slots/provision", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_slot_provision():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    case_number = ""
+    slot_count = ""
+    if request.method == "POST":
+        case_number = (request.form.get("case_number") or "").strip().upper()
+        slot_count = (request.form.get("slot_count") or "").strip()
+
+        if not case_number:
+            flash("case_number is required.", "error")
+        if not slot_count:
+            flash("slot_count is required.", "error")
+        if not case_number or not slot_count:
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+
+        try:
+            parsed_slot_count = int(slot_count)
+        except ValueError:
+            flash("slot_count must be an integer.", "error")
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+
+        if parsed_slot_count <= 0:
+            flash("slot_count must be greater than 0.", "error")
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+
+        conn = get_connection()
+        try:
+            try:
+                conn.execute("BEGIN;")
+                current_max = conn.execute(
+                    """
+                    SELECT MAX(slot_position) AS max_slot_position
+                    FROM slots
+                    WHERE UPPER(case_name) = UPPER(?);
+                    """,
+                    (case_number,),
+                ).fetchone()
+                start_position = int(current_max["max_slot_position"] or 0) + 1
+                rows = [
+                    (case_number, slot_position, None)
+                    for slot_position in range(start_position, start_position + parsed_slot_count)
+                ]
+                conn.executemany(
+                    """
+                    INSERT INTO slots (case_name, slot_position, current_asset_tag)
+                    VALUES (?, ?, ?);
+                    """,
+                    rows,
+                )
+                conn.commit()
+            except sqlite3.IntegrityError as e:
+                conn.rollback()
+                flash(f"Could not create empty slots: {e}", "error")
+                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+            except Exception:
+                conn.rollback()
+                raise
+        finally:
+            conn.close()
+
+        end_position = start_position + parsed_slot_count - 1
+        flash(
+            f"Created {parsed_slot_count} empty slots for case {case_number} (slots {start_position}-{end_position}).",
+            "success",
+        )
+        return redirect(url_for("admin_slot_provision"))
+
+    return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+
+
 @app.post("/admin/recovery/acknowledge")
 @require_login
 @require_role("admin")
@@ -8257,17 +8368,19 @@ def admin_assign_slot():
     slot_number = ""
     notes = ""
     asset_view: Optional[dict] = None
+    unslotted_assets: list[dict] = []
 
-    if request.method == "POST":
-        action = (request.form.get("action") or "lookup").strip().lower()
-        asset_tag = (request.form.get("asset_tag") or "").strip()
-        building_room = (request.form.get("building_room") or "").strip()
-        case_number = (request.form.get("case_number") or "").strip().upper()
-        slot_number = (request.form.get("slot_number") or "").strip()
-        notes = (request.form.get("notes") or "").strip()
+    conn = get_connection()
+    try:
+        unslotted_assets = _list_unslotted_storage_assets(conn)
+        if request.method == "POST":
+            action = (request.form.get("action") or "lookup").strip().lower()
+            asset_tag = (request.form.get("asset_tag") or "").strip()
+            building_room = (request.form.get("building_room") or "").strip()
+            case_number = (request.form.get("case_number") or "").strip().upper()
+            slot_number = (request.form.get("slot_number") or "").strip()
+            notes = (request.form.get("notes") or "").strip()
 
-        conn = get_connection()
-        try:
             asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
 
             if action == "lookup":
@@ -8297,6 +8410,7 @@ def admin_assign_slot():
                         slot_number=slot_number,
                         notes=notes,
                         asset=asset_view,
+                        unslotted_assets=unslotted_assets,
                     )
 
                 if blocking_errors:
@@ -8310,6 +8424,7 @@ def admin_assign_slot():
                         slot_number=slot_number,
                         notes=notes,
                         asset=asset_view,
+                        unslotted_assets=unslotted_assets,
                     )
 
                 try:
@@ -8324,6 +8439,7 @@ def admin_assign_slot():
                         slot_number=slot_number,
                         notes=notes,
                         asset=asset_view,
+                        unslotted_assets=unslotted_assets,
                     )
 
                 try:
@@ -8413,18 +8529,19 @@ def admin_assign_slot():
                     asset_columns = get_asset_table_columns(conn)
                     update_clauses: list[str] = []
                     update_values: list[object] = []
-                    if "home_slot_id" in asset_columns:
-                        update_clauses.append("home_slot_id = ?")
-                        update_values.append(slot["id"])
+                    if "home_slot_id" not in asset_columns:
+                        raise ValueError("Assets table missing required column: home_slot_id.")
+                    update_clauses.append("home_slot_id = ?")
+                    update_values.append(slot["id"])
                     if "building_room" in asset_columns:
                         update_clauses.append("building_room = ?")
                         update_values.append(building_room)
                     if "case_number" in asset_columns:
                         update_clauses.append("case_number = ?")
-                        update_values.append(case_number)
+                        update_values.append(str(slot["case_name"]))
                     if "slot_number" in asset_columns:
                         update_clauses.append("slot_number = ?")
-                        update_values.append(str(slot_position))
+                        update_values.append(str(slot["slot_position"]))
                     if "updated_date" in asset_columns:
                         update_clauses.append("updated_date = ?")
                         update_values.append(now_iso)
@@ -8465,11 +8582,54 @@ def admin_assign_slot():
                         ),
                     )
 
+                    canonical_asset = conn.execute(
+                        """
+                        SELECT home_slot_id, case_number, slot_number
+                        FROM assets
+                        WHERE id = ?
+                        LIMIT 1;
+                        """,
+                        (asset_row["id"],),
+                    ).fetchone()
+                    if canonical_asset is None:
+                        raise ValueError("Asset disappeared during assignment.")
+                    if canonical_asset["home_slot_id"] is None or int(canonical_asset["home_slot_id"]) != int(slot["id"]):
+                        raise ValueError("Slot assignment failed to persist home_slot_id.")
+                    occupancy_link = conn.execute(
+                        """
+                        SELECT 1
+                        FROM slot_occupancy
+                        WHERE slot_id = ? AND asset_id = ?
+                        LIMIT 1;
+                        """,
+                        (slot["id"], asset_row["id"]),
+                    ).fetchone()
+                    if occupancy_link is None:
+                        raise ValueError("Slot assignment failed to persist slot_occupancy link.")
+                    event_link = conn.execute(
+                        """
+                        SELECT 1
+                        FROM asset_events
+                        WHERE asset_tag = ?
+                          AND event_type = 'SLOT_ASSIGN'
+                          AND event_date = ?
+                        LIMIT 1;
+                        """,
+                        (str(asset_row["asset_tag"]), now_iso),
+                    ).fetchone()
+                    if event_link is None:
+                        raise ValueError("Slot assignment failed to append SLOT_ASSIGN event.")
+                    if "case_number" in asset_columns and str(canonical_asset["case_number"] or "") != str(slot["case_name"]):
+                        raise ValueError("Slot assignment failed to persist canonical case_number.")
+                    if "slot_number" in asset_columns and str(canonical_asset["slot_number"] or "") != str(slot["slot_position"]):
+                        raise ValueError("Slot assignment failed to persist canonical slot_number.")
+
                     conn.commit()
                 except ValueError as e:
                     conn.rollback()
                     flash(str(e), "error")
                     asset_view, _ = _build_admin_assign_asset_view(conn, asset_tag)
+                    unslotted_assets = _list_unslotted_storage_assets(conn)
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
@@ -8478,6 +8638,7 @@ def admin_assign_slot():
                         slot_number=slot_number,
                         notes=notes,
                         asset=asset_view,
+                        unslotted_assets=unslotted_assets,
                     )
                 except Exception:
                     conn.rollback()
@@ -8490,8 +8651,8 @@ def admin_assign_slot():
                 return redirect(url_for("admin_assign_slot"))
             else:
                 flash("Unknown action.", "error")
-        finally:
-            conn.close()
+    finally:
+        conn.close()
 
     return render_template(
         "admin_assign_slot.html",
@@ -8501,6 +8662,7 @@ def admin_assign_slot():
         slot_number=slot_number,
         notes=notes,
         asset=asset_view,
+        unslotted_assets=unslotted_assets,
     )
 
 

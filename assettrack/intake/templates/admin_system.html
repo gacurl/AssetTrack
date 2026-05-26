@@ -137,6 +137,8 @@
     <p class="card-intro">Use these tools for administrative maintenance and operational follow-up without changing workflow order.</p>
     <nav class="admin-tool-grid" aria-label="Admin tool navigation">
       <a class="admin-tool-link admin-tool-link--primary" href="{{ url_for('add_assets') }}">Add Assets</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_slot_provision') }}">Create empty slots</a>
+      <a class="admin-tool-link" href="{{ url_for('admin_assign_slot') }}">Assign unslotted asset</a>
       <a class="admin-tool-link" href="{{ url_for('admin_users') }}">Manage Users</a>
       <a class="admin-tool-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a>
       <a class="admin-tool-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a>
