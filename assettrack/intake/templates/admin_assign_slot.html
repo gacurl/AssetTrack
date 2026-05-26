@@ -19,8 +19,46 @@
   {% endwith %}
 
   <div class="card">
-    <h2>1) Scan or Enter Asset Tag</h2>
-    <p class="card-intro">Scanner-first flow: scan into `asset_tag` and load the asset before assigning a home slot.</p>
+    <h2>1) Unslotted Assets</h2>
+    <p class="card-intro">Select an existing unslotted STORAGE asset to start assignment.</p>
+    {% if unslotted_assets %}
+      <table>
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Equipment type</th>
+            <th>Updated</th>
+            <th>Created</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in unslotted_assets %}
+            <tr>
+              <td><code>{{ row.asset_tag }}</code></td>
+              <td>{{ row.equipment_type or "Unknown" }}</td>
+              <td>{{ row.updated_date or "N/A" }}</td>
+              <td>{{ row.created_date or "N/A" }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_assign_slot') }}">
+                  <input type="hidden" name="action" value="lookup" />
+                  <input type="hidden" name="asset_tag" value="{{ row.asset_tag }}" />
+                  <button type="submit">Assign</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No unslotted assets found.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>2) Scan or enter asset tag</h2>
+    <p class="card-intro">Use this fallback when the asset is not selected from the unslotted list.</p>
+    <p class="muted"><a href="{{ url_for('admin_slot_provision') }}">Create empty slots</a> first if needed.</p>
     <form method="post" action="{{ url_for('admin_assign_slot') }}">
       <input type="hidden" name="action" value="lookup" />
       <div class="row">
@@ -41,7 +79,7 @@
 
   {% if asset %}
     <div class="card">
-      <h2>2) Asset Details</h2>
+      <h2>3) Asset Details</h2>
       <div class="admin-maintenance-grid">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
         <div><strong>manufacturer:</strong> {{ asset.manufacturer or "" }}</div>
@@ -62,7 +100,7 @@
     </div>
 
     <div class="card">
-      <h2>3) Assign Slot</h2>
+      <h2>4) Assign Slot</h2>
       <form method="post" action="{{ url_for('admin_assign_slot') }}">
         <input type="hidden" name="action" value="assign" />
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Slot Capacity{% endblock %}
+{% block page_heading %}Admin: Create Empty Slots{% endblock %}
+{% block page_class %} admin-maintenance-standard-fields{% endblock %}
+
+{% block content %}
+  <nav class="workflow-local-nav" aria-label="Admin slot provisioning navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+    <a class="action-secondary" href="{{ url_for('admin_assign_slot') }}">Assign unslotted asset</a>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Create empty slots</h2>
+    <p class="card-intro">Adds new empty capacity for a case by appending slot numbers. Existing slots are unchanged.</p>
+    <form method="post" action="{{ url_for('admin_slot_provision') }}">
+      <div class="admin-maintenance-grid">
+        <div class="row">
+          <label for="case_number"><strong>case_number</strong> (required)</label><br />
+          <input type="text" id="case_number" name="case_number" value="{{ case_number or '' }}" autocomplete="off" required />
+        </div>
+        <div class="row">
+          <label for="slot_count"><strong>slot_count</strong> (required)</label><br />
+          <input type="text" id="slot_count" name="slot_count" value="{{ slot_count or '' }}" autocomplete="off" required />
+        </div>
+      </div>
+      <button type="submit">Create empty slots</button>
+    </form>
+  </div>
+{% endblock %}
