@@ -1660,6 +1660,46 @@ def _list_unslotted_storage_assets(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def _assign_slot_location_context(form: Optional[dict[str, str]] = None) -> dict:
+    normalized_form = {
+        "building": str((form or {}).get("building") or "").strip(),
+        "room": str((form or {}).get("room") or "").strip(),
+    }
+    building_names = [str(row.get("name") or "").strip() for row in list_buildings()]
+    building_names = [name for name in building_names if name]
+    return {
+        "form": normalized_form,
+        "building_options": building_names,
+    }
+
+
+def _validate_assign_slot_location_form(form: dict[str, str]) -> tuple[dict[str, str], list[str], dict]:
+    context = _assign_slot_location_context(form)
+    normalized_form = context["form"]
+    errors: list[str] = []
+
+    building = normalized_form["building"]
+    room = normalized_form["room"]
+    building_options = list(context["building_options"])
+    building_name_map = {name.upper(): name for name in building_options}
+
+    if not building:
+        errors.append("Choose a building.")
+    elif building_name_map:
+        matched_name = building_name_map.get(building.upper())
+        if matched_name is None:
+            errors.append("Choose a valid building.")
+        else:
+            normalized_form["building"] = matched_name
+    else:
+        errors.append("No buildings are configured. Add a building in Admin Reference Data first.")
+
+    if not room:
+        errors.append("Enter room or area.")
+
+    return normalized_form, errors, context
+
+
 def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     asset = _find_asset_for_scan_tag(conn, scan_tag)
     if not asset:
@@ -8363,22 +8403,31 @@ def admin_assign_slot():
         return guard_result
 
     asset_tag = ""
-    building_room = ""
-    case_number = ""
-    slot_number = ""
+    building = ""
+    room = ""
+    case_name = ""
+    slot_id = ""
     notes = ""
     asset_view: Optional[dict] = None
     unslotted_assets: list[dict] = []
+    slot_options: list[dict] = []
+    case_options: list[str] = []
+    building_options: list[str] = []
 
     conn = get_connection()
     try:
         unslotted_assets = _list_unslotted_storage_assets(conn)
+        slot_options = _list_slot_options(conn)
+        case_options = _slot_case_options(slot_options)
+        location_context = _assign_slot_location_context()
+        building_options = list(location_context["building_options"])
         if request.method == "POST":
             action = (request.form.get("action") or "lookup").strip().lower()
             asset_tag = (request.form.get("asset_tag") or "").strip()
-            building_room = (request.form.get("building_room") or "").strip()
-            case_number = (request.form.get("case_number") or "").strip().upper()
-            slot_number = (request.form.get("slot_number") or "").strip()
+            building = (request.form.get("building") or "").strip()
+            room = (request.form.get("room") or "").strip()
+            case_name = (request.form.get("case_name") or "").strip().upper()
+            slot_id = (request.form.get("slot_id") or "").strip()
             notes = (request.form.get("notes") or "").strip()
 
             asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
@@ -8394,23 +8443,29 @@ def admin_assign_slot():
             elif action == "assign":
                 if not asset_tag:
                     flash("asset_tag is required.", "error")
-                if not building_room:
-                    flash("building/room is required.", "error")
-                if not case_number:
-                    flash("case_number is required.", "error")
-                if not slot_number:
-                    flash("slot_number is required.", "error")
+                if not building:
+                    flash("building is required.", "error")
+                if not room:
+                    flash("room/area is required.", "error")
+                if not case_name:
+                    flash("case is required.", "error")
+                if not slot_id:
+                    flash("slot is required.", "error")
 
-                if not asset_tag or not building_room or not case_number or not slot_number:
+                if not asset_tag or not building or not room or not case_name or not slot_id:
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
-                        building_room=building_room,
-                        case_number=case_number,
-                        slot_number=slot_number,
+                        building=building,
+                        room=room,
+                        case_name=case_name,
+                        slot_id=slot_id,
                         notes=notes,
                         asset=asset_view,
                         unslotted_assets=unslotted_assets,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                        building_options=building_options,
                     )
 
                 if blocking_errors:
@@ -8419,27 +8474,68 @@ def admin_assign_slot():
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
-                        building_room=building_room,
-                        case_number=case_number,
-                        slot_number=slot_number,
+                        building=building,
+                        room=room,
+                        case_name=case_name,
+                        slot_id=slot_id,
                         notes=notes,
                         asset=asset_view,
                         unslotted_assets=unslotted_assets,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                        building_options=building_options,
                     )
 
-                try:
-                    slot_position = int(slot_number)
-                except ValueError:
-                    flash("slot_number must be an integer.", "error")
+                normalized_location, location_errors, _ = _validate_assign_slot_location_form(
+                    {"building": building, "room": room}
+                )
+                building = normalized_location["building"]
+                room = normalized_location["room"]
+                if location_errors:
+                    for error in location_errors:
+                        flash(error, "error")
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
-                        building_room=building_room,
-                        case_number=case_number,
-                        slot_number=slot_number,
+                        building=building,
+                        room=room,
+                        case_name=case_name,
+                        slot_id=slot_id,
                         notes=notes,
                         asset=asset_view,
                         unslotted_assets=unslotted_assets,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                        building_options=building_options,
+                    )
+
+                selected_slot, slot_errors = _resolve_slot_selection(
+                    conn,
+                    case_name=case_name,
+                    slot_id_raw=slot_id,
+                )
+                slot_error_map = {
+                    "case and slot must both be selected.": "Select both case and slot.",
+                    "slot selection is invalid.": "Select a valid slot.",
+                    "selected slot does not exist.": "Selected slot does not exist.",
+                    "selected slot does not belong to the selected case.": "Selected slot does not belong to selected case.",
+                }
+                if slot_errors:
+                    for error in slot_errors:
+                        flash(slot_error_map.get(error, error), "error")
+                    return render_template(
+                        "admin_assign_slot.html",
+                        asset_tag=asset_tag,
+                        building=building,
+                        room=room,
+                        case_name=case_name,
+                        slot_id=slot_id,
+                        notes=notes,
+                        asset=asset_view,
+                        unslotted_assets=unslotted_assets,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                        building_options=building_options,
                     )
 
                 try:
@@ -8483,11 +8579,10 @@ def admin_assign_slot():
                         """
                         SELECT id, case_name, slot_position, current_asset_tag
                         FROM slots
-                        WHERE UPPER(case_name) = UPPER(?)
-                          AND slot_position = ?
+                        WHERE id = ?
                         LIMIT 1;
                         """,
-                        (case_number, slot_position),
+                        (int(selected_slot["id"]),),
                     ).fetchone()
                     if not slot:
                         raise ValueError("Selected slot does not exist.")
@@ -8535,7 +8630,7 @@ def admin_assign_slot():
                     update_values.append(slot["id"])
                     if "building_room" in asset_columns:
                         update_clauses.append("building_room = ?")
-                        update_values.append(building_room)
+                        update_values.append(f"{building}/{room}")
                     if "case_number" in asset_columns:
                         update_clauses.append("case_number = ?")
                         update_values.append(str(slot["case_name"]))
@@ -8554,7 +8649,7 @@ def admin_assign_slot():
 
                     payload = {
                         "slot_id": int(slot["id"]),
-                        "building_room": building_room,
+                        "building_room": f"{building}/{room}",
                         "case_number": str(slot["case_name"]),
                         "slot_number": int(slot["slot_position"]),
                     }
@@ -8633,12 +8728,16 @@ def admin_assign_slot():
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
-                        building_room=building_room,
-                        case_number=case_number,
-                        slot_number=slot_number,
+                        building=building,
+                        room=room,
+                        case_name=case_name,
+                        slot_id=slot_id,
                         notes=notes,
                         asset=asset_view,
                         unslotted_assets=unslotted_assets,
+                        slot_options=slot_options,
+                        case_options=case_options,
+                        building_options=building_options,
                     )
                 except Exception:
                     conn.rollback()
@@ -8657,12 +8756,16 @@ def admin_assign_slot():
     return render_template(
         "admin_assign_slot.html",
         asset_tag=asset_tag,
-        building_room=building_room,
-        case_number=case_number,
-        slot_number=slot_number,
+        building=building,
+        room=room,
+        case_name=case_name,
+        slot_id=slot_id,
         notes=notes,
         asset=asset_view,
         unslotted_assets=unslotted_assets,
+        slot_options=slot_options,
+        case_options=case_options,
+        building_options=building_options,
     )
 
 

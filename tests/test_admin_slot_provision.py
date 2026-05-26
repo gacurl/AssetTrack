@@ -23,6 +23,21 @@ def _login_admin(client_with_temp_db) -> None:
     login_session(client_with_temp_db, admin_id)
 
 
+def _create_building(name: str) -> None:
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO buildings (name, created_at, updated_at)
+            VALUES (?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """,
+            (name,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
 
@@ -86,6 +101,7 @@ def test_admin_slot_provision_appends_slots_for_existing_case(client_with_temp_d
 
 def test_unslotted_storage_asset_can_be_assigned_after_slot_provision(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
+    _create_building("HQ")
 
     provisioned = client_with_temp_db.post(
         "/admin/slots/provision",
@@ -107,14 +123,24 @@ def test_unslotted_storage_asset_can_be_assigned_after_slot_provision(client_wit
     )
     assert created.status_code == 302
 
+    slot_conn = db.get_connection()
+    try:
+        target_slot = slot_conn.execute(
+            "SELECT id FROM slots WHERE case_name = 'CASE-Q' AND slot_position = 1 LIMIT 1;"
+        ).fetchone()
+    finally:
+        slot_conn.close()
+    assert target_slot is not None
+
     assigned = client_with_temp_db.post(
         "/admin/assign-slot",
         data={
             "action": "assign",
             "asset_tag": "AT-UNSLOT-1",
-            "building_room": "HQ/100",
-            "case_number": "CASE-Q",
-            "slot_number": "1",
+            "building": "HQ",
+            "room": "100",
+            "case_name": "CASE-Q",
+            "slot_id": str(int(target_slot["id"])),
             "notes": "assign after provisioning",
         },
         follow_redirects=True,
@@ -151,6 +177,7 @@ def test_unslotted_storage_asset_can_be_assigned_after_slot_provision(client_wit
 
 def test_assign_slot_page_lists_unslotted_storage_assets(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
+    _create_building("HQ")
     created = client_with_temp_db.post(
         "/admin/assets/new",
         data={
@@ -173,6 +200,7 @@ def test_assign_slot_page_lists_unslotted_storage_assets(client_with_temp_db) ->
 
 def test_assign_slot_page_hides_slotted_assets_from_unslotted_list(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
+    _create_building("HQ")
     conn = db.get_connection()
     conn.execute(
         """
@@ -205,6 +233,7 @@ def test_assign_slot_page_hides_slotted_assets_from_unslotted_list(client_with_t
 
 def test_assign_slot_page_can_select_unslotted_asset_from_list(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
+    _create_building("HQ")
     created = client_with_temp_db.post(
         "/admin/assets/new",
         data={
@@ -226,10 +255,13 @@ def test_assign_slot_page_can_select_unslotted_asset_from_list(client_with_temp_
     assert response.status_code == 200
     assert b"Asset AT-SELECT-1 is eligible for slot assignment." in response.data
     assert b'input type="hidden" name="asset_tag" value="AT-SELECT-1"' in response.data
+    assert b'name="case_name"' in response.data
+    assert b'name="slot_id"' in response.data
 
 
 def test_assign_slot_manual_lookup_still_works(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
+    _create_building("HQ")
     created = client_with_temp_db.post(
         "/admin/assets/new",
         data={
@@ -250,3 +282,132 @@ def test_assign_slot_manual_lookup_still_works(client_with_temp_db) -> None:
     )
     assert response.status_code == 200
     assert b"Asset AT-MANUAL-1 is eligible for slot assignment." in response.data
+
+
+def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (501, 'CASE-SEL', 1, 'AT-BUSY'), (502, 'CASE-SEL', 2, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-SELECTOR-1",
+            "serial_number": "SER-SELECTOR-1",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ",
+            "room": "100",
+        },
+    )
+    assert response.status_code == 302
+
+    lookup = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-SELECTOR-1"},
+        follow_redirects=True,
+    )
+    assert lookup.status_code == 200
+    assert b"CASE-SEL / Slot 1 - occupied" in lookup.data
+    assert b"CASE-SEL / Slot 2" in lookup.data
+    assert b"disabled" in lookup.data
+
+
+def test_assign_slot_page_shows_known_buildings_as_choices(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ North")
+    _create_building("HQ South")
+    created = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-BUILDING-CHOICE",
+            "serial_number": "SER-BUILDING-CHOICE",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ North",
+            "room": "100",
+        },
+    )
+    assert created.status_code == 302
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-BUILDING-CHOICE"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b'<option value="HQ North"' in response.data
+    assert b'<option value="HQ South"' in response.data
+
+
+def test_assign_slot_rejects_arbitrary_building_without_appending_slot_assign(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (700, 'CASE-BLD', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    created = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-BAD-BLD",
+            "serial_number": "SER-BAD-BLD",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ",
+            "room": "100",
+        },
+    )
+    assert created.status_code == 302
+
+    assign_attempt = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "assign",
+            "asset_tag": "AT-BAD-BLD",
+            "building": "booger",
+            "room": "100",
+            "case_name": "CASE-BLD",
+            "slot_id": "700",
+        },
+        follow_redirects=True,
+    )
+    assert assign_attempt.status_code == 200
+    assert b"Choose a valid building." in assign_attempt.data
+
+    verify_conn = db.get_connection()
+    try:
+        asset_row = verify_conn.execute(
+            "SELECT id, home_slot_id FROM assets WHERE asset_tag = 'AT-BAD-BLD' LIMIT 1;"
+        ).fetchone()
+        occupancy = verify_conn.execute(
+            "SELECT 1 FROM slot_occupancy WHERE asset_id = ? LIMIT 1;",
+            (int(asset_row["id"]),),
+        ).fetchone()
+        events = verify_conn.execute(
+            "SELECT event_type FROM asset_events WHERE asset_tag = 'AT-BAD-BLD' ORDER BY id ASC;"
+        ).fetchall()
+    finally:
+        verify_conn.close()
+
+    assert asset_row["home_slot_id"] is None
+    assert occupancy is None
+    assert [str(row["event_type"]) for row in events] == ["ASSET_CREATED"]
