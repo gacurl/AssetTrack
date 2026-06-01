@@ -196,6 +196,14 @@
 {% endblock %}
 
 {% block content %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   {% set operator = receipt.commit_operator %}
   {% set holder = receipt.holder_snapshot %}
   {% set organization = receipt.organization_snapshot %}
