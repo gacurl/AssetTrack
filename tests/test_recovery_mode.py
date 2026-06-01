@@ -187,6 +187,32 @@ def test_receipt_send_is_blocked_during_recovery_mode(client_with_temp_db, monke
     assert send_calls == []
 
 
+def test_admin_receipt_resend_is_blocked_during_recovery_mode(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="admin-resend-block", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    _write_recovery_state(db.DB_PATH)
+
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
+
+    assert response.status_code == 409
+    assert response.json == {
+        "ok": False,
+        "error": "Receipt resend is blocked during recovery mode. Admin acknowledgment is required before email delivery resumes.",
+    }
+    assert send_calls == []
+
+
 def test_admin_banner_is_visible_only_to_admins_during_recovery_mode(client_with_temp_db) -> None:
     _write_recovery_state(db.DB_PATH, source_filename="restore-banner.db")
 

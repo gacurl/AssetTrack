@@ -6078,6 +6078,28 @@ def _send_queued_receipt(receipt_id: int) -> dict[str, object]:
         conn.close()
 
 
+def _resend_existing_receipt(receipt_id: int) -> dict[str, object]:
+    conn = get_connection()
+    try:
+        row = _receipt_queue_row_by_id(conn, receipt_id)
+        if row is None:
+            raise ValueError("Receipt not found.")
+
+        snapshot = _receipt_row_snapshot(row)
+        delivery = _receipt_delivery_from_row(row, snapshot)
+        if str(delivery.get("state") or "").strip().lower() != "sent":
+            raise ValueError("Receipt is not eligible for resend.")
+
+        receipt = _receipt_from_queue_row(row)
+        recipients = _send_receipt_email(receipt)
+        return {
+            "receipt_id": int(row["id"]),
+            "recipients": recipients,
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/receipts")
 @require_login
 def receipts_list():
@@ -6227,6 +6249,43 @@ def receipt_send(receipt_id: int):
         }
 
     flash(f"Receipt email sent to {', '.join(result['recipients'])}.", "success")
+    return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+
+
+@app.post("/receipts/<int:receipt_id>/resend")
+@require_role("admin")
+def receipt_resend(receipt_id: int):
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        if wants_json():
+            return {"ok": False, "error": "Locked"}, 401
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    if recovery_mode_is_active(_resolved_runtime_db_path()):
+        message = _recovery_mode_send_block_message()
+        if wants_json():
+            return {"ok": False, "error": message}, 409
+        flash(message, "error")
+        return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+
+    try:
+        result = _resend_existing_receipt(receipt_id)
+    except Exception:
+        message = "Receipt email could not be resent."
+        if wants_json():
+            return {"ok": False, "error": message}, 500
+        flash(message, "error")
+        return redirect(url_for("receipt_detail", receipt_id=receipt_id))
+
+    if wants_json():
+        return {
+            "ok": True,
+            "receipt_id": result["receipt_id"],
+            "recipients": result["recipients"],
+        }
+
+    flash(f"Receipt email resent to {', '.join(result['recipients'])}.", "success")
     return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
 
