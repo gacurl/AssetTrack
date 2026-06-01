@@ -1041,6 +1041,264 @@ def test_receipt_send_fails_clearly_when_snapshot_email_is_missing(client_with_t
     assert response.json == {"ok": False, "error": "Receipt has no stored email recipient."}
 
 
+def test_admin_can_resend_existing_receipt_without_changing_receipt_or_event_truth(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="receipt-resend-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "sent",
+            "sent_at": "2026-04-01T12:00:00+00:00",
+            "last_attempt_at": "2026-04-01T12:00:00+00:00",
+            "last_error": None,
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
+        )
+        conn.commit()
+        receipt_before = conn.execute(
+            "SELECT snapshot_json, sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+        event_count_before = conn.execute("SELECT COUNT(*) AS c FROM asset_events;").fetchone()
+    finally:
+        conn.close()
+    assert receipt_before is not None
+    assert event_count_before is not None
+
+    sent_receipts: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        sent_receipts.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "ok": True,
+        "receipt_id": receipt_id,
+        "recipients": ["issue@example.org"],
+    }
+    assert sent_receipts == [receipt_id]
+
+    conn = db.get_connection()
+    try:
+        receipt_after = conn.execute(
+            "SELECT snapshot_json, sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+        event_count_after = conn.execute("SELECT COUNT(*) AS c FROM asset_events;").fetchone()
+    finally:
+        conn.close()
+
+    assert receipt_after is not None
+    assert event_count_after is not None
+    assert dict(receipt_after) == dict(receipt_before)
+    assert int(event_count_after["c"]) == int(event_count_before["c"])
+
+
+def test_operator_cannot_trigger_receipt_resend(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(
+        f"/receipts/{receipt_id}/resend",
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 403
+    assert response.json == {"ok": False, "error": "Forbidden"}
+    assert send_calls == []
+
+
+def test_receipt_resend_uses_configured_cc_and_existing_email_content(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="receipt-resend-cc-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "sent",
+            "sent_at": "2026-04-01T12:00:00+00:00",
+            "last_attempt_at": "2026-04-01T12:00:00+00:00",
+            "last_error": None,
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    captured: dict[str, object] = {}
+
+    def _fake_send(message: EmailMessage) -> None:
+        captured["message"] = message
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "oversight@example.org")
+    monkeypatch.setattr(intake_app, "_send_email_message", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
+
+    assert response.status_code == 200
+    message = captured["message"]
+    assert isinstance(message, EmailMessage)
+    assert message["To"] == "issue@example.org"
+    assert message["Cc"] == "oversight@example.org"
+    assert "Receipt key:" in message.get_body(preferencelist=("plain",)).get_content()
+    attachments = list(message.iter_attachments())
+    assert len(attachments) == 1
+    pdf_text = _extract_pdf_text(attachments[0].get_payload(decode=True))
+    assert "ISSUE-100" in pdf_text
+    assert "Audit Details" not in pdf_text
+
+
+def test_receipt_resend_failure_is_plain_and_does_not_change_receipt_truth(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="receipt-resend-fail-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "sent",
+            "sent_at": "2026-04-01T12:00:00+00:00",
+            "last_attempt_at": "2026-04-01T12:00:00+00:00",
+            "last_error": None,
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
+        )
+        conn.commit()
+        snapshot_before = conn.execute(
+            "SELECT snapshot_json FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert snapshot_before is not None
+
+    def _fake_send(_receipt: dict[str, object]) -> list[str]:
+        raise RuntimeError("smtp.internal.example refused credentials")
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
+
+    assert response.status_code == 500
+    assert response.json == {"ok": False, "error": "Receipt email could not be resent."}
+
+    conn = db.get_connection()
+    try:
+        snapshot_after = conn.execute(
+            "SELECT snapshot_json FROM receipt_queue WHERE id = ?;",
+            (receipt_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert snapshot_after is not None
+    assert snapshot_after["snapshot_json"] == snapshot_before["snapshot_json"]
+
+
+def test_admin_resend_does_not_bypass_queued_send_path(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="receipt-resend-queued-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
+
+    assert response.status_code == 500
+    assert response.json == {"ok": False, "error": "Receipt email could not be resent."}
+    assert send_calls == []
+
+
+def test_receipt_detail_shows_resend_action_only_to_admin_after_send(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT snapshot_json FROM receipt_queue WHERE id = ?;", (receipt_id,)).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "sent",
+            "sent_at": "2026-04-01T12:00:00+00:00",
+            "last_attempt_at": "2026-04-01T12:00:00+00:00",
+            "last_error": None,
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    operator_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert operator_response.status_code == 200
+    assert b"Resend receipt email" not in operator_response.data
+
+    admin_id = create_test_user(username="receipt-resend-view-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    admin_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert admin_response.status_code == 200
+    assert f'action="/receipts/{receipt_id}/resend"'.encode("utf-8") in admin_response.data
+    assert b"Resend receipt email" in admin_response.data
+
+
 def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.MonkeyPatch) -> None:
     receipt = {
         "id": 7,

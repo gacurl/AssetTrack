@@ -246,6 +246,15 @@
         </form>
       {% endif %}
     {% endif %}
+    {% if authenticated_role == "admin" and receipt.delivery.state == "sent" %}
+      {% if recovery_mode.active %}
+        <span class="pill bad">Recovery mode blocks resend receipt email</span>
+      {% else %}
+        <form method="post" action="{{ url_for('receipt_resend', receipt_id=receipt.id) }}">
+          <button type="submit">Resend receipt email</button>
+        </form>
+      {% endif %}
+    {% endif %}
   </nav>
 
   <section class="card">
