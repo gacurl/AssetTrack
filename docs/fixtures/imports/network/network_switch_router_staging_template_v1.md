@@ -34,8 +34,17 @@ AssetTrack tracks equipment custody and storage. It is not a CMDB or network con
 ## Required Identifiers
 
 - Every row must include `equipment_type`.
-- Every row must include at least one custody-safe identifier: `asset_tag`, `barcode`, or `serial_number`.
-- Rows without a usable identifier must be corrected before import planning continues.
+- `asset_tag` is the canonical custody identifier.
+- When `asset_tag` is blank, `barcode` may be used as `asset_tag`.
+- `serial_number` is useful for reconciliation but is not sufficient by itself.
+- Rows without `asset_tag` or `barcode` must be corrected before import.
+
+## Import Mapping
+
+- `case_identifier` maps to an existing `slots.case_name`.
+- `slot_identifier` maps to an existing numeric `slots.slot_position` in that case.
+- `location_building` maps to `assets.building`.
+- Room remains blank because this staging contract does not include a room column.
 
 ## Duplicate Handling
 

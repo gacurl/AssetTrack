@@ -2,26 +2,27 @@
 
 ## Status
 
-Future planning boundary only. Do not implement import behavior until staged switch/router rows have been reviewed against:
+Implementation is bounded to reviewed switch/router staging rows that comply with:
 
 - `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
 - `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
 
 ## Purpose
 
-Plan a later, separately approved path for importing reviewed switch/router custody staging rows.
+Import reviewed switch/router custody staging rows through the existing append-only asset ingest path.
 
-## Required Review Before Implementation
+## Required Review Before Import
 
 - Confirm rows contain custody and storage data only.
-- Confirm each row has `equipment_type` and at least one supported identifier.
+- Confirm each row has `equipment_type` and an `asset_tag` or fallback `barcode`.
 - Resolve duplicate identifiers explicitly.
 - Reject CMDB-like and network configuration columns.
-- Define validation, preview, and commit behavior before runtime work begins.
+- Reject serial-only rows.
+- Map case and numeric slot identifiers to an existing slot when slot assignment is requested.
 
 ## Protected Boundary
 
-Any future implementation must preserve:
+The import must preserve:
 
 - append-only events
 - immutable audit history
@@ -32,9 +33,8 @@ Any future implementation must preserve:
 - role enforcement
 - the `entry -> prerequisite -> queue -> preview -> commit` seam
 
-## Non-Goals For This Planning Doc
+## Non-Goals
 
-- No import implementation
 - No routes
 - No schema or migration changes
 - No event payload or custody behavior changes
