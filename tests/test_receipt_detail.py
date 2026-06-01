@@ -1132,6 +1132,49 @@ def test_operator_cannot_trigger_receipt_resend(client_with_temp_db, monkeypatch
     assert send_calls == []
 
 
+def test_admin_get_receipt_resend_redirects_with_plain_message_without_sending(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    admin_id = create_test_user(username="receipt-resend-get-admin", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}/resend", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b"Use the receipt detail page button to resend receipt email." in response.data
+    assert send_calls == []
+
+
+def test_operator_get_receipt_resend_remains_forbidden(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    send_calls: list[int] = []
+
+    def _fake_send(receipt: dict[str, object]) -> list[str]:
+        send_calls.append(int(receipt["id"]))
+        return ["issue@example.org"]
+
+    monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
+
+    response = client_with_temp_db.get(
+        f"/receipts/{receipt_id}/resend",
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 403
+    assert response.json == {"ok": False, "error": "Forbidden"}
+    assert send_calls == []
+
+
 def test_receipt_resend_uses_configured_cc_and_existing_email_content(
     client_with_temp_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
