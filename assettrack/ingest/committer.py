@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 from assettrack.assets import create_asset, retire_asset, update_asset
 from assettrack.audit import record_event
-from assettrack.db import get_connection
+from assettrack.db import bootstrap_db, get_connection
 
 # Atomic batch commit layer.
 # This module is the ONLY place where batch ingest rows are turned into DB writes.
@@ -30,18 +31,15 @@ class CommitResult:
 
 
 def _get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
-    """
-    Compatibility shim: if get_connection() supports db_path, pass it.
-    Otherwise fall back to get_connection() with no args.
-    """
     if db_path is None:
         return get_connection()
 
-    try:
-        return get_connection(db_path=db_path)  # type: ignore[arg-type]
-    except TypeError:
-        # Older signature: get_connection() takes no params.
-        return get_connection()
+    path = Path(db_path)
+    bootstrap_db(path)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
 
 
 def commit_batch(validated_rows: list[dict[str, Any]], *, db_path: Optional[str] = None) -> CommitResult:
