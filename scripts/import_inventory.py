@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+from assettrack.audit import record_event
 from assettrack.db import assert_schema_present
 
 DB_PATH = Path("data/assettrack.db")
@@ -277,6 +278,48 @@ def run_import(rows: list[ImportRow]) -> tuple[int, int, int]:
                         f"slot_number={row.slot_number}"
                     ) from exc
                 inserted_occupancy += 1
+
+                connection.execute(
+                    """
+                    UPDATE slots
+                    SET current_asset_tag = ?
+                    WHERE id = ?;
+                    """,
+                    (row.asset_tag, slot_id),
+                )
+
+                created_payload = {
+                    "equipment_type": row.equipment_type,
+                    "serial_number": row.serial_number,
+                    "manufacturer": row.manufacturer,
+                    "model": row.model,
+                    "model_code": row.model_code,
+                    "building_room": row.building_room,
+                }
+                record_event(
+                    connection,
+                    asset_tag=row.asset_tag,
+                    event_type="ASSET_CREATED",
+                    event_date=now_iso,
+                    actor="inventory_import",
+                    notes=notes,
+                    payload={key: value for key, value in created_payload.items() if value},
+                )
+                record_event(
+                    connection,
+                    asset_tag=row.asset_tag,
+                    event_type="SLOT_ASSIGN",
+                    event_date=now_iso,
+                    actor="inventory_import",
+                    notes=notes,
+                    payload={
+                        "slot_id": slot_id,
+                        "case_number": row.case_name,
+                        "slot_number": row.slot_position,
+                        "building_room": row.building_room,
+                        "equipment_type": row.equipment_type,
+                    },
+                )
     except sqlite3.IntegrityError as exc:
         raise ImportStopError(
             "Schema constraint conflict while importing. "
