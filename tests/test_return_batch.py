@@ -250,16 +250,47 @@ class ReturnBatchTests(unittest.TestCase):
         intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="NO-HOME", equipment_type="laptop"))
 
         preview = self.client.get("/return/preview")
+        html = preview.data.decode("utf-8")
 
         self.assertEqual(preview.status_code, 200)
         self.assertIn(b"Returns go to each asset's assigned home slot.", preview.data)
         self.assertIn(b"Review the destination below before commit.", preview.data)
-        self.assertIn(b"No assigned home slot: NO-HOME", preview.data)
+        self.assertIn("Needs Review", html)
+        self.assertIn("Blocked Items", html)
+        self.assertNotIn("<template>", html)
+        self.assertIn("<li>No assigned home slot: NO-HOME</li>", html)
         self.assertIn(
-            b"No assigned home slot. Return cannot commit until a home slot is assigned.",
-            preview.data,
+            "<li>No assigned home slot. Return cannot commit until a home slot is assigned.</li>",
+            html,
         )
         self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
+        self.assertNotIn(b"Commit Return", preview.data)
+
+        blocked = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue((blocked.headers.get("Location") or "").endswith("/return/preview"))
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 1)
+
+        asset_after = self.conn.execute(
+            "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
+            ("NO-HOME",),
+        ).fetchone()
+        event_count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = ? AND event_type = 'RETURN';",
+            ("NO-HOME",),
+        ).fetchone()
+        receipt_count = self.conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+
+        self.assertIsNotNone(asset_after)
+        self.assertEqual(asset_after["location_type"], "IN_CUSTODY")
+        self.assertEqual(asset_after["current_holder_id"], 5)
+        self.assertEqual(int(event_count["c"]), 0)
+        self.assertEqual(int(receipt_count["c"]), 0)
 
     def test_return_preview_explains_occupied_assigned_home_slot_blocker(self) -> None:
         self._insert_slot(12, "CASE-BLOCKED", 4, "OTHER-ASSET")
