@@ -179,6 +179,116 @@ def test_get_connection_bootstraps_missing_db(monkeypatch: pytest.MonkeyPatch, t
     assert "assets" in tables
     assert "asset_events" in tables
     assert "receipt_queue" in tables
+    assert "app_settings" in tables
+
+
+def test_bootstrap_db_adds_app_settings_table_to_existing_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE holders (
+                id INTEGER PRIMARY KEY,
+                holder_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                organization TEXT NULL,
+                organization_id INTEGER NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                identifier TEXT NULL,
+                email TEXT NULL,
+                contact_info TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE buildings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE organization_buildings (
+                organization_id INTEGER NOT NULL,
+                building_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (organization_id, building_id)
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL UNIQUE
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE asset_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_date TEXT NOT NULL,
+                actor TEXT,
+                notes TEXT,
+                payload TEXT,
+                holder_id INTEGER NULL,
+                supersedes_event_id INTEGER NULL,
+                correction_reason TEXT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE receipt_queue (
+                id INTEGER PRIMARY KEY,
+                receipt_key TEXT NOT NULL UNIQUE,
+                receipt_type TEXT NOT NULL,
+                source_event_ids_json TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                commit_at TEXT NOT NULL,
+                commit_operator_user_id INTEGER NOT NULL,
+                holder_id INTEGER NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    initialized = db.bootstrap_db(db_path)
+
+    assert initialized is False
+    verify_conn = sqlite3.connect(db_path)
+    try:
+        tables = {row[0] for row in verify_conn.execute("SELECT name FROM sqlite_master WHERE type = 'table';")}
+        columns = {row[1] for row in verify_conn.execute("PRAGMA table_info(app_settings);")}
+    finally:
+        verify_conn.close()
+
+    assert "app_settings" in tables
+    assert {"key", "value", "created_at", "updated_at"} <= columns
 
 
 def test_get_connection_applies_holder_is_active_migration_to_existing_db(
@@ -303,6 +413,7 @@ def test_initialize_schema_adds_holders_organization_column(tmp_path: Path) -> N
     assert "organizations" in tables
     assert "buildings" in tables
     assert "organization_buildings" in tables
+    assert "app_settings" in tables
 
 
 def test_initialize_schema_creates_default_ad_hoc_organization(tmp_path: Path) -> None:

@@ -5,7 +5,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REQUIRED_TABLES = {"assets", "holders", "organizations", "buildings", "organization_buildings", "receipt_queue"}
+REQUIRED_TABLES = {
+    "app_settings",
+    "assets",
+    "holders",
+    "organizations",
+    "buildings",
+    "organization_buildings",
+    "receipt_queue",
+}
 EVENT_TABLE_ALIASES = ("events", "asset_events")
 DEFAULT_AD_HOC_ORGANIZATION = "Ad Hoc"
 
@@ -456,6 +464,18 @@ def _create_schema(conn: sqlite3.Connection):
             sent_at TEXT NULL,
             last_attempt_at TEXT NULL,
             last_error TEXT NULL
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK(key IN ('receipt_cc_addresses'))
         );
         """
     )

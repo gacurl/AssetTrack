@@ -10,6 +10,7 @@ from pypdf import PdfReader
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
+from assettrack.settings import write_receipt_cc_setting
 from tests.auth_test_utils import create_test_user, login_session
 
 
@@ -1342,7 +1343,10 @@ def test_receipt_detail_shows_resend_action_only_to_admin_after_send(client_with
     assert b"Resend receipt email" in admin_response.data
 
 
-def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_send_receipt_email_adds_configured_cc_recipient(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
     receipt = {
         "id": 7,
         "receipt_key": "R-7",
@@ -1412,7 +1416,26 @@ def test_send_receipt_email_adds_configured_cc_recipient(monkeypatch: pytest.Mon
     assert "Receipt delivery queued. Custody is already recorded." not in pdf_text
 
 
-def test_send_receipt_email_omits_cc_when_config_is_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_receipt_cc_recipients_use_local_setting_before_env_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
+    conn = db.get_connection()
+    try:
+        with conn:
+            write_receipt_cc_setting(conn, "Local@example.org")
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "env@example.org")
+
+    assert intake_app._receipt_cc_recipients() == ["local@example.org"]
+
+
+def test_send_receipt_email_omits_cc_when_config_is_blank(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
     receipt = {
         "id": 8,
         "receipt_key": "R-8",
