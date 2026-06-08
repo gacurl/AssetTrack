@@ -118,9 +118,9 @@ The main navigation uses these labels:
 - `Return`
 - `Preview`
 - `Users`
-- `Add Assets`
+- `Admin Tools`
 
-If you do not see `Users` or `Add Assets`, your account may not have admin access.
+If you do not see `Users` or `Admin Tools`, your account may not have admin access.
 
 ## Issue workflow
 
@@ -230,11 +230,11 @@ Expected result:
 
 ## How to add assets
 
-This is an admin workflow.
+This is an admin workflow. The named manual `Add Assets` launcher is not shown in normal navigation. Use the approved import workflow or a scoped admin asset-creation path when your local procedure calls for it.
 
-### Step 1. Open the add asset page
+### Step 1. Open the approved asset-creation path
 
-1. Select `Add Assets`.
+1. Use the import workflow or the scoped admin create form provided by your local process.
 
 ### Step 2. Enter the required asset details
 

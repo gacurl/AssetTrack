@@ -618,7 +618,7 @@ def test_admin_navigation_shows_admin_only_actions(client_with_temp_db) -> None:
     assert dashboard_response.status_code == 200
     assert b">Holders</a>" in dashboard_response.data
     assert b">Receipts</a>" not in dashboard_response.data
-    assert b">Add Assets</a>" in dashboard_response.data
+    assert b">Add Assets</a>" not in dashboard_response.data
     assert b">Users</a>" in dashboard_response.data
     assert b">Admin Tools</a>" in dashboard_response.data
 
