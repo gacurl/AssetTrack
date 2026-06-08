@@ -118,6 +118,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Manage Users" in response.data
     assert b"Create empty slots" in response.data
     assert b"Assign unslotted asset" in response.data
+    assert b"Receipt CC Settings" in response.data
     assert b"Import Holders from CSV" in response.data
     assert b"Open Operational Report" in response.data
     assert b"Restore Database Backup" in response.data

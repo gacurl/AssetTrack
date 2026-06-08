@@ -1,0 +1,69 @@
+<!-- file: assettrack/intake/templates/admin_receipt_cc.html -->
+{% extends "base.html" %}
+
+{% block title %}Receipt CC Settings{% endblock %}
+{% block page_heading %}Admin: Receipt CC Settings{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .receipt-cc-textarea {
+      box-sizing: border-box;
+      min-height: 9rem;
+      width: min(100%, 42rem);
+      padding: 0.65rem;
+      font: inherit;
+    }
+    .receipt-cc-list {
+      margin: 0.5rem 0 0 1.25rem;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="workflow-local-nav" aria-label="Receipt CC settings navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Active Receipt CC</h2>
+    <p><strong>Source:</strong> {{ active_source }}</p>
+    {% if active_addresses %}
+      <ul class="receipt-cc-list">
+        {% for address in active_addresses %}
+          <li>{{ address }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No active CC addresses.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Saved Local CC</h2>
+    <form method="post" action="{{ url_for('admin_receipt_cc_settings') }}">
+      <div class="row">
+        <label for="cc_addresses"><strong>CC addresses</strong></label><br />
+        <textarea
+          class="receipt-cc-textarea"
+          id="cc_addresses"
+          name="cc_addresses"
+          spellcheck="false"
+        >{{ textarea_value }}</textarea>
+      </div>
+      <button type="submit">Save Receipt CC</button>
+    </form>
+    <p class="muted">Leave blank and save to clear the local CC list. Environment fallback applies when configured.</p>
+  </div>
+{% endblock %}
