@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from datetime import datetime, timezone
+from email.utils import getaddresses
 
 from assettrack.db import get_connection
 
@@ -74,6 +75,50 @@ def write_receipt_cc_setting(conn: sqlite3.Connection, value: str) -> str:
 
 def clear_receipt_cc_setting(conn: sqlite3.Connection) -> None:
     clear_setting(conn, RECEIPT_CC_SETTING_KEY)
+
+
+def normalize_receipt_cc_addresses(raw_addresses: str) -> list[str]:
+    raw_value = str(raw_addresses or "").strip()
+    if not raw_value:
+        return []
+
+    normalized: list[str] = []
+    invalid: list[str] = []
+    for _, email_address in getaddresses([raw_value.replace("\n", ",")]):
+        candidate = str(email_address or "").strip().lower()
+        if not _is_valid_email_address(candidate):
+            invalid.append(candidate or "blank entry")
+            continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+
+    if invalid or not normalized:
+        invalid_display = ", ".join(invalid) if invalid else raw_value
+        raise ValueError(f"Invalid receipt CC address: {invalid_display}")
+
+    return normalized
+
+
+def save_receipt_cc_addresses(conn: sqlite3.Connection, raw_addresses: str) -> list[str]:
+    addresses = normalize_receipt_cc_addresses(raw_addresses)
+    if not addresses:
+        clear_receipt_cc_setting(conn)
+        return []
+    write_receipt_cc_setting(conn, "\n".join(addresses))
+    return addresses
+
+
+def _is_valid_email_address(value: str) -> bool:
+    if not value or any(char.isspace() for char in value):
+        return False
+    if value.count("@") != 1:
+        return False
+    local_part, domain = value.split("@", 1)
+    if not local_part or not domain or "." not in domain:
+        return False
+    if domain.startswith(".") or domain.endswith("."):
+        return False
+    return True
 
 
 def active_receipt_cc_setting() -> str:

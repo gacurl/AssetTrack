@@ -67,7 +67,11 @@ from assettrack.reference_data import (
     list_organization_building_mappings,
     list_organizations,
 )
-from assettrack.settings import active_receipt_cc_setting
+from assettrack.settings import (
+    active_receipt_cc_setting,
+    read_receipt_cc_setting,
+    save_receipt_cc_addresses,
+)
 from assettrack.audit import ACTIVE_EVENTS_WHERE, record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.restore import (
@@ -5646,7 +5650,7 @@ def _normalized_email_addresses(raw_addresses: str) -> list[str]:
         return []
 
     recipients: list[str] = []
-    for _, email_address in getaddresses([raw_addresses]):
+    for _, email_address in getaddresses([raw_addresses.replace("\n", ",")]):
         normalized = str(email_address or "").strip().lower()
         if normalized and normalized not in recipients:
             recipients.append(normalized)
@@ -6599,6 +6603,57 @@ def admin_system():
         schema_warning=schema_warning,
         restore_history=restore_history,
     )
+
+
+def _receipt_cc_settings_context(form_value: str | None = None, error_message: str = "") -> dict[str, object]:
+    conn = get_connection()
+    try:
+        local_value = read_receipt_cc_setting(conn)
+    finally:
+        conn.close()
+
+    active_value = active_receipt_cc_setting()
+    active_addresses = _normalized_email_addresses(active_value)
+    source_label = "Local setting" if local_value is not None else "Environment fallback"
+    textarea_value = form_value if form_value is not None else (local_value or "")
+    return {
+        "active_addresses": active_addresses,
+        "active_source": source_label,
+        "error_message": error_message,
+        "has_local_setting": local_value is not None,
+        "textarea_value": textarea_value,
+    }
+
+
+@app.route("/admin/receipt-cc", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_receipt_cc_settings():
+    if request.method == "POST":
+        raw_addresses = request.form.get("cc_addresses") or ""
+        try:
+            conn = get_connection()
+            try:
+                with conn:
+                    saved_addresses = save_receipt_cc_addresses(conn, raw_addresses)
+            finally:
+                conn.close()
+        except ValueError as exc:
+            return (
+                render_template(
+                    "admin_receipt_cc.html",
+                    **_receipt_cc_settings_context(form_value=raw_addresses, error_message=str(exc)),
+                ),
+                400,
+            )
+
+        if saved_addresses:
+            flash(f"Receipt CC saved: {', '.join(saved_addresses)}.", "success")
+        else:
+            flash("Local receipt CC cleared. Environment fallback applies when configured.", "success")
+        return redirect(url_for("admin_receipt_cc_settings"))
+
+    return render_template("admin_receipt_cc.html", **_receipt_cc_settings_context())
 
 
 @app.route("/admin/slots/provision", methods=["GET", "POST"])

@@ -1176,7 +1176,7 @@ def test_operator_get_receipt_resend_remains_forbidden(
     assert send_calls == []
 
 
-def test_receipt_resend_uses_configured_cc_and_existing_email_content(
+def test_receipt_resend_uses_local_cc_and_existing_email_content(
     client_with_temp_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
@@ -1201,6 +1201,7 @@ def test_receipt_resend_uses_configured_cc_and_existing_email_content(
             """,
             (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
         )
+        write_receipt_cc_setting(conn, "local-oversight@example.org")
         conn.commit()
     finally:
         conn.close()
@@ -1210,7 +1211,7 @@ def test_receipt_resend_uses_configured_cc_and_existing_email_content(
         captured["message"] = message
 
     monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
-    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "oversight@example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "env-oversight@example.org")
     monkeypatch.setattr(intake_app, "_send_email_message", _fake_send)
 
     response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
@@ -1219,7 +1220,7 @@ def test_receipt_resend_uses_configured_cc_and_existing_email_content(
     message = captured["message"]
     assert isinstance(message, EmailMessage)
     assert message["To"] == "issue@example.org"
-    assert message["Cc"] == "oversight@example.org"
+    assert message["Cc"] == "local-oversight@example.org"
     assert "Receipt key:" in message.get_body(preferencelist=("plain",)).get_content()
     attachments = list(message.iter_attachments())
     assert len(attachments) == 1
@@ -1423,13 +1424,13 @@ def test_receipt_cc_recipients_use_local_setting_before_env_fallback(
     conn = db.get_connection()
     try:
         with conn:
-            write_receipt_cc_setting(conn, "Local@example.org")
+            write_receipt_cc_setting(conn, "Local@example.org\nAudit@example.org")
     finally:
         conn.close()
 
     monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "env@example.org")
 
-    assert intake_app._receipt_cc_recipients() == ["local@example.org"]
+    assert intake_app._receipt_cc_recipients() == ["local@example.org", "audit@example.org"]
 
 
 def test_send_receipt_email_omits_cc_when_config_is_blank(
