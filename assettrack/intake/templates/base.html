@@ -59,7 +59,6 @@
                     <span class="top-nav-admin-arrow" aria-hidden="true">▼</span>
                   </summary>
                   <nav class="top-nav-admin-panel" aria-label="Admin destinations">
-                    <a class="top-nav-admin-link{% if request.path.startswith('/add-assets') %} active{% endif %}" href="{{ url_for('add_assets') }}">Add Assets</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/users') %} active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/system') %} active{% endif %}" href="{{ url_for('admin_system') }}">Admin Tools</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/reference-data') %} active{% endif %}" href="{{ url_for('admin_reference_data') }}">Reference Data</a>
