@@ -149,11 +149,11 @@
   {% if blocking_issues %}
     <div class="card workflow-card">
       <h2>Blocked Items</h2>
-      <ul><template>
+      <ul>
         {% for issue in blocking_issues %}
           <li>{{ issue }}</li>
         {% endfor %}
-      </template></ul>
+      </ul>
     </div>
   {% endif %}
 

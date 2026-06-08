@@ -159,6 +159,53 @@ def test_issue_preview_empty_queue_redirects_to_issue_entry(client_with_temp_db)
     assert (issue_preview.headers.get("Location") or "").endswith("/issue")
 
 
+def test_issue_preview_blocked_items_render_visible_details_and_still_block_commit(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-preview-blocked", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["holder_id"] = 1
+        sess["issue_mode"] = True
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
+
+    intake_app.SCAN_QUEUE.append(Scan.now("FOLLOW-UP-TAG"))
+
+    issue_preview = client_with_temp_db.get("/issue/preview")
+    html = issue_preview.data.decode("utf-8")
+
+    assert issue_preview.status_code == 200
+    assert "Needs Review" in html
+    assert "Blocked Items" in html
+    assert "<template>" not in html
+    assert "<li>Not currently slotted: FOLLOW-UP-TAG</li>" in html
+    assert "<li>Asset is not currently slotted</li>" in html
+
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+
+    assert commit.status_code == 302
+    assert (commit.headers.get("Location") or "").endswith("/issue/preview")
+    assert len(intake_app.SCAN_QUEUE) == 1
+
+    conn = db.get_connection()
+    try:
+        event_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = 'FOLLOW-UP-TAG' AND event_type = 'ISSUE';"
+        ).fetchone()
+        receipt_count = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+    finally:
+        conn.close()
+
+    assert event_count is not None
+    assert int(event_count["c"]) == 0
+    assert receipt_count is not None
+    assert int(receipt_count["c"]) == 0
+
+
 def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-remove-preview", password="op-pass", role="operator")
     login_session(client_with_temp_db, operator_id)
