@@ -67,6 +67,7 @@ from assettrack.reference_data import (
     list_organization_building_mappings,
     list_organizations,
 )
+from assettrack.settings import active_receipt_cc_setting
 from assettrack.audit import ACTIVE_EVENTS_WHERE, record_event
 from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
 from assettrack.restore import (
@@ -5636,7 +5637,7 @@ def _receipt_email_recipients(receipt: dict[str, object]) -> list[str]:
 
 
 def _receipt_cc_recipients() -> list[str]:
-    configured_cc = str(os.getenv("ASSETTRACK_RECEIPT_CC_EMAIL") or "").strip().lower()
+    configured_cc = active_receipt_cc_setting().lower()
     return _normalized_email_addresses(configured_cc)
 
 
