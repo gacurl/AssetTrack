@@ -440,6 +440,71 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     assert b"Mar 29, 2026 at 12:05 UTC" in sent_response.data
 
 
+def test_receipt_detail_shows_cc_email_when_delivery_metadata_present(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT snapshot_json
+            FROM receipt_queue
+            WHERE id = ?;
+            """,
+            (receipt_id,),
+        ).fetchone()
+        assert row is not None
+        snapshot = json.loads(str(row["snapshot_json"]))
+        snapshot["delivery"] = {
+            "state": "sent",
+            "sent_at": "2026-03-29T12:05:00+00:00",
+            "last_attempt_at": "2026-03-29T12:04:00+00:00",
+            "last_error": None,
+            "cc_recipients": ["oversight@example.org"],
+        }
+        conn.execute(
+            """
+            UPDATE receipt_queue
+            SET snapshot_json = ?, sent_at = ?, last_attempt_at = ?, last_error = NULL
+            WHERE id = ?;
+            """,
+            (
+                json.dumps(snapshot, sort_keys=True),
+                "2026-03-29T12:05:00+00:00",
+                "2026-03-29T12:04:00+00:00",
+                receipt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+
+    assert response.status_code == 200
+    assert b"Recipient email" in response.data
+    assert b"issue@example.org" in response.data
+    assert b"Receipt email status" in response.data
+    assert b">sent<" in response.data
+    assert b"CC email" in response.data
+    assert b"oversight@example.org" in response.data
+
+
+def test_receipt_detail_shows_neutral_cc_state_when_delivery_metadata_missing(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+
+    assert response.status_code == 200
+    assert b"Recipient email" in response.data
+    assert b"issue@example.org" in response.data
+    assert b"Receipt email status" in response.data
+    assert b'data-state="pending"' in response.data
+    assert b">Queued<" in response.data
+    assert b"CC email" in response.data
+    assert b"None" in response.data
+
+
 def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
     receipt_id = _create_issue_receipt(client_with_temp_db)
 

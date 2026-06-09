@@ -3222,7 +3222,18 @@ def _receipt_delivery_snapshot(
     }
 
 
-def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) -> dict[str, Optional[str]]:
+def _receipt_delivery_cc_recipients(snapshot_delivery: dict[str, object]) -> list[str]:
+    raw_cc_recipients = snapshot_delivery.get("cc_recipients")
+    if isinstance(raw_cc_recipients, str):
+        return _normalized_email_addresses(raw_cc_recipients)
+    if isinstance(raw_cc_recipients, list):
+        return _normalized_email_addresses(
+            ",".join(str(recipient or "") for recipient in raw_cc_recipients)
+        )
+    return []
+
+
+def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) -> dict[str, object]:
     snapshot_delivery = snapshot.get("delivery")
     has_snapshot_delivery = isinstance(snapshot_delivery, dict)
     if not has_snapshot_delivery:
@@ -3238,6 +3249,7 @@ def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) ->
             "sent_at": None,
             "last_attempt_at": None,
             "last_error": None,
+            "cc_recipients": [],
         }
 
     if sent_at:
@@ -3247,12 +3259,14 @@ def _receipt_delivery_from_row(row: sqlite3.Row, snapshot: dict[str, object]) ->
     else:
         state = str(snapshot_delivery.get("state") or "pending").strip().lower() or "pending"
 
-    return _receipt_delivery_snapshot(
+    delivery = _receipt_delivery_snapshot(
         state=state,
         sent_at=sent_at,
         last_attempt_at=last_attempt_at,
         last_error=last_error,
     )
+    delivery["cc_recipients"] = _receipt_delivery_cc_recipients(snapshot_delivery)
+    return delivery
 
 
 def _receipt_row_snapshot(row: sqlite3.Row) -> dict[str, object]:
