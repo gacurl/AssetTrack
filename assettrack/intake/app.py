@@ -553,11 +553,22 @@ def _send_email_message(message: EmailMessage) -> None:
     if not smtp_host:
         raise ValueError("Receipt email delivery is not configured.")
 
-    smtp_port = int(str(os.getenv("ASSETTRACK_SMTP_PORT") or "25").strip() or "25")
+    raw_smtp_port = str(os.getenv("ASSETTRACK_SMTP_PORT") or "25").strip() or "25"
+    try:
+        smtp_port = int(raw_smtp_port)
+    except ValueError as exc:
+        raise ValueError("SMTP port must be a number.") from exc
     smtp_username = str(os.getenv("ASSETTRACK_SMTP_USERNAME") or "").strip()
     smtp_password = str(os.getenv("ASSETTRACK_SMTP_PASSWORD") or "")
     smtp_starttls = str(os.getenv("ASSETTRACK_SMTP_STARTTLS") or "").strip().lower() in {"1", "true", "yes", "on"}
     smtp_use_ssl = str(os.getenv("ASSETTRACK_SMTP_USE_SSL") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    if smtp_starttls and smtp_use_ssl:
+        raise ValueError("SMTP TLS config is invalid: use STARTTLS or implicit SSL, not both.")
+    if smtp_port == 465 and not smtp_use_ssl:
+        raise ValueError("SMTP TLS config is invalid for port 465: set ASSETTRACK_SMTP_USE_SSL=true.")
+    if smtp_port in {587, 2525} and smtp_use_ssl:
+        raise ValueError(f"SMTP TLS config is invalid for port {smtp_port}: use STARTTLS, not implicit SSL.")
 
     smtp_cls = smtplib.SMTP_SSL if smtp_use_ssl else smtplib.SMTP
     with smtp_cls(smtp_host, smtp_port, timeout=10) as smtp:
@@ -6240,9 +6251,10 @@ def receipt_send(receipt_id: int):
         flash(str(exc), "error")
         return redirect(url_for("receipt_detail", receipt_id=receipt_id))
     except Exception as exc:
+        message = f"Receipt email failed after custody was recorded: {exc}"
         if wants_json():
-            return {"ok": False, "error": str(exc)}, 500
-        flash(f"Receipt email failed: {exc}", "error")
+            return {"ok": False, "error": message}, 500
+        flash(message, "error")
         return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
     if wants_json():
@@ -6277,7 +6289,7 @@ def receipt_resend(receipt_id: int):
     try:
         result = _resend_existing_receipt(receipt_id)
     except Exception:
-        message = "Receipt email could not be resent."
+        message = "Receipt email could not be resent. Custody and receipt records were not changed."
         if wants_json():
             return {"ok": False, "error": message}, 500
         flash(message, "error")
