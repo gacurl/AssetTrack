@@ -816,7 +816,10 @@ def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkey
     response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
 
     assert response.status_code == 500
-    assert response.json == {"ok": False, "error": "smtp offline"}
+    assert response.json == {
+        "ok": False,
+        "error": "Receipt email failed after custody was recorded: smtp offline",
+    }
 
     conn = db.get_connection()
     try:
@@ -870,7 +873,10 @@ def test_receipt_send_retry_after_failure_uses_existing_send_route(client_with_t
     second = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
 
     assert first.status_code == 500
-    assert first.json == {"ok": False, "error": "smtp offline"}
+    assert first.json == {
+        "ok": False,
+        "error": "Receipt email failed after custody was recorded: smtp offline",
+    }
     assert second.status_code == 200
     assert second.json["ok"] is True
     assert int(second.json["receipt_id"]) == receipt_id
@@ -929,9 +935,15 @@ def test_receipt_send_failed_retry_remains_recoverable_after_repeated_failure(
     second = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
 
     assert first.status_code == 500
-    assert first.json == {"ok": False, "error": "smtp offline"}
+    assert first.json == {
+        "ok": False,
+        "error": "Receipt email failed after custody was recorded: smtp offline",
+    }
     assert second.status_code == 500
-    assert second.json == {"ok": False, "error": "smtp offline"}
+    assert second.json == {
+        "ok": False,
+        "error": "Receipt email failed after custody was recorded: smtp offline",
+    }
     assert send_attempts == [receipt_id, receipt_id]
 
     detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
@@ -1272,7 +1284,10 @@ def test_receipt_resend_failure_is_plain_and_does_not_change_receipt_truth(
     response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
 
     assert response.status_code == 500
-    assert response.json == {"ok": False, "error": "Receipt email could not be resent."}
+    assert response.json == {
+        "ok": False,
+        "error": "Receipt email could not be resent. Custody and receipt records were not changed.",
+    }
 
     conn = db.get_connection()
     try:
@@ -1303,7 +1318,10 @@ def test_admin_resend_does_not_bypass_queued_send_path(
     response = client_with_temp_db.post(f"/receipts/{receipt_id}/resend?json=1")
 
     assert response.status_code == 500
-    assert response.json == {"ok": False, "error": "Receipt email could not be resent."}
+    assert response.json == {
+        "ok": False,
+        "error": "Receipt email could not be resent. Custody and receipt records were not changed.",
+    }
     assert send_calls == []
 
 
@@ -1415,6 +1433,123 @@ def test_send_receipt_email_adds_configured_cc_recipient(
     assert "Recipient email" not in pdf_text
     assert "Delivery issue" not in pdf_text
     assert "Receipt delivery queued. Custody is already recorded." not in pdf_text
+
+
+def test_send_email_message_uses_starttls_without_implicit_ssl(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+
+    class _FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            calls.append(("connect", host, port, timeout))
+
+        def __enter__(self) -> "_FakeSMTP":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def starttls(self) -> None:
+            calls.append("starttls")
+
+        def login(self, username: str, password: str) -> None:
+            calls.append(("login", username, password))
+
+        def send_message(self, message: EmailMessage) -> None:
+            calls.append(("send", message["To"]))
+
+    message = EmailMessage()
+    message["To"] = "holder@example.org"
+    message["From"] = "assettrack@example.org"
+    message.set_content("Receipt")
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_SMTP_PORT", "2525")
+    monkeypatch.setenv("ASSETTRACK_SMTP_STARTTLS", "true")
+    monkeypatch.setenv("ASSETTRACK_SMTP_USE_SSL", "false")
+    monkeypatch.setenv("ASSETTRACK_SMTP_USERNAME", "apikey")
+    monkeypatch.setenv("ASSETTRACK_SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(intake_app.smtplib, "SMTP", _FakeSMTP)
+
+    intake_app._send_email_message(message)
+
+    assert calls == [
+        ("connect", "smtp.example.org", 2525, 10),
+        "starttls",
+        ("login", "apikey", "secret"),
+        ("send", "holder@example.org"),
+    ]
+
+
+def test_send_email_message_uses_implicit_ssl_for_port_465(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+
+    class _FakeSMTPSSL:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            calls.append(("ssl-connect", host, port, timeout))
+
+        def __enter__(self) -> "_FakeSMTPSSL":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send_message(self, message: EmailMessage) -> None:
+            calls.append(("send", message["To"]))
+
+    message = EmailMessage()
+    message["To"] = "holder@example.org"
+    message["From"] = "assettrack@example.org"
+    message.set_content("Receipt")
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_SMTP_PORT", "465")
+    monkeypatch.setenv("ASSETTRACK_SMTP_STARTTLS", "false")
+    monkeypatch.setenv("ASSETTRACK_SMTP_USE_SSL", "true")
+    monkeypatch.delenv("ASSETTRACK_SMTP_USERNAME", raising=False)
+    monkeypatch.setattr(intake_app.smtplib, "SMTP_SSL", _FakeSMTPSSL)
+
+    intake_app._send_email_message(message)
+
+    assert calls == [
+        ("ssl-connect", "smtp.example.org", 465, 10),
+        ("send", "holder@example.org"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("port", "starttls", "use_ssl", "expected_error"),
+    [
+        ("465", "true", "false", "SMTP TLS config is invalid for port 465"),
+        ("2525", "false", "true", "SMTP TLS config is invalid for port 2525"),
+        ("587", "false", "true", "SMTP TLS config is invalid for port 587"),
+        ("2525", "true", "true", "SMTP TLS config is invalid: use STARTTLS or implicit SSL, not both"),
+    ],
+)
+def test_send_email_message_rejects_tls_mode_mismatch_before_connecting(
+    monkeypatch: pytest.MonkeyPatch,
+    port: str,
+    starttls: str,
+    use_ssl: str,
+    expected_error: str,
+) -> None:
+    class _UnexpectedSMTP:
+        def __init__(self, *_args, **_kwargs) -> None:
+            raise AssertionError("SMTP should not connect with invalid TLS config")
+
+    message = EmailMessage()
+    message["To"] = "holder@example.org"
+    message["From"] = "assettrack@example.org"
+    message.set_content("Receipt")
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_SMTP_PORT", port)
+    monkeypatch.setenv("ASSETTRACK_SMTP_STARTTLS", starttls)
+    monkeypatch.setenv("ASSETTRACK_SMTP_USE_SSL", use_ssl)
+    monkeypatch.setattr(intake_app.smtplib, "SMTP", _UnexpectedSMTP)
+    monkeypatch.setattr(intake_app.smtplib, "SMTP_SSL", _UnexpectedSMTP)
+
+    with pytest.raises(ValueError, match=expected_error):
+        intake_app._send_email_message(message)
 
 
 def test_receipt_cc_recipients_use_local_setting_before_env_fallback(
