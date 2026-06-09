@@ -326,6 +326,16 @@
             <div class="summary-label">Recipient email</div>
             <div class="summary-copy">{{ receipt.recipient_email or "Not captured" }}</div>
           </div>
+          <div class="summary-value">
+            <div class="summary-label">CC email</div>
+            <div class="summary-copy">
+              {% if receipt.delivery.cc_recipients %}
+                {{ receipt.delivery.cc_recipients|join(", ") }}
+              {% else %}
+                None
+              {% endif %}
+            </div>
+          </div>
           {% if email_timing_value %}
             <div class="summary-value">
               <div class="summary-label">{{ email_timing_label }}</div>
