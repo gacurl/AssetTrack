@@ -6,7 +6,7 @@ import pytest
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from assettrack.settings import active_receipt_cc_setting, read_receipt_cc_setting
+from assettrack.settings import active_receipt_cc_setting, read_receipt_cc_setting, write_receipt_cc_setting
 from tests.auth_test_utils import create_test_user, login_session
 
 
@@ -18,7 +18,9 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return intake_app.app.test_client()
 
 
-def test_admin_can_view_receipt_cc_settings(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_admin_can_view_env_fallback_receipt_cc_settings(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "env@example.org")
     admin_id = create_test_user(username="receipt-cc-admin-view", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
@@ -29,6 +31,44 @@ def test_admin_can_view_receipt_cc_settings(client_with_temp_db, monkeypatch: py
     assert b"Admin: Receipt CC Settings" in response.data
     assert b"Environment fallback" in response.data
     assert b"env@example.org" in response.data
+    assert b"Copied on receipt emails" in response.data
+
+
+def test_admin_can_view_local_receipt_cc_as_active_source(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "env@example.org")
+    admin_id = create_test_user(username="receipt-cc-admin-local-view", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    conn = db.get_connection()
+    try:
+        with conn:
+            write_receipt_cc_setting(conn, "local@example.org\naudit@example.org")
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/admin/receipt-cc")
+
+    assert response.status_code == 200
+    assert b"Receipt CC now" in response.data
+    assert b"Local app setting" in response.data
+    assert b"local@example.org" in response.data
+    assert b"audit@example.org" in response.data
+
+
+def test_admin_can_view_neutral_state_when_no_receipt_cc_exists(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ASSETTRACK_RECEIPT_CC_EMAIL", raising=False)
+    admin_id = create_test_user(username="receipt-cc-admin-none-view", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get("/admin/receipt-cc")
+
+    assert response.status_code == 200
+    assert b"No CC configured" in response.data
+    assert b"No active CC addresses." in response.data
+    assert b"Change or clear" in response.data
 
 
 def test_operator_cannot_access_or_modify_receipt_cc_settings(client_with_temp_db) -> None:
@@ -55,9 +95,10 @@ def test_admin_can_save_valid_receipt_cc_list_and_deduplicate(client_with_temp_d
 
     assert response.status_code == 200
     assert b"Receipt CC saved: ops@example.org, audit@example.org." in response.data
-    assert b"Local setting" in response.data
+    assert b"Local app setting" in response.data
     assert response.data.count(b"ops@example.org") >= 1
     assert b"audit@example.org" in response.data
+    assert b"Save CC" in response.data
 
     conn = db.get_connection()
     try:
