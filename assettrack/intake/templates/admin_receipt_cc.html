@@ -6,6 +6,20 @@
 
 {% block extra_head %}
   <style>
+    .receipt-cc-status {
+      display: grid;
+      gap: 0.75rem;
+      margin: 0.85rem 0;
+    }
+    .receipt-cc-status-row {
+      margin: 0;
+    }
+    .receipt-cc-label {
+      color: var(--color-text-muted);
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 0.2rem;
+    }
     .receipt-cc-textarea {
       box-sizing: border-box;
       min-height: 9rem;
@@ -15,6 +29,9 @@
     }
     .receipt-cc-list {
       margin: 0.5rem 0 0 1.25rem;
+    }
+    .receipt-cc-empty {
+      margin: 0.5rem 0 0 0;
     }
   </style>
 {% endblock %}
@@ -37,24 +54,33 @@
   {% endif %}
 
   <div class="card">
-    <h2>Active Receipt CC</h2>
-    <p><strong>Source:</strong> {{ active_source }}</p>
-    {% if active_addresses %}
-      <ul class="receipt-cc-list">
-        {% for address in active_addresses %}
-          <li>{{ address }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>No active CC addresses.</p>
-    {% endif %}
+    <h2>Receipt CC now</h2>
+    <div class="receipt-cc-status" aria-label="Active receipt CC status">
+      <p class="receipt-cc-status-row">
+        <span class="receipt-cc-label">Source</span>
+        <strong>{{ active_source }}</strong>
+      </p>
+      <div class="receipt-cc-status-row">
+        <span class="receipt-cc-label">Copied on receipt emails</span>
+        {% if active_addresses %}
+          <ul class="receipt-cc-list">
+            {% for address in active_addresses %}
+              <li>{{ address }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="receipt-cc-empty"><strong>No active CC addresses.</strong></p>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <div class="card">
-    <h2>Saved Local CC</h2>
+    <h2>Change or clear</h2>
+    <p class="card-intro">Save one address per line, or leave blank and save to clear the local setting.</p>
     <form method="post" action="{{ url_for('admin_receipt_cc_settings') }}">
       <div class="row">
-        <label for="cc_addresses"><strong>CC addresses</strong></label><br />
+        <label for="cc_addresses"><strong>Local CC setting</strong></label><br />
         <textarea
           class="receipt-cc-textarea"
           id="cc_addresses"
@@ -62,8 +88,10 @@
           spellcheck="false"
         >{{ textarea_value }}</textarea>
       </div>
-      <button type="submit">Save Receipt CC</button>
+      <div class="actions">
+        <button type="submit">Save CC</button>
+      </div>
     </form>
-    <p class="muted">Leave blank and save to clear the local CC list. Environment fallback applies when configured.</p>
+    <p class="muted">Clearing the local setting restores the environment fallback when it exists.</p>
   </div>
 {% endblock %}

@@ -6665,7 +6665,12 @@ def _receipt_cc_settings_context(form_value: str | None = None, error_message: s
 
     active_value = active_receipt_cc_setting()
     active_addresses = _normalized_email_addresses(active_value)
-    source_label = "Local setting" if local_value is not None else "Environment fallback"
+    if local_value is not None:
+        source_label = "Local app setting"
+    elif active_addresses:
+        source_label = "Environment fallback"
+    else:
+        source_label = "No CC configured"
     textarea_value = form_value if form_value is not None else (local_value or "")
     return {
         "active_addresses": active_addresses,
