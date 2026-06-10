@@ -92,7 +92,13 @@
 {% endblock %}
 
 {% block content %}
-  <p><a href="{{ url_for('preview') }}">← Back to preview</a> | <a href="{{ url_for('issue') }}">Issue Assets</a></p>
+  <nav class="workflow-local-nav" aria-label="Holder search navigation">
+    {% if return_to == url_for('issue') %}
+      <a class="nav-link" href="{{ return_to }}">Back to Issue</a>
+    {% elif return_to %}
+      <a class="nav-link" href="{{ return_to }}">Back to workflow</a>
+    {% endif %}
+  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
