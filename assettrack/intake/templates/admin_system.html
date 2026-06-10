@@ -14,7 +14,15 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 0.75rem;
-      margin: 0.5rem 0 1rem;
+      margin: 0.5rem 0 0.9rem;
+    }
+    .admin-tool-section {
+      margin-top: 1rem;
+    }
+    .admin-tool-section h3 {
+      margin: 0 0 0.35rem 0;
+      color: var(--color-text);
+      font-size: 1rem;
     }
     .admin-tool-link {
       display: block;
@@ -134,19 +142,44 @@
 
   <div class="card admin-control-panel">
     <h2>Admin Tools</h2>
-    <p class="card-intro">Use these tools for administrative maintenance and operational follow-up without changing workflow order.</p>
-    <nav class="admin-tool-grid" aria-label="Admin tool navigation">
-      <a class="admin-tool-link" href="{{ url_for('admin_slot_provision') }}">Create empty slots</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_assign_slot') }}">Assign unslotted asset</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_users') }}">Manage Users</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_receipt_cc_settings') }}">Receipt CC Settings</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_human_report') }}">Open Operational Report</a>
-      <a class="admin-tool-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a>
-    </nav>
-    <div class="workflow-action-row admin-secondary-actions" aria-label="Admin tool actions">
-      <a class="action-secondary" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+    <div class="admin-tool-section">
+      <h3>Access</h3>
+      <nav class="admin-tool-grid" aria-label="Access admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_users') }}">Manage Users</a>
+      </nav>
+    </div>
+    <div class="admin-tool-section">
+      <h3>Setup Data</h3>
+      <nav class="admin-tool-grid" aria-label="Setup data admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_reference_data') }}">Manage Organizations and Buildings</a>
+        <a class="admin-tool-link" href="{{ url_for('admin_holder_import') }}">Import Holders from CSV</a>
+      </nav>
+    </div>
+    <div class="admin-tool-section">
+      <h3>Storage</h3>
+      <nav class="admin-tool-grid" aria-label="Storage admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_slot_provision') }}">Create empty slots</a>
+        <a class="admin-tool-link" href="{{ url_for('admin_assign_slot') }}">Assign unslotted asset</a>
+      </nav>
+    </div>
+    <div class="admin-tool-section">
+      <h3>Delivery</h3>
+      <nav class="admin-tool-grid" aria-label="Delivery admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_receipt_cc_settings') }}">Receipt CC Settings</a>
+      </nav>
+    </div>
+    <div class="admin-tool-section">
+      <h3>Reports/Backup</h3>
+      <nav class="admin-tool-grid" aria-label="Reports and backup admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_human_report') }}">Open Operational Report</a>
+        <a class="admin-tool-link" href="{{ url_for('admin_db_export') }}">Download Database Backup</a>
+      </nav>
+    </div>
+    <div class="admin-tool-section">
+      <h3>Recovery</h3>
+      <nav class="admin-tool-grid" aria-label="Recovery admin tools">
+        <a class="admin-tool-link" href="{{ url_for('admin_db_restore') }}">Restore Database Backup</a>
+      </nav>
     </div>
   </div>
 

@@ -115,6 +115,12 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
     assert b"Add Assets" not in response.data
+    assert b"Access" in response.data
+    assert b"Setup Data" in response.data
+    assert b"Storage" in response.data
+    assert b"Delivery" in response.data
+    assert b"Reports/Backup" in response.data
+    assert b"Recovery" in response.data
     assert b"Manage Users" in response.data
     assert b"Create empty slots" in response.data
     assert b"Assign unslotted asset" in response.data
