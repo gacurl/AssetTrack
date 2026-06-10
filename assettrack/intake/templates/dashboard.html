@@ -26,7 +26,7 @@
 
     .dashboard-primary-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 0.85rem;
       margin-bottom: 1rem;
     }
@@ -64,6 +64,7 @@
       font-weight: 700;
     }
     .dashboard-action-card {
+      grid-column: span 3;
       background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--color-primary-soft) 45%, var(--color-surface-bg)),
@@ -71,12 +72,20 @@
       );
       border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
       align-content: space-between;
+      min-height: 8rem;
+    }
+    .dashboard-action-card .dashboard-primary-label {
+      color: var(--color-text);
+      font-size: 1rem;
     }
     .dashboard-action-card .action-secondary {
       width: fit-content;
       min-height: 2.75rem;
       padding: 0.65rem 1rem;
       font-weight: 700;
+    }
+    .dashboard-metric-card {
+      grid-column: span 2;
     }
 
     .dashboard-map-card {
@@ -204,7 +213,11 @@
 
     @media (max-width: 1180px) {
       .dashboard-primary-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .dashboard-action-card,
+      .dashboard-metric-card {
+        grid-column: span 1;
       }
     }
     @media (max-width: 760px) {
@@ -220,32 +233,10 @@
   {% set exception_total = overview.attention_count %}
   {% set custody_map = dashboard.snapshots.custody_map %}
   <div class="dashboard-intro">
-    <p class="dashboard-subtitle">Calm operational state first. Use Issue or Return when you are ready to act.</p>
-    <p class="dashboard-note">The custody map below is read-only orientation only. It does not create custody state.</p>
+    <p class="dashboard-note">Custody map is read-only orientation. It does not create custody state.</p>
   </div>
 
   <div class="dashboard-primary-grid" aria-label="Primary dashboard cards">
-    <section class="dashboard-primary-card">
-      <p class="dashboard-primary-label">Assets Out</p>
-      <strong>{{ overview.issued_assets }}</strong>
-      <p class="dashboard-primary-copy">Assets currently in custody.</p>
-      <a class="nav-link dashboard-primary-link" href="{{ url_for('human_report') }}">View Current Custody</a>
-    </section>
-
-    <section class="dashboard-primary-card">
-      <p class="dashboard-primary-label">Assets Remaining</p>
-      <strong>{{ overview.in_storage_assets }}</strong>
-      <p class="dashboard-primary-copy">Assets currently available in storage.</p>
-      <a class="nav-link dashboard-primary-link" href="{{ url_for('dashboard_cases') }}">Review case space</a>
-    </section>
-
-    <section class="dashboard-primary-card">
-      <p class="dashboard-primary-label">Total Assets</p>
-      <strong>{{ overview.total_assets }}</strong>
-      <p class="dashboard-primary-copy">Total assets recorded in the system.</p>
-      <a class="nav-link dashboard-primary-link" href="{{ url_for('asset_search') }}">Search assets</a>
-    </section>
-
     <section class="dashboard-primary-card dashboard-action-card">
       <p class="dashboard-primary-label">Issue Assets</p>
       <a class="action-secondary" href="{{ url_for('issue') }}">Open Issue Workflow</a>
@@ -254,6 +245,24 @@
     <section class="dashboard-primary-card dashboard-action-card">
       <p class="dashboard-primary-label">Return Assets</p>
       <a class="action-secondary" href="{{ url_for('return_queue') }}">Open Return Workflow</a>
+    </section>
+
+    <section class="dashboard-primary-card dashboard-metric-card">
+      <p class="dashboard-primary-label">Assets Out</p>
+      <strong>{{ overview.issued_assets }}</strong>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('human_report') }}">Current Custody</a>
+    </section>
+
+    <section class="dashboard-primary-card dashboard-metric-card">
+      <p class="dashboard-primary-label">Assets Remaining</p>
+      <strong>{{ overview.in_storage_assets }}</strong>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('dashboard_cases') }}">Case Status</a>
+    </section>
+
+    <section class="dashboard-primary-card dashboard-metric-card">
+      <p class="dashboard-primary-label">Total Assets</p>
+      <strong>{{ overview.total_assets }}</strong>
+      <a class="nav-link dashboard-primary-link" href="{{ url_for('asset_search') }}">Asset Search</a>
     </section>
   </div>
 

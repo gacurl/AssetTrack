@@ -204,6 +204,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Return Assets", response.data)
         self.assertIn(b"Open Issue Workflow", response.data)
         self.assertIn(b"Open Return Workflow", response.data)
+        self.assertLess(
+            response.data.index(b"Issue Assets"),
+            response.data.index(b"Current Custody"),
+        )
+        self.assertLess(
+            response.data.index(b"Return Assets"),
+            response.data.index(b"Case Status"),
+        )
         self.assertIn(b"Custody Map", response.data)
         self.assertNotIn(b"Field Operational Custody Map", response.data)
         self.assertIn(b"Thread: CISR", response.data)
@@ -230,9 +238,11 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Issued to", response.data)
         self.assertIn(b"AT-CUST", response.data)
         self.assertIn(b'href="/holders/1"', response.data)
-        self.assertIn(b'href="/report">View Current Custody</a>', response.data)
+        self.assertIn(b'href="/report">Current Custody</a>', response.data)
         self.assertNotIn(b"Open manual holder follow-up", response.data)
         self.assertIn(b'href="/dashboard/cases"', response.data)
+        self.assertIn(b"Case Status", response.data)
+        self.assertIn(b"Asset Search", response.data)
         self.assertIn(b'href="/report"', response.data)
         self.assertNotIn(b"Workflow Shortcuts", response.data)
         self.assertNotIn(b'href="/issue/preview">Issue</a>', response.data)
@@ -249,7 +259,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"No active assets in the custody map.", response.data)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertNotIn(b'id="problems-panel" open', response.data)
-        self.assertIn(b"Search assets", response.data)
+        self.assertIn(b"Asset Search", response.data)
         self.assertIn(b"No case data available.", response.data)
         self.assertIn(b"No recent activity.", response.data)
         self.assertIn(b"No current problems.", response.data)
