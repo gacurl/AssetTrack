@@ -59,8 +59,8 @@
                     <span class="top-nav-admin-arrow" aria-hidden="true">▼</span>
                   </summary>
                   <nav class="top-nav-admin-panel" aria-label="Admin destinations">
-                    <a class="top-nav-admin-link{% if request.path.startswith('/admin/users') %} active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/system') %} active{% endif %}" href="{{ url_for('admin_system') }}">Admin Tools</a>
+                    <a class="top-nav-admin-link{% if request.path.startswith('/admin/users') %} active{% endif %}" href="{{ url_for('admin_users') }}">Users</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/reference-data') %} active{% endif %}" href="{{ url_for('admin_reference_data') }}">Reference Data</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/holders/import') %} active{% endif %}" href="{{ url_for('admin_holder_import') }}">Import Holders</a>
                     <a class="top-nav-admin-link{% if request.path.startswith('/admin/report') %} active{% endif %}" href="{{ url_for('admin_human_report') }}">Operational Report</a>
