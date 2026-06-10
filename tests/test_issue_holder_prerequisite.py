@@ -92,6 +92,9 @@ def test_holders_issue_selection_page_uses_issue_specific_action_label(client_wi
     response = client_with_temp_db.get("/holders?return_to=/issue")
 
     assert response.status_code == 200
+    assert b"Back to Issue" in response.data
+    assert b"Back to preview" not in response.data
+    assert b"Issue Assets" not in response.data
     assert b"Select for Issue" in response.data
     assert b'class="holder-select-button"' in response.data
     assert b'href="/holders/1?return_to=/issue"' in response.data
