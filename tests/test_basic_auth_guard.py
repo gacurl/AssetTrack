@@ -604,6 +604,15 @@ def test_preview_not_shown_in_main_navigation_but_direct_route_still_loads(clien
     assert b">Add Assets</a>" not in dashboard_response.data
     assert b">Users</a>" not in dashboard_response.data
     assert b">Admin Tools</a>" not in dashboard_response.data
+    nav_order = [
+        b'href="/dashboard">Dashboard</a>',
+        b'href="/issue">Issue</a>',
+        b'href="/return">Return</a>',
+        b'href="/holders">Holders</a>',
+        b'href="/report">Reports</a>',
+    ]
+    nav_positions = [dashboard_response.data.index(label) for label in nav_order]
+    assert nav_positions == sorted(nav_positions)
 
     preview_response = client_with_temp_db.get("/preview")
     assert preview_response.status_code == 200
@@ -621,6 +630,16 @@ def test_admin_navigation_shows_admin_only_actions(client_with_temp_db) -> None:
     assert b">Add Assets</a>" not in dashboard_response.data
     assert b">Users</a>" in dashboard_response.data
     assert b">Admin Tools</a>" in dashboard_response.data
+    admin_order = [
+        b'href="/admin/system">Admin Tools</a>',
+        b'href="/admin/users">Users</a>',
+        b'href="/admin/reference-data">Reference Data</a>',
+        b'href="/admin/holders/import">Import Holders</a>',
+        b'href="/admin/report">Operational Report</a>',
+        b'href="/admin/db/restore">Restore Database</a>',
+    ]
+    admin_positions = [dashboard_response.data.index(label) for label in admin_order]
+    assert admin_positions == sorted(admin_positions)
 
 
 def test_bootstrap_only_when_empty(client_with_temp_db) -> None:
