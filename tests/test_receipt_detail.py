@@ -182,6 +182,13 @@ def _receipt_row(receipt_id: int):
     return row
 
 
+def _receipt_snapshot(receipt_id: int) -> dict[str, object]:
+    row = _receipt_row(receipt_id)
+    snapshot = json.loads(str(row["snapshot_json"]))
+    assert isinstance(snapshot, dict)
+    return snapshot
+
+
 def _stored_receipt_display_title(receipt_id: int) -> str:
     row = _receipt_row(receipt_id)
     snapshot = json.loads(str(row["snapshot_json"]))
@@ -850,6 +857,76 @@ def test_receipt_send_success_updates_delivery_state(client_with_temp_db, monkey
     assert row["last_error"] is None
 
 
+def test_receipt_send_with_active_cc_stores_delivery_metadata_and_detail_shows_it(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    captured: dict[str, object] = {}
+
+    def _fake_send(message: EmailMessage) -> None:
+        captured["message"] = message
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.setenv("ASSETTRACK_RECEIPT_CC_EMAIL", "Oversight@example.org")
+    monkeypatch.setattr(intake_app, "_send_email_message", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 200
+    message = captured["message"]
+    assert isinstance(message, EmailMessage)
+    assert message["To"] == "issue@example.org"
+    assert message["Cc"] == "oversight@example.org"
+
+    snapshot = _receipt_snapshot(receipt_id)
+    delivery = snapshot["delivery"]
+    assert isinstance(delivery, dict)
+    assert delivery["state"] == "sent"
+    assert delivery["cc_recipients"] == ["oversight@example.org"]
+
+    detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert detail_response.status_code == 200
+    assert b"Recipient email" in detail_response.data
+    assert b"issue@example.org" in detail_response.data
+    assert b"CC email" in detail_response.data
+    assert b"oversight@example.org" in detail_response.data
+
+
+def test_receipt_send_with_no_cc_stores_empty_delivery_metadata_and_detail_shows_none(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    captured: dict[str, object] = {}
+
+    def _fake_send(message: EmailMessage) -> None:
+        captured["message"] = message
+
+    monkeypatch.setenv("ASSETTRACK_SMTP_HOST", "smtp.example.org")
+    monkeypatch.delenv("ASSETTRACK_RECEIPT_CC_EMAIL", raising=False)
+    monkeypatch.setattr(intake_app, "_send_email_message", _fake_send)
+
+    response = client_with_temp_db.post(f"/receipts/{receipt_id}/send?json=1")
+
+    assert response.status_code == 200
+    message = captured["message"]
+    assert isinstance(message, EmailMessage)
+    assert message["To"] == "issue@example.org"
+    assert message["Cc"] is None
+
+    snapshot = _receipt_snapshot(receipt_id)
+    delivery = snapshot["delivery"]
+    assert isinstance(delivery, dict)
+    assert delivery["state"] == "sent"
+    assert delivery["cc_recipients"] == []
+
+    detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert detail_response.status_code == 200
+    assert b"Recipient email" in detail_response.data
+    assert b"issue@example.org" in detail_response.data
+    assert b"CC email" in detail_response.data
+    assert b"None" in detail_response.data
+
+
 def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
     _insert_holder(
         1,
@@ -872,6 +949,12 @@ def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkey
     )
     assert commit.status_code == 302
     receipt_id = _latest_receipt_id()
+    conn = db.get_connection()
+    try:
+        event_count_before = conn.execute("SELECT COUNT(*) AS c FROM asset_events;").fetchone()
+    finally:
+        conn.close()
+    assert event_count_before is not None
 
     def _fake_send(_receipt: dict[str, object]) -> list[str]:
         raise RuntimeError("smtp offline")
@@ -889,16 +972,22 @@ def test_receipt_send_failure_updates_delivery_state(client_with_temp_db, monkey
     conn = db.get_connection()
     try:
         row = conn.execute(
-            "SELECT sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
+            "SELECT sent_at, last_attempt_at, last_error, snapshot_json FROM receipt_queue WHERE id = ?;",
             (receipt_id,),
         ).fetchone()
+        event_count_after = conn.execute("SELECT COUNT(*) AS c FROM asset_events;").fetchone()
     finally:
         conn.close()
 
     assert row is not None
+    assert event_count_after is not None
     assert row["sent_at"] is None
     assert row["last_attempt_at"] is not None
     assert row["last_error"] == "smtp offline"
+    assert int(event_count_after["c"]) == int(event_count_before["c"])
+    snapshot = json.loads(str(row["snapshot_json"]))
+    assert snapshot["recipient_email"] == "issue@example.org"
+    assert "cc_recipients" not in snapshot["delivery"]
 
 
 def test_receipt_send_retry_after_failure_uses_existing_send_route(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1145,6 +1234,7 @@ def test_admin_can_resend_existing_receipt_without_changing_receipt_or_event_tru
             """,
             (json.dumps(snapshot, sort_keys=True), "2026-04-01T12:00:00+00:00", "2026-04-01T12:00:00+00:00", receipt_id),
         )
+        write_receipt_cc_setting(conn, "resend-oversight@example.org")
         conn.commit()
         receipt_before = conn.execute(
             "SELECT snapshot_json, sent_at, last_attempt_at, last_error FROM receipt_queue WHERE id = ?;",
@@ -1155,6 +1245,9 @@ def test_admin_can_resend_existing_receipt_without_changing_receipt_or_event_tru
         conn.close()
     assert receipt_before is not None
     assert event_count_before is not None
+    snapshot_before = json.loads(str(receipt_before["snapshot_json"]))
+    receipt_facts_before = dict(snapshot_before)
+    receipt_facts_before.pop("delivery", None)
 
     sent_receipts: list[int] = []
 
@@ -1186,8 +1279,20 @@ def test_admin_can_resend_existing_receipt_without_changing_receipt_or_event_tru
 
     assert receipt_after is not None
     assert event_count_after is not None
-    assert dict(receipt_after) == dict(receipt_before)
+    snapshot_after = json.loads(str(receipt_after["snapshot_json"]))
+    receipt_facts_after = dict(snapshot_after)
+    receipt_facts_after.pop("delivery", None)
+    assert receipt_facts_after == receipt_facts_before
+    assert receipt_after["sent_at"] == receipt_before["sent_at"]
+    assert receipt_after["last_attempt_at"] == receipt_before["last_attempt_at"]
+    assert receipt_after["last_error"] == receipt_before["last_error"]
+    assert snapshot_after["delivery"]["cc_recipients"] == ["resend-oversight@example.org"]
     assert int(event_count_after["c"]) == int(event_count_before["c"])
+
+    detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
+    assert detail_response.status_code == 200
+    assert b"CC email" in detail_response.data
+    assert b"resend-oversight@example.org" in detail_response.data
 
 
 def test_operator_cannot_trigger_receipt_resend(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:

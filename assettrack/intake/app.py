@@ -3210,16 +3210,20 @@ def _receipt_delivery_snapshot(
     sent_at: Optional[str] = None,
     last_attempt_at: Optional[str] = None,
     last_error: Optional[str] = None,
-) -> dict[str, Optional[str]]:
+    cc_recipients: Optional[list[str]] = None,
+) -> dict[str, object]:
     normalized_state = str(state or "").strip().lower()
     if normalized_state not in {"pending", "sent", "failed"}:
         normalized_state = "pending"
-    return {
+    delivery: dict[str, object] = {
         "state": normalized_state,
         "sent_at": sent_at,
         "last_attempt_at": last_attempt_at,
         "last_error": last_error,
     }
+    if cc_recipients is not None:
+        delivery["cc_recipients"] = _normalized_email_addresses(",".join(cc_recipients))
+    return delivery
 
 
 def _receipt_delivery_cc_recipients(snapshot_delivery: dict[str, object]) -> list[str]:
@@ -6033,6 +6037,7 @@ def _update_receipt_delivery_state(
     last_attempt_at: Optional[str],
     sent_at: Optional[str],
     last_error: Optional[str],
+    cc_recipients: Optional[list[str]] = None,
 ) -> None:
     updated_snapshot = dict(snapshot)
     updated_snapshot["delivery"] = _receipt_delivery_snapshot(
@@ -6040,6 +6045,7 @@ def _update_receipt_delivery_state(
         sent_at=sent_at,
         last_attempt_at=last_attempt_at,
         last_error=last_error,
+        cc_recipients=cc_recipients,
     )
     conn.execute(
         """
@@ -6072,6 +6078,7 @@ def _send_queued_receipt(receipt_id: int) -> dict[str, object]:
 
         receipt = _receipt_from_queue_row(row)
         attempt_at = datetime.now(timezone.utc).isoformat()
+        cc_recipients = _receipt_cc_recipients()
 
         try:
             recipients = _send_receipt_email(receipt)
@@ -6097,6 +6104,7 @@ def _send_queued_receipt(receipt_id: int) -> dict[str, object]:
                 last_attempt_at=attempt_at,
                 sent_at=attempt_at,
                 last_error=None,
+                cc_recipients=cc_recipients,
             )
 
         return {
@@ -6121,7 +6129,24 @@ def _resend_existing_receipt(receipt_id: int) -> dict[str, object]:
             raise ValueError("Receipt is not eligible for resend.")
 
         receipt = _receipt_from_queue_row(row)
+        cc_recipients = _receipt_cc_recipients()
         recipients = _send_receipt_email(receipt)
+        delivery = _receipt_delivery_from_row(row, snapshot)
+        delivery_state = str(delivery.get("state") or "sent")
+        last_attempt_at = delivery.get("last_attempt_at")
+        sent_at = delivery.get("sent_at")
+        last_error = delivery.get("last_error")
+        with conn:
+            _update_receipt_delivery_state(
+                conn,
+                receipt_id=int(row["id"]),
+                snapshot=snapshot,
+                state=delivery_state,
+                last_attempt_at=str(last_attempt_at) if last_attempt_at is not None else None,
+                sent_at=str(sent_at) if sent_at is not None else None,
+                last_error=str(last_error) if last_error is not None else None,
+                cc_recipients=cc_recipients,
+            )
         return {
             "receipt_id": int(row["id"]),
             "recipients": recipients,
