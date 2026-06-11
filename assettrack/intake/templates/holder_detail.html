@@ -210,15 +210,6 @@
     <div class="summary-card">
       <span class="summary-label">Assets currently assigned</span>
       <div class="summary-value">{{ asset_count }}</div>
-      <div class="summary-note">
-        {% if asset_count == 0 %}
-          No assets need action from this holder right now.
-        {% elif asset_count == 1 %}
-          Review the assigned asset below.
-        {% else %}
-          Review the assigned assets below.
-        {% endif %}
-      </div>
     </div>
     <div class="summary-card">
       <span class="summary-label">Holder record</span>
@@ -252,9 +243,6 @@
 
   <section class="card holder-assets-card">
     <h2>Assets In Custody ({{ asset_count }})</h2>
-    <p class="holder-assets-intro">
-      Use this list to review what the holder has before selecting the next workflow action.
-    </p>
     <table>
       <thead>
         <tr>
