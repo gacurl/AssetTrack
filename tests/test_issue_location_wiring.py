@@ -204,6 +204,68 @@ def test_issue_commit_rejects_building_outside_selected_holder_org(client_with_t
     assert str(asset_row["building_room"]) == "Storage/A1"
 
 
+def test_issue_reuses_last_valid_current_location_when_active_location_is_empty(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["last_issue_building"] = "HQ North"
+        sess["last_issue_room"] = "210"
+        sess.pop("issue_building", None)
+        sess.pop("issue_room", None)
+
+    issue_page = client_with_temp_db.get("/issue")
+
+    assert issue_page.status_code == 200
+    assert b'value="HQ North" selected' in issue_page.data
+    assert b'id="issue-room" type="text" name="room" value="210"' in issue_page.data
+
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["issue_building"] == "HQ North"
+        assert sess["issue_room"] == "210"
+
+    scan_redirect = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=False,
+    )
+
+    assert scan_redirect.status_code == 302
+    assert (scan_redirect.headers.get("Location") or "").endswith("/issue#queue-actions")
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+
+
+def test_issue_does_not_reuse_last_current_location_blocked_for_selected_holder(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["last_issue_building"] = "Warehouse West"
+        sess["last_issue_room"] = "201"
+        sess.pop("issue_building", None)
+        sess.pop("issue_room", None)
+
+    issue_page = client_with_temp_db.get("/issue")
+
+    assert issue_page.status_code == 200
+    assert b'value="Warehouse West" selected' not in issue_page.data
+    assert b'id="issue-room" type="text" name="room" value=""' in issue_page.data
+
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["issue_building"] == ""
+        assert sess["issue_room"] == ""
+        assert sess["last_issue_building"] == "Warehouse West"
+        assert sess["last_issue_room"] == "201"
+
+    scan_response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert scan_response.status_code == 200
+    assert len(intake_app.SCAN_QUEUE) == 0
+    assert b"Scan not added. Choose the current building." in scan_response.data
+
+
 def test_issue_commit_updates_current_location_and_preserves_home_location_context(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
 
@@ -215,6 +277,9 @@ def test_issue_commit_updates_current_location_and_preserves_home_location_conte
     assert location_response.status_code == 200
     assert b"Current location set to HQ North / 210." in location_response.data
     assert b"flash success" in location_response.data
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["last_issue_building"] == "HQ North"
+        assert sess["last_issue_room"] == "210"
 
     scan_redirect = client_with_temp_db.post(
         "/",
