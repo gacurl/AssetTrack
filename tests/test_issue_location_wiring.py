@@ -132,6 +132,46 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"Scan not added. Choose the current building." in scan_response.data
 
 
+def test_issue_location_dropdown_orders_allowed_buildings_alphabetically(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        organization_row = conn.execute(
+            "SELECT id FROM organizations WHERE name = 'Operations' LIMIT 1;"
+        ).fetchone()
+        assert organization_row is not None
+        organization_id = int(organization_row["id"])
+        for name in ["Zulu Yard", "Alpha Annex", "bravo Depot"]:
+            conn.execute(
+                """
+                INSERT INTO buildings (name, created_at, updated_at)
+                VALUES (?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+                """,
+                (name,),
+            )
+            building_id = int(conn.execute("SELECT last_insert_rowid() AS id;").fetchone()["id"])
+            conn.execute(
+                """
+                INSERT INTO organization_buildings (organization_id, building_id, created_at)
+                VALUES (?, ?, '2026-01-01T00:00:00Z');
+                """,
+                (organization_id, building_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/issue")
+
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert html.index('value="Alpha Annex"') < html.index('value="bravo Depot"')
+    assert html.index('value="bravo Depot"') < html.index('value="HQ North"')
+    assert html.index('value="HQ North"') < html.index('value="Zulu Yard"')
+    assert "Warehouse West" not in html
+
+
 def test_issue_commit_rejects_building_outside_selected_holder_org(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
 
