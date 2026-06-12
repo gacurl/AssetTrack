@@ -24,6 +24,14 @@
     }
     .result-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
     .results-table code { white-space: nowrap; }
+    .movement-proof {
+      display: grid;
+      gap: 0.25rem;
+      min-width: 12rem;
+    }
+    .movement-proof-empty {
+      color: var(--color-text-muted);
+    }
     @media (max-width: 720px) {
       .search-grid {
         grid-template-columns: 1fr;
@@ -95,10 +103,12 @@
             <th>Current holder</th>
             <th>Home case</th>
             <th>Home slot</th>
+            <th>Last proof</th>
           </tr>
         </thead>
         <tbody>
           {% for asset in assets %}
+            {% set proof = asset.movement_proof %}
             <tr>
               <td>
                 {% if authenticated_role == 'admin' and asset.asset_tag %}
@@ -118,6 +128,30 @@
                   Slot {{ asset.home_slot_position }}
                 {% else %}
                   Not assigned
+                {% endif %}
+              </td>
+              <td>
+                {% if proof and proof.event_id %}
+                  <div class="movement-proof">
+                    <div>
+                      <strong>{{ proof.event_type }}</strong>
+                      {% if proof.event_date_display %}
+                        <span>{{ proof.event_date_display }}</span>
+                      {% endif %}
+                    </div>
+                    <div><code>Event #{{ proof.event_id }}</code></div>
+                    {% if proof.receipt_id %}
+                      <div>
+                        <a class="nav-link" href="{{ url_for('receipt_detail', receipt_id=proof.receipt_id) }}">
+                          Receipt {{ proof.receipt_key or proof.receipt_id }}
+                        </a>
+                      </div>
+                    {% else %}
+                      <div class="movement-proof-empty">No receipt linked</div>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <span class="movement-proof-empty">No movement proof recorded</span>
                 {% endif %}
               </td>
             </tr>
