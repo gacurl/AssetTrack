@@ -161,6 +161,58 @@ def create_building(name: str) -> dict:
         conn.close()
 
 
+def update_building_name(building_id: int, name: str) -> dict:
+    normalized_name = _normalize_name(name)
+    now_iso = _utc_now_iso()
+
+    conn = get_connection()
+    try:
+        current = conn.execute(
+            """
+            SELECT id, name, created_at, updated_at
+            FROM buildings
+            WHERE id = ?;
+            """,
+            (int(building_id),),
+        ).fetchone()
+        if current is None:
+            raise ValueError("building not found")
+
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM buildings
+            WHERE UPPER(name) = UPPER(?) AND id != ?
+            LIMIT 1;
+            """,
+            (normalized_name, int(building_id)),
+        ).fetchone()
+        if existing is not None:
+            raise ValueError("building already exists")
+
+        conn.execute(
+            """
+            UPDATE buildings
+            SET name = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            (normalized_name, now_iso, int(building_id)),
+        )
+        conn.commit()
+        return dict(
+            conn.execute(
+                """
+                SELECT id, name, created_at, updated_at
+                FROM buildings
+                WHERE id = ?;
+                """,
+                (int(building_id),),
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+
 def list_organization_building_mappings() -> list[dict]:
     conn = get_connection()
     try:

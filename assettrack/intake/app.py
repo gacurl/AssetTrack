@@ -66,6 +66,7 @@ from assettrack.reference_data import (
     list_buildings,
     list_organization_building_mappings,
     list_organizations,
+    update_building_name,
 )
 from assettrack.settings import (
     active_receipt_cc_setting,
@@ -7413,6 +7414,12 @@ def admin_reference_data():
             elif action == "create_building":
                 create_building((request.form.get("building_name") or "").strip())
                 flash("Created building.", "success")
+            elif action == "update_building_name":
+                update_building_name(
+                    int((request.form.get("building_id") or "").strip()),
+                    (request.form.get("building_name") or "").strip(),
+                )
+                flash("Updated building name.", "success")
             elif action == "map_organization_building":
                 create_organization_building_mapping(
                     int((request.form.get("organization_id") or "").strip()),
