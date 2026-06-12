@@ -1806,8 +1806,7 @@ def _assign_slot_location_context(form: Optional[dict[str, str]] = None) -> dict
         "building": str((form or {}).get("building") or "").strip(),
         "room": str((form or {}).get("room") or "").strip(),
     }
-    building_names = [str(row.get("name") or "").strip() for row in list_buildings()]
-    building_names = [name for name in building_names if name]
+    building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings()])
     return {
         "form": normalized_form,
         "building_options": building_names,
@@ -2864,13 +2863,17 @@ def _issue_location_form_from_session() -> dict[str, str]:
     }
 
 
+def _ordered_location_names(names: list[str]) -> list[str]:
+    normalized_names = {str(name or "").strip() for name in names if str(name or "").strip()}
+    return sorted(normalized_names, key=lambda name: (name.casefold(), name))
+
+
 def _issue_location_context(selected_holder: Optional[dict], form: Optional[dict[str, str]] = None) -> dict:
     normalized_form = {
         "building": str((form or {}).get("building") or "").strip(),
         "room": str((form or {}).get("room") or "").strip(),
     }
-    all_building_names = [str(row.get("name") or "").strip() for row in list_buildings()]
-    all_building_names = [name for name in all_building_names if name]
+    all_building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings()])
     allowed_building_names = list(all_building_names)
     constrained_by_org = False
 
@@ -2886,7 +2889,7 @@ def _issue_location_context(selected_holder: Optional[dict], form: Optional[dict
             for mapping in list_organization_building_mappings()
             if int(mapping["organization_id"]) == normalized_holder_org_id
         ]
-        mapped_buildings = [name for name in mapped_buildings if name]
+        mapped_buildings = _ordered_location_names(mapped_buildings)
         if mapped_buildings:
             constrained_by_org = True
             allowed_building_names = mapped_buildings
