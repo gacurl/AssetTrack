@@ -104,6 +104,8 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert issue_page.status_code == 200
     assert b"Current Location" in issue_page.data
     assert b"Set where these assets are leaving from before scanning." in issue_page.data
+    assert b"Select who is receiving the asset, set current location, then scan." in issue_page.data
+    assert b"Staged scans stay in the queue until review." in issue_page.data
     assert b"Add to Queue" in issue_page.data
     assert b"Scan or enter asset tag" in issue_page.data
     assert b"Add to queue" in issue_page.data
