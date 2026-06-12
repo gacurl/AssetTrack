@@ -150,6 +150,8 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Alex Holder (Field Ops)", response.data)
         self.assertIn(b"CASE-A", response.data)
         self.assertIn(b"Slot 4", response.data)
+        self.assertIn(b"Problem: holder still assigned", response.data)
+        self.assertIn(b"Current state says stored, but a holder is still assigned.", response.data)
         self.assertIn(b"No movement proof recorded", response.data)
         self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
 
@@ -177,6 +179,33 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Current holder", response.data)
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
+        self.assertIn(b"Problem: holder not recorded", response.data)
+        self.assertIn(b"Current state says in custody, but no holder is assigned.", response.data)
+
+    def test_search_shows_stored_status_cue_for_storage_asset(self) -> None:
+        self._insert_asset("AT-STORED-1", serial_number="SER-STORED-1", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-STORED-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Stored / returned", response.data)
+        self.assertIn(b"Current state is storage.", response.data)
+
+    def test_search_shows_out_with_holder_status_cue_for_issued_asset(self) -> None:
+        self._insert_holder(2, "Jamie Holder", "Field Ops")
+        self._insert_asset(
+            "AT-OUT-1",
+            serial_number="SER-OUT-1",
+            location_type="IN_CUSTODY",
+            home_slot_id=None,
+            current_holder_id=2,
+        )
+
+        response = self.client.get("/assets/search?asset_tag=AT-OUT-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Out with holder", response.data)
+        self.assertIn(b"Assigned to Jamie Holder (Field Ops).", response.data)
 
     def test_search_marks_retired_assets_with_clear_terminal_label(self) -> None:
         self._insert_asset("AT-RET-1", serial_number="SER-RET-1", location_type="DISPOSED", home_slot_id=None)
@@ -186,7 +215,19 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"RETIRED \xe2\x80\x94 Not in service", response.data)
         self.assertIn(b"state-badge terminal", response.data)
+        self.assertIn(b"Unavailable", response.data)
+        self.assertIn(b"Retired or not in service.", response.data)
         self.assertNotIn(b"Retired / disposed", response.data)
+
+    def test_search_shows_unknown_status_when_state_and_proof_are_missing(self) -> None:
+        self._insert_asset("AT-UNKNOWN-1", serial_number="SER-UNKNOWN-1", location_type="", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-UNKNOWN-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"No known custody/status proof", response.data)
+        self.assertIn(b"No current state or movement proof is recorded.", response.data)
+        self.assertIn(b"No movement proof recorded", response.data)
 
     def test_search_shows_latest_movement_event_proof(self) -> None:
         self._insert_asset("AT-PROOF-1", serial_number="SER-PROOF-1", location_type="IN_CUSTODY", home_slot_id=None)

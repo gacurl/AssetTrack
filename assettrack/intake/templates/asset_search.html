@@ -32,6 +32,40 @@
     .movement-proof-empty {
       color: var(--color-text-muted);
     }
+    .status-cue {
+      display: grid;
+      gap: 0.3rem;
+      min-width: 12rem;
+    }
+    .status-cue-label {
+      display: inline-flex;
+      width: fit-content;
+      padding: 0.18rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      background: var(--color-surface-soft);
+    }
+    .status-cue[data-tone="issued"] .status-cue-label {
+      background: var(--color-primary-soft);
+      color: var(--color-primary);
+    }
+    .status-cue[data-tone="stored"] .status-cue-label {
+      background: var(--color-success-soft);
+      color: var(--color-text);
+    }
+    .status-cue[data-tone="problem"],
+    .status-cue[data-tone="terminal"] {
+      color: var(--color-danger);
+    }
+    .status-cue[data-tone="problem"] .status-cue-label,
+    .status-cue[data-tone="terminal"] .status-cue-label {
+      background: color-mix(in srgb, var(--color-danger) 14%, white);
+      color: var(--color-danger);
+    }
+    .status-cue-detail {
+      color: var(--color-text-muted);
+    }
     @media (max-width: 720px) {
       .search-grid {
         grid-template-columns: 1fr;
@@ -109,6 +143,7 @@
         <tbody>
           {% for asset in assets %}
             {% set proof = asset.movement_proof %}
+            {% set status = asset.status_cue %}
             <tr>
               <td>
                 {% if authenticated_role == 'admin' and asset.asset_tag %}
@@ -119,7 +154,13 @@
               </td>
               <td>{{ asset.serial_number or "Not recorded" }}</td>
               <td>
-                <span class="state-badge{% if asset_is_terminal(asset.location_type) %} terminal{% endif %}">{{ asset_state_label(asset.location_type) }}</span>
+                <div class="status-cue" data-tone="{{ status.tone }}">
+                  <span class="status-cue-label">{{ status.label }}</span>
+                  <span class="state-badge{% if asset_is_terminal(asset.location_type) %} terminal{% endif %}">{{ asset_state_label(asset.location_type) }}</span>
+                  {% if status.detail %}
+                    <span class="status-cue-detail">{{ status.detail }}</span>
+                  {% endif %}
+                </div>
               </td>
               <td>{{ asset.holder_label or "Not assigned" }}</td>
               <td>{{ asset.home_case_name or "Not assigned" }}</td>
