@@ -199,6 +199,18 @@
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
     {% if issue_location_form is defined %}
       <p class="card-intro">Select who is receiving the asset, set current location, then scan. Staged scans stay in the queue until review.</p>
+      {% if selected_holder %}
+        <div class="workflow-summary workflow-summary--prereq">
+          <strong>Receiving holder</strong>
+          <span>{{ holder_display_name(selected_holder) }}</span>
+          {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+            <span>{{ selected_holder["organization"] }}</span>
+          {% endif %}
+          {% if selected_holder["identifier"] %}
+            <span>ID {{ selected_holder["identifier"] }}</span>
+          {% endif %}
+        </div>
+      {% endif %}
     {% else %}
       <p class="card-intro">Stage scans in the queue, then review the batch before commit.</p>
     {% endif %}

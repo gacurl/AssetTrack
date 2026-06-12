@@ -212,6 +212,17 @@
   <div class="card workflow-card">
     <h2>Commit</h2>
     <p class="card-intro">Commit only after the holder, current location, and queued assets are fully reviewed.</p>
+    {% if selected_holder %}
+      <p class="holder-summary">
+        <strong>Commit target holder:</strong> {{ holder_display_name(selected_holder) }}
+        {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+          ({{ selected_holder["organization"] }})
+        {% endif %}
+        {% if selected_holder["identifier"] %}
+          | ID {{ selected_holder["identifier"] }}
+        {% endif %}
+      </p>
+    {% endif %}
     <div class="workflow-action-stack">
       <form method="post" action="{{ url_for('issue_commit') }}">
         <label style="display:block; margin-bottom: 10px;">
