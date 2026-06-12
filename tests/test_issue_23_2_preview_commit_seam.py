@@ -86,6 +86,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200
     assert b"Issue Preview" in issue_preview.data
+    assert b"Back to Issue Review" in issue_preview.data
+    assert b"Back to Batch Preview" not in issue_preview.data
     assert b"Ready to Issue" in issue_preview.data
     assert b"Issue to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data

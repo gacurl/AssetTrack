@@ -197,7 +197,11 @@
 
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
-    <p class="card-intro">Stage scans in the queue, then review the batch before commit.</p>
+    {% if issue_location_form is defined %}
+      <p class="card-intro">Select who is receiving the asset, set current location, then scan. Staged scans stay in the queue until review.</p>
+    {% else %}
+      <p class="card-intro">Stage scans in the queue, then review the batch before commit.</p>
+    {% endif %}
     {% if message_ns.scan_messages %}
       {% for category, message in message_ns.scan_messages %}
         <div class="flash {{ category|e }}">{{ message }}</div>
