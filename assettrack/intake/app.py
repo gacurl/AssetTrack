@@ -1582,21 +1582,86 @@ def _lookup_asset_for_verification(
             else:
                 holder_label = _holder_display_name(holder_row)
 
+        location_type = _normalize_location_type(asset.get("location_type"))
+        movement_proof = _asset_last_movement_proof(conn, str(asset.get("asset_tag") or ""))
         results.append(
             {
                 "id": int(asset["id"]),
                 "asset_tag": str(asset.get("asset_tag") or ""),
                 "serial_number": str(asset.get("serial_number") or ""),
-                "location_type": _normalize_location_type(asset.get("location_type")),
+                "location_type": location_type,
                 "state_label": _asset_state_label(asset.get("location_type")),
                 "holder_label": holder_label,
                 "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
                 "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
-                "movement_proof": _asset_last_movement_proof(conn, str(asset.get("asset_tag") or "")),
+                "movement_proof": movement_proof,
+                "status_cue": _asset_search_status_cue(
+                    location_type=location_type,
+                    holder_label=holder_label,
+                    movement_proof=movement_proof,
+                ),
             }
         )
 
     return (results, None, lookup_mode)
+
+
+def _asset_search_status_cue(*, location_type: str, holder_label: str, movement_proof: dict[str, object]) -> dict[str, str]:
+    normalized_location = _normalize_location_type(location_type)
+    has_holder = bool(str(holder_label or "").strip())
+    has_movement_proof = bool(movement_proof.get("event_id"))
+
+    if _is_terminal_location_type(normalized_location):
+        return {
+            "label": "Unavailable",
+            "detail": "Retired or not in service.",
+            "tone": "terminal",
+        }
+
+    if normalized_location == "IN_CUSTODY":
+        if has_holder:
+            return {
+                "label": "Out with holder",
+                "detail": f"Assigned to {holder_label}.",
+                "tone": "issued",
+            }
+        return {
+            "label": "Problem: holder not recorded",
+            "detail": "Current state says in custody, but no holder is assigned.",
+            "tone": "problem",
+        }
+
+    if normalized_location == "STORAGE":
+        if has_holder:
+            return {
+                "label": "Problem: holder still assigned",
+                "detail": "Current state says stored, but a holder is still assigned.",
+                "tone": "problem",
+            }
+        return {
+            "label": "Stored / returned",
+            "detail": "Current state is storage.",
+            "tone": "stored",
+        }
+
+    if not normalized_location:
+        if has_movement_proof:
+            return {
+                "label": "Unknown current status",
+                "detail": "Movement proof exists, but current state is not recorded.",
+                "tone": "unknown",
+            }
+        return {
+            "label": "No known custody/status proof",
+            "detail": "No current state or movement proof is recorded.",
+            "tone": "unknown",
+        }
+
+    return {
+        "label": _asset_state_label(normalized_location),
+        "detail": f"Current state is {normalized_location}.",
+        "tone": "unknown",
+    }
 
 
 def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict[str, object]:
