@@ -79,6 +79,7 @@
           <tr>
             <th>ID</th>
             <th>Name</th>
+            <th>Correction</th>
           </tr>
         </thead>
         <tbody>
@@ -86,10 +87,19 @@
             <tr>
               <td><code>{{ building.id }}</code></td>
               <td>{{ building.name }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_reference_data') }}">
+                  <input type="hidden" name="action" value="update_building_name" />
+                  <input type="hidden" name="building_id" value="{{ building.id }}" />
+                  <label class="sr-only" for="building_name_{{ building.id }}">Correct building name</label>
+                  <input type="text" id="building_name_{{ building.id }}" name="building_name" value="{{ building.name }}" autocomplete="off" />
+                  <button type="submit">Correct name</button>
+                </form>
+              </td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="2">No buildings yet.</td>
+              <td colspan="3">No buildings yet.</td>
             </tr>
           {% endfor %}
         </tbody>
