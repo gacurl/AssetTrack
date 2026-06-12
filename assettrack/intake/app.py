@@ -2863,6 +2863,21 @@ def _issue_location_form_from_session() -> dict[str, str]:
     }
 
 
+def _last_issue_location_form_from_session() -> dict[str, str]:
+    return {
+        "building": str(session.get("last_issue_building") or "").strip(),
+        "room": str(session.get("last_issue_room") or "").strip(),
+    }
+
+
+def _remember_last_issue_location(form: dict[str, str]) -> None:
+    building = str(form.get("building") or "").strip()
+    room = str(form.get("room") or "").strip()
+    if building and room:
+        session["last_issue_building"] = building
+        session["last_issue_room"] = room
+
+
 def _ordered_location_names(names: list[str]) -> list[str]:
     normalized_names = {str(name or "").strip() for name in names if str(name or "").strip()}
     return sorted(normalized_names, key=lambda name: (name.casefold(), name))
@@ -2934,6 +2949,24 @@ def _validate_issue_location_form(selected_holder: Optional[dict], form: dict[st
     return normalized_form, errors, context
 
 
+def _issue_location_form_for_holder(selected_holder: Optional[dict]) -> dict[str, str]:
+    current_form = _issue_location_form_from_session()
+    if current_form["building"] or current_form["room"]:
+        return current_form
+
+    last_form = _last_issue_location_form_from_session()
+    if not last_form["building"] and not last_form["room"]:
+        return current_form
+
+    last_normalized, last_errors, _ = _validate_issue_location_form(selected_holder, last_form)
+    if last_errors:
+        return current_form
+
+    session["issue_building"] = last_normalized["building"]
+    session["issue_room"] = last_normalized["room"]
+    return last_normalized
+
+
 def _issue_location_label(form: dict[str, str]) -> str:
     building = str(form.get("building") or "").strip()
     room = str(form.get("room") or "").strip()
@@ -2961,7 +2994,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         holder_label = display_name if not identifier else f"{display_name} ({identifier})"
     issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
         selected_holder,
-        _issue_location_form_from_session(),
+        _issue_location_form_for_holder(selected_holder),
     )
     issue_location_label = _issue_location_label(issue_location_form)
 
@@ -4138,7 +4171,7 @@ def intake():
                 selected_holder = _selected_holder_from_session(require_active=True)
                 issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
                     selected_holder,
-                    _issue_location_form_from_session(),
+                    _issue_location_form_for_holder(selected_holder),
                 )
                 if selected_holder is None:
                     flash("Select a holder before issuing assets.", "error")
@@ -4155,6 +4188,7 @@ def intake():
                     return redirect(url_for("issue"))
                 session["issue_building"] = issue_location_form["building"]
                 session["issue_room"] = issue_location_form["room"]
+                _remember_last_issue_location(issue_location_form)
 
             value = sanitize_scan(scan_text)
             if not value:
@@ -4846,13 +4880,14 @@ def preview_commit():
 
     issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
         holder,
-        _issue_location_form_from_session(),
+        _issue_location_form_for_holder(holder),
     )
     if issue_location_errors:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "; ".join(issue_location_errors)}, 400
         flash("; ".join(issue_location_errors), "error")
         return redirect(url_for("issue"))
+    _remember_last_issue_location(issue_location_form)
 
     asset_tags = _queue_asset_tags()
     user = current_user()
@@ -4915,10 +4950,12 @@ def issue():
 
     issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
         selected_holder,
-        _issue_location_form_from_session(),
+        _issue_location_form_for_holder(selected_holder),
     )
     session["issue_building"] = issue_location_form["building"]
     session["issue_room"] = issue_location_form["room"]
+    if not issue_location_errors:
+        _remember_last_issue_location(issue_location_form)
     asset_tags = _queue_asset_tags()
     issue_state = _build_issue_preview_state(asset_tags, selected_holder)
     issued_count_raw = (request.args.get("issued") or "").strip()
@@ -4996,6 +5033,7 @@ def issue_location_update():
     if issue_location_errors:
         flash("; ".join(issue_location_errors), "error")
     else:
+        _remember_last_issue_location(issue_location_form)
         flash(f"Current location set to {_issue_location_label(issue_location_form)}.", "success")
 
     return redirect(url_for("issue"))
@@ -5012,10 +5050,12 @@ def issue_preview():
     selected_holder = _selected_holder_from_session(require_active=True)
     issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
         selected_holder,
-        _issue_location_form_from_session(),
+        _issue_location_form_for_holder(selected_holder),
     )
     session["issue_building"] = issue_location_form["building"]
     session["issue_room"] = issue_location_form["room"]
+    if not issue_location_errors:
+        _remember_last_issue_location(issue_location_form)
     asset_tags = _queue_asset_tags()
     if not asset_tags:
         flash("Queue is empty. Scan assets before opening Issue Preview.", "error")
@@ -5098,13 +5138,14 @@ def issue_commit():
 
     issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
         holder,
-        _issue_location_form_from_session(),
+        _issue_location_form_for_holder(holder),
     )
     if issue_location_errors:
         if wants_json():
             return {"ok": False, "committed": 0, "error": "; ".join(issue_location_errors)}, 400
         flash("; ".join(issue_location_errors), "error")
         return redirect(url_for("issue"))
+    _remember_last_issue_location(issue_location_form)
 
     asset_tags = _queue_asset_tags()
     if not asset_tags:
