@@ -73,7 +73,13 @@ from assettrack.settings import (
     save_receipt_cc_addresses,
 )
 from assettrack.audit import ACTIVE_EVENTS_WHERE, record_event
-from assettrack.event_types import ISSUE_EVENT_TYPE, RETURN_EVENT_TYPE
+from assettrack.event_types import (
+    ISSUE_EVENT_TYPE,
+    RETURN_EVENT_TYPE,
+    issue_event_type_values,
+    normalize_event_type,
+    return_event_type_values,
+)
 from assettrack.restore import (
     RestoreError,
     RestoreOperationError,
@@ -1586,10 +1592,64 @@ def _lookup_asset_for_verification(
                 "holder_label": holder_label,
                 "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
                 "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
+                "movement_proof": _asset_last_movement_proof(conn, str(asset.get("asset_tag") or "")),
             }
         )
 
     return (results, None, lookup_mode)
+
+
+def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict[str, object]:
+    event_type_values = tuple(issue_event_type_values() + return_event_type_values())
+    placeholders = ", ".join("?" for _ in event_type_values)
+    active_events_where = ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)
+    event_row = conn.execute(
+        f"""
+        SELECT e.id, e.event_type, e.event_date
+        FROM asset_events e
+        WHERE UPPER(e.asset_tag) = UPPER(?)
+          AND UPPER(e.event_type) IN ({placeholders})
+          AND {active_events_where}
+        ORDER BY e.event_date DESC, e.id DESC
+        LIMIT 1;
+        """,
+        (asset_tag, *event_type_values),
+    ).fetchone()
+
+    if event_row is None:
+        return {
+            "event_id": None,
+            "event_type": "",
+            "event_date": "",
+            "event_date_display": "",
+            "receipt_id": None,
+            "receipt_key": "",
+        }
+
+    event_id = int(event_row["id"])
+    receipt_row = conn.execute(
+        """
+        SELECT id, receipt_key
+        FROM receipt_queue
+        WHERE EXISTS (
+            SELECT 1
+            FROM json_each(receipt_queue.source_event_ids_json)
+            WHERE CAST(json_each.value AS INTEGER) = ?
+        )
+        ORDER BY commit_at DESC, id DESC
+        LIMIT 1;
+        """,
+        (event_id,),
+    ).fetchone()
+
+    return {
+        "event_id": event_id,
+        "event_type": normalize_event_type(event_row["event_type"]),
+        "event_date": str(event_row["event_date"] or ""),
+        "event_date_display": _report_event_display_timestamp(event_row["event_date"]),
+        "receipt_id": None if receipt_row is None else int(receipt_row["id"]),
+        "receipt_key": "" if receipt_row is None else str(receipt_row["receipt_key"] or ""),
+    }
 
 
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:

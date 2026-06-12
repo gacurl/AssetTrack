@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,56 @@ class AssetSearchUiTests(unittest.TestCase):
             VALUES (?, 'PERSON', ?, ?, NULL, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
             """,
             (holder_id, name, organization),
+        )
+        self.conn.commit()
+
+    def _insert_event(
+        self,
+        asset_tag: str,
+        *,
+        event_type: str,
+        event_date: str,
+        supersedes_event_id: int | None = None,
+        correction_reason: str | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO asset_events (
+                asset_tag,
+                event_type,
+                event_date,
+                actor,
+                notes,
+                payload,
+                holder_id,
+                supersedes_event_id,
+                correction_reason
+            )
+            VALUES (?, ?, ?, 'system', NULL, '{}', NULL, ?, ?);
+            """,
+            (asset_tag, event_type, event_date, supersedes_event_id, correction_reason),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def _insert_receipt(self, receipt_id: int, receipt_key: str, source_event_ids: list[int]) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO receipt_queue (
+                id,
+                receipt_key,
+                receipt_type,
+                source_event_ids_json,
+                snapshot_json,
+                commit_at,
+                commit_operator_user_id,
+                holder_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, 'ISSUE', ?, '{}', '2026-04-03T09:20:00+00:00', 1, NULL, '2026-04-03T09:20:00+00:00', '2026-04-03T09:20:00+00:00');
+            """,
+            (receipt_id, receipt_key, json.dumps(source_event_ids)),
         )
         self.conn.commit()
 
@@ -99,6 +150,7 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Alex Holder (Field Ops)", response.data)
         self.assertIn(b"CASE-A", response.data)
         self.assertIn(b"Slot 4", response.data)
+        self.assertIn(b"No movement proof recorded", response.data)
         self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
 
     def test_admin_search_links_asset_tag_to_admin_edit_asset(self) -> None:
@@ -135,6 +187,73 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"RETIRED \xe2\x80\x94 Not in service", response.data)
         self.assertIn(b"state-badge terminal", response.data)
         self.assertNotIn(b"Retired / disposed", response.data)
+
+    def test_search_shows_latest_movement_event_proof(self) -> None:
+        self._insert_asset("AT-PROOF-1", serial_number="SER-PROOF-1", location_type="IN_CUSTODY", home_slot_id=None)
+        old_event_id = self._insert_event(
+            "AT-PROOF-1",
+            event_type="ISSUE",
+            event_date="2026-04-01T08:00:00+00:00",
+        )
+        latest_event_id = self._insert_event(
+            "AT-PROOF-1",
+            event_type="RETURN",
+            event_date="2026-04-03T09:18:00+00:00",
+        )
+
+        response = self.client.get("/assets/search?asset_tag=AT-PROOF-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Last proof", response.data)
+        self.assertIn(b"<strong>RETURN</strong>", response.data)
+        self.assertIn(b"Apr 3, 2026 9:18 AM", response.data)
+        self.assertIn(f"Event #{latest_event_id}".encode("utf-8"), response.data)
+        self.assertNotIn(f"Event #{old_event_id}".encode("utf-8"), response.data)
+        self.assertIn(b"No receipt linked", response.data)
+
+    def test_search_shows_receipt_link_for_movement_proof(self) -> None:
+        self._insert_asset("AT-RECEIPT-1", serial_number="SER-RECEIPT-1", location_type="IN_CUSTODY", home_slot_id=None)
+        event_id = self._insert_event(
+            "AT-RECEIPT-1",
+            event_type="ISSUE",
+            event_date="2026-04-03T09:18:00+00:00",
+        )
+        self._insert_receipt(42, "ISSUE:42", [event_id])
+
+        response = self.client.get("/assets/search?asset_tag=AT-RECEIPT-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"<strong>ISSUE</strong>", response.data)
+        self.assertIn(f"Event #{event_id}".encode("utf-8"), response.data)
+        self.assertIn(b'href="/receipts/42"', response.data)
+        self.assertIn(b"Receipt ISSUE:42", response.data)
+
+    def test_search_ignores_superseded_movement_events(self) -> None:
+        self._insert_asset("AT-CORRECTED-1", serial_number="SER-CORRECTED-1", location_type="IN_CUSTODY", home_slot_id=None)
+        active_event_id = self._insert_event(
+            "AT-CORRECTED-1",
+            event_type="ISSUE",
+            event_date="2026-04-01T08:00:00+00:00",
+        )
+        superseded_event_id = self._insert_event(
+            "AT-CORRECTED-1",
+            event_type="RETURN",
+            event_date="2026-04-05T08:00:00+00:00",
+        )
+        correction_event_id = self._insert_event(
+            "AT-CORRECTED-1",
+            event_type="ASSET_UPDATED",
+            event_date="2026-04-06T08:00:00+00:00",
+            supersedes_event_id=superseded_event_id,
+            correction_reason="Incorrect return event.",
+        )
+
+        response = self.client.get("/assets/search?asset_tag=AT-CORRECTED-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"Event #{active_event_id}".encode("utf-8"), response.data)
+        self.assertNotIn(f"Event #{superseded_event_id}".encode("utf-8"), response.data)
+        self.assertNotIn(f"Event #{correction_event_id}".encode("utf-8"), response.data)
 
     def test_partial_asset_tag_search_returns_matching_assets(self) -> None:
         self._insert_holder(1, "Alex Holder", "Field Ops")
