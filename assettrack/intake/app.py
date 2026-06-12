@@ -6348,7 +6348,10 @@ def receipt_resend(receipt_id: int):
 @app.get("/receipts/<int:receipt_id>/resend")
 @require_role("admin")
 def receipt_resend_get(receipt_id: int):
-    flash("Use the receipt detail page button to resend receipt email.", "error")
+    flash(
+        "No receipt email was resent. Use the receipt detail page button to resend receipt email; custody and receipt records were not changed.",
+        "error",
+    )
     return redirect(url_for("receipt_detail", receipt_id=receipt_id))
 
 

@@ -1329,10 +1329,18 @@ def test_admin_get_receipt_resend_redirects_with_plain_message_without_sending(
 
     monkeypatch.setattr(intake_app, "_send_receipt_email", _fake_send)
 
+    redirect_response = client_with_temp_db.get(f"/receipts/{receipt_id}/resend")
+    assert redirect_response.status_code == 302
+    assert redirect_response.headers["Location"].endswith(f"/receipts/{receipt_id}")
+    assert send_calls == []
+
     response = client_with_temp_db.get(f"/receipts/{receipt_id}/resend", follow_redirects=True)
 
     assert response.status_code == 200
-    assert b"Use the receipt detail page button to resend receipt email." in response.data
+    assert (
+        b"No receipt email was resent. Use the receipt detail page button to resend receipt email; custody and receipt records were not changed."
+        in response.data
+    )
     assert send_calls == []
 
 
