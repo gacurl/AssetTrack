@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 
 import assettrack.db as db
@@ -30,6 +31,57 @@ class AdminReferenceDataTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_operator_direct_post_cannot_create_organization(self) -> None:
+        operator_id = create_test_user(username="operator-ref-post", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.post(
+            "/admin/reference-data",
+            data={"action": "create_organization", "organization_name": "Denied Operations"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = ?;",
+            ("Denied Operations",),
+        ).fetchone()
+        self.assertIsNone(row)
+
+    def test_unauthenticated_direct_post_cannot_create_organization(self) -> None:
+        response = self.client.post(
+            "/admin/reference-data",
+            data={"action": "create_organization", "organization_name": "Anonymous Operations"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = ?;",
+            ("Anonymous Operations",),
+        ).fetchone()
+        self.assertIsNone(row)
+
+    def test_operator_cannot_create_organization_through_holder_import(self) -> None:
+        operator_id = create_test_user(username="operator-import-ref", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.post(
+            "/admin/holders/import",
+            data={
+                "csv_file": (
+                    BytesIO(b"organization,name,email\nDenied Import Org,Jane Doe,jane@example.org\n"),
+                    "holders.csv",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = ?;",
+            ("Denied Import Org",),
+        ).fetchone()
+        self.assertIsNone(row)
+
     def test_admin_can_create_organization_building_and_mapping(self) -> None:
         admin_id = create_test_user(username="admin-ref", password="admin-pass", role="admin")
         login_session(self.client, admin_id)
@@ -39,6 +91,9 @@ class AdminReferenceDataTests(unittest.TestCase):
         self.assertIn(b"Organizations", response.data)
         self.assertIn(b"Buildings", response.data)
         self.assertIn(b"box-sizing: border-box;", response.data)
+        self.assertIn(b'name="action" value="create_organization"', response.data)
+        self.assertIn(b"name=\"organization_name\"", response.data)
+        self.assertIn(b"Create organization", response.data)
 
         create_org = self.client.post(
             "/admin/reference-data",
