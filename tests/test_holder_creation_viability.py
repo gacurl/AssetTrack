@@ -49,6 +49,19 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"novalidate", response.data)
         self.assertNotIn(b'name="organization_id" required', response.data)
 
+    def test_operator_holder_form_selects_existing_organizations_without_creation_controls(self) -> None:
+        org_id = self._create_org("Existing Ops")
+
+        response = self.client.get("/holders/new")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'value="{org_id}"'.encode("utf-8"), response.data)
+        self.assertIn(b"Existing Ops", response.data)
+        self.assertIn(b"Select organization", response.data)
+        self.assertNotIn(b'name="action" value="create_organization"', response.data)
+        self.assertNotIn(b"name=\"organization_name\"", response.data)
+        self.assertNotIn(b"Create organization", response.data)
+
     def test_get_holders_list_route_exists(self) -> None:
         response = self.client.get("/holders/list")
         self.assertEqual(response.status_code, 302)
