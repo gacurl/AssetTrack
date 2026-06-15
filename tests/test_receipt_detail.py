@@ -668,6 +668,8 @@ def test_receipt_detail_links_to_receipt_pdf(client_with_temp_db) -> None:
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}/pdf"'.encode("utf-8") in response.data
     assert b"Download Receipt PDF" in response.data
+    assert b"Back to Dashboard" not in response.data
+    assert b'href="/dashboard">Dashboard</a>' in response.data
 
 
 def test_receipt_detail_uses_stable_holder_fallback_when_snapshot_name_is_missing(client_with_temp_db) -> None:

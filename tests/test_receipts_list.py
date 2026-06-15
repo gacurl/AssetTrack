@@ -22,6 +22,9 @@ def test_receipts_list_renders_newest_first(client_with_temp_db) -> None:
     response = client_with_temp_db.get("/receipts")
 
     assert response.status_code == 200
+    assert b"Back to Dashboard" not in response.data
+    assert b"Back to Report" not in response.data
+    assert b'href="/dashboard">Dashboard</a>' in response.data
     assert response.data.find(f"/receipts/{newer_receipt_id}".encode("utf-8")) < response.data.find(
         f"/receipts/{older_receipt_id}".encode("utf-8")
     )

@@ -137,6 +137,8 @@ def test_dashboard_holders_route_returns_200_and_is_read_only(app_client) -> Non
     response = client.get("/dashboard/holders")
     assert response.status_code == 200
     assert b"Holders With Assets Out" in response.data
+    assert b"Back to Dashboard" not in response.data
+    assert b"Back to Report" not in response.data
 
     counts_after = (
         conn.execute("SELECT COUNT(*) AS c FROM assets;").fetchone()["c"],

@@ -89,6 +89,8 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Back to Issue Review" in issue_preview.data
     assert b"Back to Batch Preview" not in issue_preview.data
     assert b"Ready to Issue" in issue_preview.data
+    assert b">Change holder</a>" in issue_preview.data
+    assert b'href="/holders">Change holder</a>' in issue_preview.data
     assert b"Issue to:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
     assert b"1 asset queued" in issue_preview.data

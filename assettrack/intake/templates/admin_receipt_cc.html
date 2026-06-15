@@ -37,10 +37,6 @@
 {% endblock %}
 
 {% block content %}
-  <nav class="workflow-local-nav" aria-label="Receipt CC settings navigation">
-    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
-  </nav>
-
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}

@@ -70,9 +70,6 @@
 {% endblock %}
 
   {% block content %}
-  <nav class="workflow-local-nav" aria-label="Admin navigation">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-  </nav>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}

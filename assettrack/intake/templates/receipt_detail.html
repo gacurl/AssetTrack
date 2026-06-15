@@ -243,7 +243,6 @@
     {% set receipt_status_tone = "calm" %}
   {% endif %}
   <nav class="actions nav-row mixed-nav-row" aria-label="Receipt navigation">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
     <a class="chip" href="{{ url_for('receipt_pdf', receipt_id=receipt.id) }}">Download Receipt PDF</a>
     {% if receipt.delivery.state in ["pending", "failed"] %}
       {% if send_blocked_by_recovery %}

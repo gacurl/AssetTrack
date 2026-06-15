@@ -59,9 +59,6 @@
 
 {% block content %}
   {% set report_return_to = url_for('human_report', include_retired='1') if include_retired_assets else url_for('human_report') %}
-  <div class="report-actions nav-row">
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-  </div>
 
   {% if report_error %}
     <div class="flash error">{{ report_error }}</div>
