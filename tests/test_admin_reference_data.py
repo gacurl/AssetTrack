@@ -82,6 +82,35 @@ class AdminReferenceDataTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNone(row)
 
+    def test_operator_direct_post_cannot_create_building(self) -> None:
+        operator_id = create_test_user(username="operator-building-ref-post", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.post(
+            "/admin/reference-data",
+            data={"action": "create_building", "building_name": "Denied HQ"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = ?;",
+            ("Denied HQ",),
+        ).fetchone()
+        self.assertIsNone(row)
+
+    def test_unauthenticated_direct_post_cannot_create_building(self) -> None:
+        response = self.client.post(
+            "/admin/reference-data",
+            data={"action": "create_building", "building_name": "Anonymous HQ"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = ?;",
+            ("Anonymous HQ",),
+        ).fetchone()
+        self.assertIsNone(row)
+
     def test_admin_can_create_organization_building_and_mapping(self) -> None:
         admin_id = create_test_user(username="admin-ref", password="admin-pass", role="admin")
         login_session(self.client, admin_id)
@@ -94,6 +123,9 @@ class AdminReferenceDataTests(unittest.TestCase):
         self.assertIn(b'name="action" value="create_organization"', response.data)
         self.assertIn(b"name=\"organization_name\"", response.data)
         self.assertIn(b"Create organization", response.data)
+        self.assertIn(b'name="action" value="create_building"', response.data)
+        self.assertIn(b"name=\"building_name\"", response.data)
+        self.assertIn(b"Create building", response.data)
 
         create_org = self.client.post(
             "/admin/reference-data",

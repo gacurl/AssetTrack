@@ -120,6 +120,9 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     assert b"autofocus" not in issue_page.data
     assert b"HQ North" in issue_page.data
     assert b"Warehouse West" not in issue_page.data
+    assert b'name="action" value="create_building"' not in issue_page.data
+    assert b"name=\"building_name\"" not in issue_page.data
+    assert b"Create building" not in issue_page.data
 
     scan_response = client_with_temp_db.post(
         "/",
