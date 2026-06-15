@@ -605,6 +605,8 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     response = client_with_temp_db.get("/report")
 
     assert response.status_code == 200
+    assert b"Back to Dashboard" not in response.data
+    assert b'href="/dashboard">Dashboard</a>' in response.data
     assert b"Current State" in response.data
     assert b"Active custody and storage first." in response.data
     assert b"Report Scope" not in response.data
@@ -717,11 +719,13 @@ def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(clien
     receipts_response = client_with_temp_db.get("/receipts?return_to=/report")
     assert receipts_response.status_code == 200
     assert b"Back to Report" in receipts_response.data
+    assert b"Back to Dashboard" not in receipts_response.data
     assert b"Open Current Status Report" not in receipts_response.data
 
     cases_response = client_with_temp_db.get("/dashboard/cases?return_to=/report")
     assert cases_response.status_code == 200
     assert b"Back to Report" in cases_response.data
+    assert b"Back to Dashboard" not in cases_response.data
     assert b'href="/dashboard/cases/CASE-RETURN?return_to=/report"' in cases_response.data
 
     case_detail_response = client_with_temp_db.get("/dashboard/cases/CASE-RETURN?return_to=/report")
@@ -732,6 +736,11 @@ def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(clien
     direct_asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100")
     assert direct_asset_response.status_code == 200
     assert b"Back to Report" not in direct_asset_response.data
+
+    direct_cases_response = client_with_temp_db.get("/dashboard/cases")
+    assert direct_cases_response.status_code == 200
+    assert b"Back to Dashboard" not in direct_cases_response.data
+    assert b"Back to Report" not in direct_cases_response.data
 
     unsafe_asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100&return_to=//evil.example")
     assert unsafe_asset_response.status_code == 200

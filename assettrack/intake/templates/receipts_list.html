@@ -198,12 +198,11 @@
 {% endblock %}
 
 {% block content %}
-  <nav class="actions nav-row" aria-label="Receipt navigation">
-    {% if return_to == url_for('human_report') %}
+  {% if return_to == url_for('human_report') %}
+    <nav class="actions nav-row" aria-label="Receipt navigation">
       <a class="nav-link" href="{{ return_to }}">Back to Report</a>
-    {% endif %}
-    <a class="nav-link" href="{{ url_for('dashboard') }}">Back to Dashboard</a>
-  </nav>
+    </nav>
+  {% endif %}
 
   <section class="card">
     <h2>Search Receipts</h2>

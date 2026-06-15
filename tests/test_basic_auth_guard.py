@@ -575,14 +575,53 @@ def test_admin_allowed_admin_endpoint(client_with_temp_db) -> None:
     _login(client_with_temp_db, "admin", "admin-pass")
     response = client_with_temp_db.get("/admin/assets/new")
     assert response.status_code == 200
+    assert b"Back to Admin Tools" not in response.data
+    assert b'href="/admin/system">Admin Tools</a>' in response.data
+    assert b"Edit Existing Asset" in response.data
     edit_response = client_with_temp_db.get("/admin/assets/edit")
     assert edit_response.status_code == 200
+    assert b"Back to Admin Tools" not in edit_response.data
+    assert b"Create Asset" in edit_response.data
     retire_response = client_with_temp_db.get("/admin/assets/retire")
     assert retire_response.status_code == 200
+    assert b"Back to Admin Tools" in retire_response.data
     reference_data_response = client_with_temp_db.get("/admin/reference-data")
     assert reference_data_response.status_code == 200
+    assert b"Back to Admin Tools" not in reference_data_response.data
     slot_provision_response = client_with_temp_db.get("/admin/slots/provision")
     assert slot_provision_response.status_code == 200
+    assert b"Back to Admin Tools" in slot_provision_response.data
+
+
+def test_simple_admin_child_pages_use_global_admin_navigation(client_with_temp_db) -> None:
+    create_user("admin-simple-nav", "admin-pass", "admin", True)
+    _login(client_with_temp_db, "admin-simple-nav", "admin-pass")
+
+    simple_child_paths = [
+        "/admin/users",
+        "/admin/reference-data",
+        "/admin/receipt-cc",
+        "/admin/holders/import",
+        "/admin/report",
+    ]
+
+    for path in simple_child_paths:
+        response = client_with_temp_db.get(path)
+
+        assert response.status_code == 200
+        assert b"Back to Admin Tools" not in response.data
+        assert b'href="/admin/system">Admin Tools</a>' in response.data
+
+
+def test_admin_tools_hub_uses_global_dashboard_navigation(client_with_temp_db) -> None:
+    create_user("admin-hub-nav", "admin-pass", "admin", True)
+    _login(client_with_temp_db, "admin-hub-nav", "admin-pass")
+
+    response = client_with_temp_db.get("/admin/system")
+
+    assert response.status_code == 200
+    assert b"Back to Dashboard" not in response.data
+    assert b'href="/dashboard">Dashboard</a>' in response.data
 
 
 def test_asset_search_requires_login(client_with_temp_db) -> None:
