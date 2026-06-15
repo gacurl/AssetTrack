@@ -86,6 +86,8 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertIn(b"Return", render.data)
         self.assertIn(b">Return<", render.data)
         self.assertIn(b"Add to Queue", render.data)
+        self.assertIn(b"Scan assets into the queue. Review before commit.", render.data)
+        self.assertNotIn(b"Stage scans in the queue, then review the batch before commit.", render.data)
         self.assertIn(b"Scan or enter asset tag", render.data)
         self.assertIn(b"Add to queue", render.data)
         self.assertIn(b"Review Before Return", render.data)
