@@ -72,17 +72,23 @@
       );
       border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
       align-content: space-between;
-      min-height: 8rem;
+      min-height: 5.75rem;
+      padding: 0.75rem 1rem;
     }
-    .dashboard-action-card .dashboard-primary-label {
-      color: var(--color-text);
+    .dashboard-action-link {
+      align-content: center;
+      color: var(--color-primary);
       font-size: 1rem;
+      font-weight: 800;
+      text-decoration: none;
     }
-    .dashboard-action-card .action-secondary {
-      width: fit-content;
-      min-height: 2.75rem;
-      padding: 0.65rem 1rem;
-      font-weight: 700;
+    .dashboard-action-link:hover {
+      background: color-mix(in srgb, var(--color-primary-soft) 55%, var(--color-surface-bg));
+      text-decoration: none;
+    }
+    .dashboard-action-link:focus-visible {
+      outline: 3px solid var(--color-primary);
+      outline-offset: 3px;
     }
     .dashboard-metric-card {
       grid-column: span 2;
@@ -233,19 +239,13 @@
   {% set exception_total = overview.attention_count %}
   {% set custody_map = dashboard.snapshots.custody_map %}
   <div class="dashboard-intro">
-    <p class="dashboard-note">Custody map is read-only orientation. It does not create custody state.</p>
+    <p class="dashboard-note">Custody map is read-only.</p>
   </div>
 
   <div class="dashboard-primary-grid" aria-label="Primary dashboard cards">
-    <section class="dashboard-primary-card dashboard-action-card">
-      <p class="dashboard-primary-label">Issue Assets</p>
-      <a class="action-secondary" href="{{ url_for('issue') }}">Open Issue Workflow</a>
-    </section>
+    <a class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="{{ url_for('issue') }}">Issue Assets</a>
 
-    <section class="dashboard-primary-card dashboard-action-card">
-      <p class="dashboard-primary-label">Return Assets</p>
-      <a class="action-secondary" href="{{ url_for('return_queue') }}">Open Return Workflow</a>
-    </section>
+    <a class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="{{ url_for('return_queue') }}">Return Assets</a>
 
     <section class="dashboard-primary-card dashboard-metric-card">
       <p class="dashboard-primary-label">Assets Out</p>
@@ -272,7 +272,6 @@
       <span class="disclosure-hint">Thread → Building → Operational Domain → Custody Holder → Asset</span>
     </summary>
     <div class="disclosure-body">
-      <p class="dashboard-map-intro">Use this map for rough inventory orientation only. It does not represent network topology or create new custody records.</p>
       {% if custody_map.threads %}
         <ul class="custody-map-tree">
           {% for thread in custody_map.threads %}
