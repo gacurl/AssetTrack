@@ -1,7 +1,7 @@
 # Dockerfile
 FROM python:3.12.13-alpine3.23
 
-RUN python -m pip install --upgrade "pip==26.0"
+RUN python -m pip install --upgrade "pip==26.1"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
