@@ -91,18 +91,18 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert b"Ready to Issue" in issue_preview.data
     assert b">Change holder</a>" in issue_preview.data
     assert b'href="/holders?return_to=/issue">Change holder</a>' in issue_preview.data
-    assert b"Issue to:</strong>" in issue_preview.data
+    assert b"To holder:</strong>" in issue_preview.data
     assert b"Issue Holder" in issue_preview.data
     assert b"1 asset queued" in issue_preview.data
     assert b"Current location:</strong> HQ North / 210" in issue_preview.data
     assert b"Commit target holder:</strong> Issue Holder" in issue_preview.data
     assert b"| ID IH-1" in issue_preview.data
-    assert b"Issue result:</strong> <code>IN_CUSTODY</code> at <code>HQ North / 210</code>" in issue_preview.data
+    assert b"After commit:</strong> <code>IN_CUSTODY</code> at <code>HQ North / 210</code>" in issue_preview.data
     assert b"Technical details" in issue_preview.data
     assert b"Home location:</strong> <code>CASE-1 / 1</code>" in issue_preview.data
-    assert b"I reviewed this batch and want to issue these assets to the selected holder." in issue_preview.data
+    assert b"I reviewed the staged assets." in issue_preview.data
     assert b'name="confirm_responsibility_ack"' in issue_preview.data
-    assert b"accepted responsibility for this issue batch" in issue_preview.data
+    assert b"accepted responsibility" in issue_preview.data
     assert b'id="issue_btn" type="submit" data-timeout-lock-target' in issue_preview.data
     assert b"/issue/commit?json=1" not in issue_preview.data
     assert b"null" not in issue_preview.data
@@ -130,7 +130,7 @@ def test_issue_mode_preview_posts_to_issue_commit_and_allows_operator_commit(cli
     assert follow_up_scan.status_code == 200
     assert b">Issue<" in follow_up_scan.data
     assert b"Issue Holder" in follow_up_scan.data
-    assert b"1 asset queued" in follow_up_scan.data
+    assert b"1 staged asset" in follow_up_scan.data
 
     conn = db.get_connection()
     try:
@@ -269,7 +269,8 @@ def test_issue_queue_remove_updates_preview_and_commit_for_remaining_items(clien
 
     assert remove.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["DDC4CY002645", "DDC4CY002647"]
-    assert b"Queue (2)" in remove.data
+    assert b"2 staged assets" in remove.data
+    assert b"Inspect or remove staged assets" in remove.data
     assert b"Blocked Items" not in remove.data
 
     issue_preview = client_with_temp_db.get("/issue/preview")

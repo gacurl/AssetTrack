@@ -110,7 +110,7 @@
           <span>ID {{ selected_holder["identifier"] }}</span>
         {% endif %}
       </div>
-      <p class="holder-subtle">Holder is the custody actor. Location and case/slot are context only.</p>
+      <p class="holder-subtle">Custody actor for this issue.</p>
       <div class="workflow-action-row workflow-action-row--quiet">
         <a class="nav-link action-quiet" href="{{ url_for('holders_search', return_to=url_for('issue')) }}">Change holder</a>
       </div>
@@ -129,7 +129,7 @@
         <strong>Current location:</strong> {{ issue_location_label }}
       </p>
     {% else %}
-      <p>Current location required before issue.</p>
+      <p>Required before commit.</p>
     {% endif %}
     {% if issue_location_constrained_by_org %}
       <p>Building choices are limited to the selected holder's organization.</p>
@@ -179,9 +179,9 @@
             </div>
 
             <div class="asset-review-core">
-              <p><strong>Issue to:</strong> <code>{{ row.after_holder }}</code></p>
+              <p><strong>To holder:</strong> <code>{{ row.after_holder }}</code></p>
               <p><strong>Current location:</strong> <code>{{ before_current_location_display }}</code></p>
-              <p><strong>Issue result:</strong> <code>{{ row.after_location_type }}</code> at <code>{{ after_current_location_display }}</code></p>
+              <p><strong>After commit:</strong> <code>{{ row.after_location_type }}</code> at <code>{{ after_current_location_display }}</code></p>
             </div>
 
             {% if row.asset_issues %}
@@ -211,7 +211,7 @@
 
   <div class="card workflow-card">
     <h2>Commit</h2>
-    <p class="card-intro">Commit only after the holder, current location, and queued assets are fully reviewed.</p>
+    <p class="card-intro">Commit issues staged assets to the selected holder.</p>
     {% if selected_holder %}
       <p class="holder-summary">
         <strong>Commit target holder:</strong> {{ holder_display_name(selected_holder) }}
@@ -227,11 +227,11 @@
       <form method="post" action="{{ url_for('issue_commit') }}">
         <label style="display:block; margin-bottom: 10px;">
           <input type="checkbox" id="confirm_reviewed" name="confirm_reviewed" />
-          I reviewed this batch and want to issue these assets to the selected holder.
+          I reviewed the staged assets.
         </label>
         <label style="display:block; margin-bottom: 10px;">
           <input type="checkbox" id="confirm_responsibility_ack" name="confirm_responsibility_ack" />
-          I confirm the selected holder accepted responsibility for this issue batch.
+          I confirm the selected holder accepted responsibility.
         </label>
         <div class="workflow-action-row">
           <button id="issue_btn" type="submit" data-timeout-lock-target>Commit Issue</button>
