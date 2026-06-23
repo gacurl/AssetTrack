@@ -501,7 +501,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_issue_redirects_back_to_holder_selection_when_selected_holder_becomes_inactive(self) -> None:
+    def test_issue_clears_inactive_selected_holder_and_still_renders(self) -> None:
         organization_id = self._create_org("Issue Org")
         self.client.post(
             "/holders/new",
@@ -531,8 +531,13 @@ class HolderCreationViabilityTests(unittest.TestCase):
 
         response = self.client.get("/issue")
 
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue((response.headers["Location"]).endswith("/holders?return_to=/issue"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b">Issue<", response.data)
+        self.assertIn(b"Select holder", response.data)
+        self.assertIn(b'href="/holders?return_to=/issue"', response.data)
+
+        with self.client.session_transaction() as sess:
+            self.assertIsNone(sess.get("holder_id"))
 
     def test_holder_detail_shows_metadata_and_assigned_assets(self) -> None:
         organization_id = self._create_org("Org Detail")

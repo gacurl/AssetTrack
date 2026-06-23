@@ -20,6 +20,30 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         VALUES (1, 'PERSON', 'Issue Holder', 'Issue Org', 'IH-1', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
         """
     )
+    conn.execute(
+        """
+        INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+        VALUES (101, 'CASE-1', 1, 'ISSUE-100');
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO assets (
+            id, asset_tag, serial_number, equipment_type, manufacturer, model,
+            location_type, current_holder_id, home_slot_id
+        )
+        VALUES (
+            501, 'ISSUE-100', 'SN-1', 'laptop', 'Dell', 'Latitude',
+            'STORAGE', NULL, 101
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (101, 501, '2026-01-01T00:00:00Z');
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -28,24 +52,110 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return intake_app.app.test_client()
 
 
-def test_issue_requires_holder_selection_before_queue_access(client_with_temp_db) -> None:
+def test_issue_renders_without_holder_and_enables_issue_mode(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-prereq", password="op-pass", role="operator")
     login_session(client_with_temp_db, operator_id)
 
     response = client_with_temp_db.get("/issue")
 
-    assert response.status_code == 302
-    location = response.headers.get("Location") or ""
-    assert location.endswith("/holders?return_to=/issue")
+    assert response.status_code == 200
+    assert b">Issue<" in response.data
+    assert b"Review Before Issue" in response.data
+    assert b"Select holder" in response.data
+    assert b'href="/holders?return_to=/issue"' in response.data
+    assert b"0 assets queued" in response.data
+    assert b"Select before preview and commit." in response.data
+
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["issue_mode"] is True
+
+
+def test_valid_issue_asset_can_stage_before_holder_without_custody_side_effects(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-stage-before-holder", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+    assert b"Queue (1)" in response.data
+    assert b"No holder selected. Select a holder before issuing assets." in response.data
+    assert b"Select a holder before choosing the current location." in response.data
+
+    conn = db.get_connection()
+    try:
+        asset = conn.execute(
+            "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = 'ISSUE-100' LIMIT 1;"
+        ).fetchone()
+        event_count = conn.execute("SELECT COUNT(*) AS c FROM asset_events WHERE event_type = 'ISSUE';").fetchone()
+        receipt_count = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+    finally:
+        conn.close()
+
+    assert asset is not None
+    assert str(asset["location_type"]) == "STORAGE"
+    assert asset["current_holder_id"] is None
+    assert event_count is not None
+    assert int(event_count["c"]) == 0
+    assert receipt_count is not None
+    assert int(receipt_count["c"]) == 0
+
+
+def test_issue_preview_and_commit_remain_blocked_without_holder(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-stage-blocked-holder", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+
+    client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+
+    preview = client_with_temp_db.get("/issue/preview")
+
+    assert preview.status_code == 200
+    assert b"Needs Review" in preview.data
+    assert b"No holder selected. Select a holder before issuing assets." in preview.data
+    assert b"Select a holder before choosing the current location." in preview.data
+
+    commit = client_with_temp_db.post(
+        "/issue/commit",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        follow_redirects=False,
+    )
+
+    assert commit.status_code == 302
+    assert (commit.headers.get("Location") or "").endswith("/issue/preview")
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+
+    conn = db.get_connection()
+    try:
+        event_count = conn.execute("SELECT COUNT(*) AS c FROM asset_events WHERE event_type = 'ISSUE';").fetchone()
+        receipt_count = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+    finally:
+        conn.close()
+
+    assert event_count is not None
+    assert int(event_count["c"]) == 0
+    assert receipt_count is not None
+    assert int(receipt_count["c"]) == 0
 
 
 def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-return", password="op-pass", role="operator")
     login_session(client_with_temp_db, operator_id)
 
-    issue_redirect = client_with_temp_db.get("/issue")
-    assert issue_redirect.status_code == 302
-    assert (issue_redirect.headers.get("Location") or "").endswith("/holders?return_to=/issue")
+    stage_response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ISSUE-100", "return_to": "/issue"},
+        follow_redirects=True,
+    )
+    assert stage_response.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
 
     select_response = client_with_temp_db.post(
         "/holders/select",
@@ -58,6 +168,9 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     assert issue_page.status_code == 200
     assert b"Issue" in issue_page.data
     assert b"Review Before Issue" in issue_page.data
+    assert b"Issue Holder" in issue_page.data
+    assert b"Queue (1)" in issue_page.data
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
 
 
 def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_holder(client_with_temp_db) -> None:

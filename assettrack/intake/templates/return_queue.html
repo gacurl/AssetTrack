@@ -172,7 +172,7 @@
             {% if issue_location_ready %}
               <code class="issue-location-status-value">{{ issue_location_label }}</code>
             {% else %}
-              <span class="issue-location-status-value">Set where these assets are leaving from before scanning.</span>
+              <span class="issue-location-status-value">Set where these assets are leaving from before preview.</span>
             {% endif %}
           </div>
           {% if message_ns.location_messages %}
@@ -198,7 +198,7 @@
   <div class="card workflow-card">
     <h2>{{ scan_heading or "Add to Queue" }}</h2>
     {% if issue_location_form is defined %}
-      <p class="card-intro">Select who is receiving the asset, set current location, then scan. Staged scans stay in the queue until review.</p>
+      <p class="card-intro">Scan assets into the Issue queue. Select the receiving holder and current location before preview.</p>
       {% if selected_holder %}
         <div class="workflow-summary workflow-summary--prereq">
           <strong>Receiving holder</strong>
@@ -209,6 +209,12 @@
           {% if selected_holder["identifier"] %}
             <span>ID {{ selected_holder["identifier"] }}</span>
           {% endif %}
+        </div>
+      {% else %}
+        <div class="workflow-summary workflow-summary--prereq">
+          <strong>Receiving holder</strong>
+          <span>Select before preview and commit.</span>
+          <a class="nav-link" href="{{ url_for('holders_search', return_to=queue_return_to) }}">Select holder</a>
         </div>
       {% endif %}
     {% else %}
