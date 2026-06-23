@@ -50,11 +50,11 @@ jobs:
             --output trivy-reports/fs-all-severities.json \
             .
 
-      - name: Fail on CRITICAL filesystem findings
+      - name: Fail on MEDIUM, HIGH, or CRITICAL filesystem findings
         run: |
           trivy fs \
             --scanners vuln,misconfig,secret \
-            --severity CRITICAL \
+            --severity MEDIUM,HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
             .
@@ -117,10 +117,10 @@ jobs:
             --output trivy-reports/image-sbom.cdx.json \
             assettrack-security-baseline:${{ github.sha }}
 
-      - name: Fail on CRITICAL image findings
+      - name: Fail on MEDIUM, HIGH, or CRITICAL image findings
         run: |
           trivy image \
-            --severity CRITICAL \
+            --severity MEDIUM,HIGH,CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
             assettrack-security-baseline:${{ github.sha }}
