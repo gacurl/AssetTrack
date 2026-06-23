@@ -26,10 +26,7 @@
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Needs Review{% else %}Ready to Return{% endif %}</h2>
-    <p class="card-intro">
-      Returns go to each asset's assigned home slot.<br />
-      Review the destination below before commit.
-    </p>
+    <p class="card-intro">Review home slots before commit.</p>
   </div>
 
   {% if blocking_issues %}
@@ -104,7 +101,13 @@
 
   <div class="card workflow-card">
     <h2>Commit</h2>
-    <p class="card-intro">Commit only after the queued returns and any blocked items have been reviewed.</p>
+    <p class="card-intro">
+      {% if blocking_issues %}
+        Commit only after blocked items are resolved.
+      {% else %}
+        Confirm reviewed returns.
+      {% endif %}
+    </p>
 
     {% if not blocking_issues %}
       <form method="post" action="{{ url_for('return_commit') }}">
