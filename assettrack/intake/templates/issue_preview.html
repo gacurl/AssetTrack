@@ -112,12 +112,12 @@
       </div>
       <p class="holder-subtle">Holder is the custody actor. Location and case/slot are context only.</p>
       <div class="workflow-action-row workflow-action-row--quiet">
-        <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Change holder</a>
+        <a class="nav-link action-quiet" href="{{ url_for('holders_search', return_to=url_for('issue')) }}">Change holder</a>
       </div>
     {% else %}
       <p>No holder selected.</p>
       <div class="workflow-action-row workflow-action-row--quiet">
-        <a class="nav-link action-quiet" href="{{ url_for('holders_search') }}">Select holder</a>
+        <a class="nav-link action-quiet" href="{{ url_for('holders_search', return_to=url_for('issue')) }}">Select holder</a>
       </div>
     {% endif %}
   </div>

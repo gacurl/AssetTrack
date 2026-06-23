@@ -4170,26 +4170,15 @@ def intake():
         if scan_text:
             if return_to_path == "/issue":
                 selected_holder = _selected_holder_from_session(require_active=True)
-                issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
-                    selected_holder,
-                    _issue_location_form_for_holder(selected_holder),
-                )
-                if selected_holder is None:
-                    flash("Select a holder before issuing assets.", "error")
-                    touch_session()
-                    return redirect(url_for("holders_search", return_to=url_for("issue")))
-                if issue_location_errors:
-                    flash(
-                        f"Scan not added. {issue_location_errors[0]}",
-                        "error scan-feedback",
+                if selected_holder is not None:
+                    issue_location_form, issue_location_errors, _ = _validate_issue_location_form(
+                        selected_holder,
+                        _issue_location_form_for_holder(selected_holder),
                     )
-                    touch_session()
-                    if redirect_target.startswith("/") and not redirect_target.startswith("//"):
-                        return redirect(redirect_target)
-                    return redirect(url_for("issue"))
-                session["issue_building"] = issue_location_form["building"]
-                session["issue_room"] = issue_location_form["room"]
-                _remember_last_issue_location(issue_location_form)
+                    if not issue_location_errors:
+                        session["issue_building"] = issue_location_form["building"]
+                        session["issue_room"] = issue_location_form["room"]
+                        _remember_last_issue_location(issue_location_form)
 
             value = sanitize_scan(scan_text)
             if not value:
@@ -4945,10 +4934,6 @@ def issue():
         touch_session()
 
     selected_holder = _selected_holder_from_session(require_active=True)
-    if selected_holder is None:
-        flash("Select a holder before issuing assets.", "error")
-        return redirect(url_for("holders_search", return_to=url_for("issue")))
-
     issue_location_form, issue_location_errors, issue_location_context = _validate_issue_location_form(
         selected_holder,
         _issue_location_form_for_holder(selected_holder),

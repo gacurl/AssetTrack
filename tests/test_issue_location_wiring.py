@@ -96,16 +96,15 @@ def _login_issue_operator(client) -> None:
         sess["issue_mode"] = True
 
 
-def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) -> None:
+def test_issue_scan_stages_before_current_location_but_preview_blocks(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
 
     issue_page = client_with_temp_db.get("/issue")
 
     assert issue_page.status_code == 200
     assert b"Current Location" in issue_page.data
-    assert b"Set where these assets are leaving from before scanning." in issue_page.data
-    assert b"Select who is receiving the asset, set current location, then scan." in issue_page.data
-    assert b"Staged scans stay in the queue until review." in issue_page.data
+    assert b"Set where these assets are leaving from before preview." in issue_page.data
+    assert b"Scan assets into the Issue queue. Select the receiving holder and current location before preview." in issue_page.data
     assert b"Add to Queue" in issue_page.data
     assert b"Scan or enter asset tag" in issue_page.data
     assert b"Add to queue" in issue_page.data
@@ -131,8 +130,14 @@ def test_issue_scan_requires_current_location_prerequisite(client_with_temp_db) 
     )
 
     assert scan_response.status_code == 200
-    assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Scan not added. Choose the current building." in scan_response.data
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+    assert b"Queue (1)" in scan_response.data
+    assert b"Choose the current building." in scan_response.data
+
+    preview = client_with_temp_db.get("/issue/preview")
+    assert preview.status_code == 200
+    assert b"Needs Review" in preview.data
+    assert b"Choose the current building." in preview.data
 
 
 def test_issue_location_dropdown_orders_allowed_buildings_alphabetically(client_with_temp_db) -> None:
@@ -265,8 +270,9 @@ def test_issue_does_not_reuse_last_current_location_blocked_for_selected_holder(
     )
 
     assert scan_response.status_code == 200
-    assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"Scan not added. Choose the current building." in scan_response.data
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
+    assert b"Queue (1)" in scan_response.data
+    assert b"Choose the current building." in scan_response.data
 
 
 def test_issue_commit_updates_current_location_and_preserves_home_location_context(client_with_temp_db) -> None:
