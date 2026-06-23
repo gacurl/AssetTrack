@@ -11,9 +11,9 @@ If any other document conflicts with this file:
 
 AssetTrack is:
 
-- offline-first
-- append-only
-- event-sourced
+* offline-first
+* append-only
+* event-sourced
 
 State is derived from immutable event history.
 
@@ -23,15 +23,15 @@ State is derived from immutable event history.
 
 These must NEVER be violated:
 
-- events are append-only
-- audit history is never modified or deleted
-- state derives from event history
-- custody state must reconcile with event log
-- offline-first operation must remain intact
-- SQLite persistence must not change without approval
-- role enforcement must not be bypassable
-- no hidden refactors
-- no silent behavior changes
+* events are append-only
+* audit history is never modified or deleted
+* state derives from event history
+* custody state must reconcile with event log
+* offline-first operation must remain intact
+* SQLite persistence must not change without approval
+* role enforcement must not be bypassable
+* no hidden refactors
+* no silent behavior changes
 
 If a task risks any invariant:
 → STOP immediately
@@ -40,16 +40,16 @@ If a task risks any invariant:
 
 ## 3. Execution Discipline
 
-- one issue per branch
-- branch: issue-X-Y-description
-- commit: Issue X-Y: <plain English>
-- explicit file staging only (no git add .)
-- no scope expansion
-- after an issue branch is merged and the user is back on main, delete the completed local branch:
+* one issue per branch
+* branch: issue-X-Y-description
+* commit: Issue X-Y: <plain English>
+* explicit file staging only (no git add .)
+* no scope expansion
+* after an issue branch is merged and the user is back on main, delete the completed local branch:
   `git branch -D <branch-name>`
-- do not delete active or unmerged branches unless the user confirms merge is complete
-- default to one `git status --short --branch` at the end of branch setup
-- ask for extra status checks only when useful: dirty files, failed branch switch, merge/rebase, pre-commit, or confusion
+* do not delete active or unmerged branches unless the user confirms merge is complete
+* default to one `git status --short --branch` at the end of branch setup
+* ask for extra status checks only when useful: dirty files, failed branch switch, merge/rebase, pre-commit, or confusion
 
 ---
 
@@ -57,11 +57,11 @@ If a task risks any invariant:
 
 All work must be classified:
 
-- Class 1 — UI / Presentation
-- Class 2 — Logic / Behavior
-- Class 3 — Schema
-- Class 4 — Security
-- Class 5 — Infrastructure
+* Class 1 — UI / Presentation
+* Class 2 — Logic / Behavior
+* Class 3 — Schema
+* Class 4 — Security
+* Class 5 — Infrastructure
 
 Classes 3–5 require explicit approval.
 
@@ -75,32 +75,32 @@ entry → prerequisite → queue → preview → commit
 
 Rules:
 
-- do not reorder
-- do not shortcut
-- preview requires valid queue
-- entry must not redirect into preview
+* do not reorder
+* do not shortcut
+* preview requires valid queue
+* entry must not redirect into preview
 
 ---
 
 ## 6. Local Settings And Delivery Metadata
 
-- `app_settings` stores local runtime configuration
-- receipt CC may be configured through local app settings
-- local app settings must not become custody truth, receipt truth, event truth, or audit truth
-- schema changes to app settings still require explicit migration approval
-- receipt CC is delivery metadata only
-- receipt CC is not custody truth, receipt truth, event truth, or audit truth
-- receipt CC can be persisted as delivery metadata for sent receipts
-- email delivery failure must not roll back custody or receipt creation
+* `app_settings` stores local runtime configuration
+* receipt CC may be configured through local app settings
+* local app settings must not become custody truth, receipt truth, event truth, or audit truth
+* schema changes to app settings still require explicit migration approval
+* receipt CC is delivery metadata only
+* receipt CC is not custody truth, receipt truth, event truth, or audit truth
+* receipt CC can be persisted as delivery metadata for sent receipts
+* email delivery failure must not roll back custody or receipt creation
 
 ---
 
 ## 7. Manual Add Assets Navigation
 
-- manual Add Assets launchers are hidden from normal navigation
-- `/add-assets` remains available by direct URL
-- import/upload paths remain intact
-- do not re-add Manual Add Assets to normal navigation without explicit approval
+* manual Add Assets launchers are hidden from normal navigation
+* `/add-assets` remains available by direct URL
+* import/upload paths remain intact
+* do not re-add Manual Add Assets to normal navigation without explicit approval
 
 ---
 
@@ -113,13 +113,13 @@ For workflow changes:
 
 Smoke test:
 
-- login
-- enter workflow
-- perform action
-- verify queue/state
-- verify preview
-- verify commit
-- verify queue clears
+* login
+* enter workflow
+* perform action
+* verify queue/state
+* verify preview
+* verify commit
+* verify queue clears
 
 ---
 
@@ -138,25 +138,64 @@ For implementation:
 
 ## 10. PR Descriptions
 
-- Codex may provide raw exit-report material
-- final PR descriptions should be prepared/reviewed by Chat from the Codex exit report
-- PR descriptions must use the AssetTrack PR standard
+* Codex may provide raw exit-report material
+* final PR descriptions should be prepared/reviewed by Chat from the Codex exit report
+* PR descriptions must use the AssetTrack PR standard
 
 ---
 
-## 11. Prompt Estimates
+## 11. Codex Prompt Size Discipline
 
-Codex prompts should include:
+Codex prompts must use the smallest safe instruction set for the issue.
 
-- token-use estimate only: low, low-medium, medium, or high
-- fix confidence
-- no cost estimates
+Default prompt sizes:
+
+* Tiny: recon, docs-only work, copy cleanup, and narrow UI presentation changes
+* Small: narrow template changes or workflow presentation changes with focused tests
+* Medium: behavior changes that affect workflow state, queue behavior, preview readiness, commit gating, or coordinated tests
+* Large: avoid unless explicitly approved
+
+Do not include full Constitution restatements in every Codex prompt.
+
+Only expand prompts when the issue touches:
+
+* schema or migrations
+* security or authentication
+* persistence
+* custody/event behavior
+* commit behavior
+* receipt truth
+* Docker/runtime behavior
+* dependency changes
+
+For normal Milestone 27 cleanup work, Codex prompts should be short task cards with:
+
+* issue number and title
+* classification
+* branch name
+* task
+* scope
+* non-goals
+* required checks
+* stop conditions
+* expected exit report
+
+Avoid repeating long invariant lists unless the issue can threaten those invariants.
+
+The goal is safe execution with low token waste.
+
+Codex prompts should still include:
+
+* token-use estimate only: low, low-medium, medium, or high
+* fix confidence
+* no cost estimates
 
 Rules:
 
-- if token use is high, recommend splitting work into smaller GitHub issues first
-- if fix confidence is below 98.7%, recommend splitting work into smaller GitHub issues first
-- medium prompts may proceed only when scope is tight, invariants are protected, and verification is clear
+* if token use is high, recommend splitting work into smaller GitHub issues first
+* if fix confidence is below 99.1%, recommend splitting or narrowing the work first
+* medium prompts may proceed only when scope is tight, invariants are protected, and verification is clear
+* large prompts require explicit user approval before use
 
 ---
 
@@ -164,18 +203,18 @@ Rules:
 
 STOP if:
 
-- schema change required (no approval)
-- event semantics change required
-- persistence behavior changes
-- auth boundaries weaken
-- scope expands
-- requirement unclear
+* schema change required (no approval)
+* event semantics change required
+* persistence behavior changes
+* auth boundaries weaken
+* scope expands
+* requirement unclear
 
 When stopping, report:
 
-- what was attempted
-- what is blocking
-- smallest safe next step
+* what was attempted
+* what is blocking
+* smallest safe next step
 
 ---
 
@@ -183,16 +222,17 @@ When stopping, report:
 
 All communication must follow:
 
-- Lead with the answer
-- Remove non-essential detail
-- Use scannable structure (bullets, short sections)
-- Always answer: "why it matters"
+* Lead with the answer
+* Remove non-essential detail
+* Use scannable structure (bullets, short sections)
+* Always answer: "why it matters"
 
 This applies to:
-- Issues
-- PR descriptions
-- Codex prompts
-- Handoff summaries
+
+* Issues
+* PR descriptions
+* Codex prompts
+* Handoff summaries
 
 Purpose:
 Operators must understand state and next action in seconds under pressure.
@@ -212,17 +252,17 @@ Codex source-of-truth hierarchy:
 
 Do NOT:
 
-- infer from other repos
-- reuse patterns without confirmation
+* infer from other repos
+* reuse patterns without confirmation
 
 Codex memories are non-authoritative recall only.
 Use memories to reduce repeated context setup, never to override:
 
-- direct task instructions
-- AGENTS.md
-- docs/codex/PROJECT_MEMORY.md
-- docs/codex/CURRENT_STATE.md
-- current repo state
+* direct task instructions
+* AGENTS.md
+* docs/codex/PROJECT_MEMORY.md
+* docs/codex/CURRENT_STATE.md
+* current repo state
 
 If unsure:
 → ASK before acting

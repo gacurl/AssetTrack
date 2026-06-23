@@ -161,6 +161,32 @@
       overflow: auto;
       padding-right: 0.25rem;
     }
+    .return-flow-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-surface);
+    }
+    .return-flow-section h3 {
+      margin: 0 0 0.55rem 0;
+      font-size: 1rem;
+    }
+    .return-queue-summary {
+      margin: 0;
+      font-weight: 700;
+    }
+    .return-queue-details {
+      margin-top: 0.55rem;
+    }
+    .return-queue-details summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .return-queue-details .queue-list {
+      margin-top: 0.65rem;
+      max-height: 16rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
   </style>
 {% endblock %}
 
@@ -191,10 +217,6 @@
         <a href="{{ url_for('dashboard_case_detail', case_name=case_name) }}">{{ case_name }}</a>{% if not loop.last %}, {% endif %}
       {% endfor %}
     </div>
-  {% endif %}
-
-  {% if workflow_banner_title and issue_location_form is not defined %}
-    {% include "_workflow_context_banner.html" %}
   {% endif %}
 
   {% if issue_location_form is defined %}
@@ -339,8 +361,8 @@
     </div>
   {% else %}
   <div class="card workflow-card">
-    <h2>{{ scan_heading or "Add to Queue" }}</h2>
-      <p class="card-intro">Scan assets into the queue. Review before commit.</p>
+    <h2>{{ scan_heading or "Stage Returned Assets" }}</h2>
+      <p class="card-intro">Staged only. Nothing returns until commit.</p>
     {% if message_ns.scan_messages %}
       {% for category, message in message_ns.scan_messages %}
         <div class="flash {{ category|e }}">{{ message }}</div>
@@ -372,6 +394,46 @@
           </div>
         </div>
 
+      </div>
+
+      <div class="return-flow-section" id="queue-section">
+        <h3>Queue</h3>
+        {% if queue %}
+          <p class="return-queue-summary">{{ queue_len }} staged return{% if queue_len != 1 %}s{% endif %}</p>
+          <details class="return-queue-details">
+            <summary>Inspect or remove staged returns</summary>
+            <ul id="queue-list" class="queue-list" role="list">
+              {% for s in queue %}
+                <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
+                  <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
+                  <code>{{ s.asset_tag }}</code>
+                  <form method="post" action="{{ url_for('intake') }}">
+                    <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+                    <input type="hidden" name="action" value="remove" />
+                    <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+                    <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% else %}
+          <p class="queue-empty">No returns staged.</p>
+        {% endif %}
+      </div>
+
+      {% if blocking_issues %}
+        <div class="return-flow-section">
+          <h3>Before Review</h3>
+          <div class="validation-messages">
+            {% for issue in blocking_issues %}
+              <p class="validation-message">{{ issue }}</p>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="return-flow-section">
         <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
           <div class="workflow-action-row">
             <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or review_action_label }}</button>
@@ -379,39 +441,6 @@
         </form>
       </div>
   </div>
-
-  <div class="card workflow-card" id="queue-section">
-    <h2>Queue ({{ queue_len }})</h2>
-    {% if queue %}
-      <ul id="queue-list" class="queue-list" role="list">
-        {% for s in queue %}
-          <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
-            <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
-            <code>{{ s.asset_tag }}</code>
-            <form method="post" action="{{ url_for('intake') }}">
-              <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
-              <input type="hidden" name="action" value="remove" />
-              <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
-              <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
-            </form>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="queue-empty">No assets queued.</p>
-    {% endif %}
-  </div>
-
-  {% if blocking_issues %}
-    <div class="card workflow-card">
-      <h2>Blocked Items</h2>
-      <div class="validation-messages">
-        {% for issue in blocking_issues %}
-          <p class="validation-message">{{ issue }}</p>
-        {% endfor %}
-      </div>
-    </div>
-  {% endif %}
   {% endif %}
 
 {% endblock %}
