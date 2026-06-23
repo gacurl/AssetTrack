@@ -63,8 +63,8 @@ def test_issue_renders_without_holder_and_enables_issue_mode(client_with_temp_db
     assert b"Review Before Issue" in response.data
     assert b"Select holder" in response.data
     assert b'href="/holders?return_to=/issue"' in response.data
-    assert b"0 assets queued" in response.data
-    assert b"Select before preview and commit." in response.data
+    assert b"No assets staged." in response.data
+    assert b"Required before preview." in response.data
 
     with client_with_temp_db.session_transaction() as sess:
         assert sess["issue_mode"] is True
@@ -82,7 +82,8 @@ def test_valid_issue_asset_can_stage_before_holder_without_custody_side_effects(
 
     assert response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
-    assert b"Queue (1)" in response.data
+    assert b"1 staged asset" in response.data
+    assert b"Inspect or remove staged assets" in response.data
     assert b"No holder selected. Select a holder before issuing assets." in response.data
     assert b"Select a holder before choosing the current location." in response.data
 
@@ -169,7 +170,7 @@ def test_selecting_holder_returns_user_to_issue(client_with_temp_db) -> None:
     assert b"Issue" in issue_page.data
     assert b"Review Before Issue" in issue_page.data
     assert b"Issue Holder" in issue_page.data
-    assert b"Queue (1)" in issue_page.data
+    assert b"1 staged asset" in issue_page.data
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ISSUE100"]
 
 
@@ -292,11 +293,11 @@ def test_issue_page_displays_selected_holder_context(client_with_temp_db) -> Non
     assert b"Issue" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Org" in response.data
-    assert b"Receiving holder" in response.data
+    assert b"Holder" in response.data
     assert b"ID IH-1" in response.data
-    assert b"Change Holder" in response.data
+    assert b"Change holder" in response.data
     assert b'href="/holders?return_to=/issue"' in response.data
-    assert b"0 assets queued" in response.data
+    assert b"No assets staged." in response.data
 
 
 def test_issue_page_displays_selected_group_holder_context(client_with_temp_db) -> None:
