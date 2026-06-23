@@ -85,15 +85,16 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(render.status_code, 200)
         self.assertIn(b"Return", render.data)
         self.assertIn(b">Return<", render.data)
-        self.assertIn(b"Add to Queue", render.data)
-        self.assertIn(b"Scan assets into the queue. Review before commit.", render.data)
+        self.assertIn(b"Stage Returned Assets", render.data)
+        self.assertIn(b"Staged only. Nothing returns until commit.", render.data)
         self.assertNotIn(b"Stage scans in the queue, then review the batch before commit.", render.data)
         self.assertIn(b"Scan or enter asset tag", render.data)
         self.assertIn(b"Add to queue", render.data)
         self.assertIn(b"Review Before Return", render.data)
         self.assertNotIn(b"Preview Queue", render.data)
-        self.assertIn(b"Home location: Home slots", render.data)
-        self.assertIn(b"1 asset queued", render.data)
+        self.assertNotIn(b"Home location: Home slots", render.data)
+        self.assertIn(b"1 staged return", render.data)
+        self.assertIn(b"Inspect or remove staged returns", render.data)
 
         preview_render = self.client.get("/return/preview")
         self.assertEqual(preview_render.status_code, 200)
@@ -313,7 +314,7 @@ class ReturnBatchTests(unittest.TestCase):
         render = self.client.get("/return")
         self.assertEqual(render.status_code, 200)
         self.assertIn(
-            b"No assets queued.",
+            b"No returns staged.",
             render.data,
         )
 
@@ -523,7 +524,8 @@ class ReturnBatchTests(unittest.TestCase):
 
         self.assertEqual(remove.status_code, 200)
         self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["KEEP-ME"])
-        self.assertIn(b"Queue (1)", remove.data)
+        self.assertIn(b"1 staged return", remove.data)
+        self.assertIn(b"Inspect or remove staged returns", remove.data)
 
         preview = self.client.get("/return/preview")
         self.assertEqual(preview.status_code, 200)
@@ -546,7 +548,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT100", "RT101"])
         self.assertIn(b"Case CASE-2 added 2 assets to queue.", response.data)
-        self.assertIn(b"Queue (2)", response.data)
+        self.assertIn(b"2 staged returns", response.data)
         self.assertNotIn(b"CASE2", response.data)
 
     def test_return_case_scan_excludes_assets_already_returned_to_storage(self) -> None:
@@ -606,7 +608,7 @@ class ReturnBatchTests(unittest.TestCase):
 
         self.assertEqual(removed.status_code, 200)
         self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT301"])
-        self.assertIn(b"Queue (1)", removed.data)
+        self.assertIn(b"1 staged return", removed.data)
 
         preview = self.client.get("/return/preview")
         self.assertEqual(preview.status_code, 200)
