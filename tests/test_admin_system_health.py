@@ -121,14 +121,15 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Delivery" in response.data
     assert b"Reports/Backup" in response.data
     assert b"Recovery" in response.data
-    assert b"Manage Users" in response.data
-    assert b"Create empty slots" in response.data
-    assert b"Assign unslotted asset" in response.data
-    assert b"Receipt CC Settings" in response.data
-    assert b"Import Holders from CSV" in response.data
-    assert b"Open Operational Report" in response.data
-    assert b"Restore Database Backup" in response.data
-    assert b"Download Database Backup" in response.data
+    assert b"Users" in response.data
+    assert b"Organizations / Buildings" in response.data
+    assert b"Import Holders" in response.data
+    assert b"Empty Slots" in response.data
+    assert b"Assign Slot" in response.data
+    assert b"Receipt CC" in response.data
+    assert b"Status Report" in response.data
+    assert b"DB Backup" in response.data
+    assert b"Restore Backup" in response.data
     assert response.data.count(b"<details class=\"disclosure-section") >= 3
     assert b"System Snapshot" in response.data
     assert b"Restore History" in response.data
