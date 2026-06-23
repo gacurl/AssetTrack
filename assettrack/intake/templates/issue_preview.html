@@ -129,7 +129,7 @@
         <strong>Current location:</strong> {{ issue_location_label }}
       </p>
     {% else %}
-      <p>Required before commit.</p>
+      <p>Required.</p>
     {% endif %}
     {% if issue_location_constrained_by_org %}
       <p>Building choices are limited to the selected holder's organization.</p>
@@ -211,7 +211,6 @@
 
   <div class="card workflow-card">
     <h2>Commit</h2>
-    <p class="card-intro">Commit issues staged assets to the selected holder.</p>
     {% if selected_holder %}
       <p class="holder-summary">
         <strong>Commit target holder:</strong> {{ holder_display_name(selected_holder) }}
