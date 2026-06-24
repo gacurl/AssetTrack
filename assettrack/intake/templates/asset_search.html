@@ -87,7 +87,7 @@
 
   <div class="card">
     <h2>Find Asset</h2>
-    <p class="muted">Search by asset tag or serial number. If both are entered, asset tag is used first.</p>
+    <p class="muted">Search by asset tag or serial number.</p>
     <form class="asset-search-form" method="get" action="{{ url_for('asset_search') }}">
       {% if return_to %}
         <input type="hidden" name="return_to" value="{{ return_to }}" />
@@ -118,16 +118,11 @@
   {% if assets %}
     <div class="card">
       <h2>{% if assets|length == 1 %}Asset Found{% else %}Assets Found{% endif %}</h2>
-      <p class="muted">
-        {% if lookup_mode == "asset_tag" %}
-          Matched by asset tag.
-        {% elif lookup_mode == "serial_number" %}
-          Matched by serial number.
-        {% endif %}
-        {% if assets|length != 1 %}
+      {% if assets|length != 1 %}
+        <p class="muted">
           {{ assets|length }} matches shown.
-        {% endif %}
-      </p>
+        </p>
+      {% endif %}
       <table class="results-table">
         <thead>
           <tr>

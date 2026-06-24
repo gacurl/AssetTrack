@@ -373,7 +373,7 @@ class HolderCreationViabilityTests(unittest.TestCase):
         self.assertIn(b"Holder Directory", response.data)
         self.assertIn(b"Alpha Holder", response.data)
         self.assertIn(b"Bravo Holder", response.data)
-        self.assertIn(b"Search by person name, group, organization, or identifier", response.data)
+        self.assertIn(b"Search holders", response.data)
 
     def test_holders_directory_status_filter_shows_all_active_and_inactive(self) -> None:
         organization_id = self._create_org("Ad Hoc")
