@@ -26,7 +26,7 @@
 {% block content %}
   <div class="page-header-bar">
     <nav class="page-header-nav" aria-label="Contextual navigation">
-      {% if return_to == url_for('human_report') %}
+      {% if return_to and return_to.startswith('/report') %}
         <a class="nav-link" href="{{ return_to }}">Back to Report</a>
       {% endif %}
       <a class="nav-link" href="{{ url_for('dashboard_holders', return_to=return_to) }}">Back to Holders</a>

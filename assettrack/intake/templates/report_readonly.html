@@ -77,7 +77,7 @@
     </div>
     <div class="report-actions report-utility-links" aria-label="Report utilities">
       <span class="report-utility-label">Utilities</span>
-      <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Open receipts</a>
+      <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Search receipts</a>
       {% if include_retired_assets %}
         <a class="nav-link" href="{{ url_for('human_report') }}">View active inventory only</a>
       {% else %}
@@ -98,7 +98,7 @@
       <a class="report-stat report-stat-link" href="{{ url_for('dashboard_holders', return_to=report_return_to) }}">
         In custody
         <strong>{{ asset_summary.in_custody_assets }}</strong>
-        <span class="nav-link report-stat-action">Open manual holder follow-up</span>
+        <span class="nav-link report-stat-action">Review holders with assets out</span>
       </a>
       <div class="report-stat">
         {% if include_retired_assets %}Retired shown{% else %}Retired hidden{% endif %}

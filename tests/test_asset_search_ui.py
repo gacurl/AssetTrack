@@ -266,8 +266,31 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"<strong>ISSUE</strong>", response.data)
         self.assertIn(f"Event #{event_id}".encode("utf-8"), response.data)
-        self.assertIn(b'href="/receipts/42"', response.data)
+        self.assertIn(b'href="/receipts/42?return_to=/assets/search?', response.data)
+        self.assertIn(b"asset_tag%3DAT-RECEIPT-1", response.data)
         self.assertIn(b"Receipt ISSUE:42", response.data)
+
+    def test_search_receipt_link_preserves_report_return_context(self) -> None:
+        self._insert_asset(
+            "AT-REPORT-RECEIPT",
+            serial_number="SER-REPORT-RECEIPT",
+            location_type="IN_CUSTODY",
+            home_slot_id=None,
+        )
+        event_id = self._insert_event(
+            "AT-REPORT-RECEIPT",
+            event_type="ISSUE",
+            event_date="2026-04-03T09:18:00+00:00",
+        )
+        self._insert_receipt(43, "ISSUE:43", [event_id])
+
+        response = self.client.get("/assets/search?asset_tag=AT-REPORT-RECEIPT&return_to=/report?include_retired=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/receipts/43?return_to=/assets/search?', response.data)
+        self.assertIn(b"asset_tag%3DAT-REPORT-RECEIPT", response.data)
+        self.assertIn(b"return_to%3D/report", response.data)
+        self.assertIn(b"include_retired", response.data)
 
     def test_search_ignores_superseded_movement_events(self) -> None:
         self._insert_asset("AT-CORRECTED-1", serial_number="SER-CORRECTED-1", location_type="IN_CUSTODY", home_slot_id=None)

@@ -198,7 +198,7 @@
 {% endblock %}
 
 {% block content %}
-  {% if return_to == url_for('human_report') %}
+  {% if return_to and return_to.startswith('/report') %}
     <nav class="actions nav-row" aria-label="Receipt navigation">
       <a class="nav-link" href="{{ return_to }}">Back to Report</a>
     </nav>
@@ -258,7 +258,11 @@
             <td data-label="Receipt">
               <div class="receipt-primary">
                 <div class="receipt-title">
-                  <a class="receipt-link" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">{{ receipt.display_title }}</a>
+                  {% if return_to and return_to.startswith('/report') %}
+                    <a class="receipt-link" href="{{ url_for('receipt_detail', receipt_id=receipt.id, return_to=return_to) }}">{{ receipt.display_title }}</a>
+                  {% else %}
+                    <a class="receipt-link" href="{{ url_for('receipt_detail', receipt_id=receipt.id) }}">{{ receipt.display_title }}</a>
+                  {% endif %}
                 </div>
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
                 {% if receipt.delivery_state %}
