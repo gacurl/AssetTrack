@@ -75,7 +75,7 @@
 {% endblock %}
 
 {% block content %}
-  {% if return_to == url_for('human_report') %}
+  {% if return_to and return_to.startswith('/report') %}
     <nav class="actions nav-row" aria-label="Asset search navigation">
       <a class="nav-link" href="{{ return_to }}">Back to Report</a>
     </nav>
@@ -183,7 +183,7 @@
                     <div><code>Event #{{ proof.event_id }}</code></div>
                     {% if proof.receipt_id %}
                       <div>
-                        <a class="nav-link" href="{{ url_for('receipt_detail', receipt_id=proof.receipt_id) }}">
+                        <a class="nav-link" href="{{ url_for('receipt_detail', receipt_id=proof.receipt_id, return_to=receipt_detail_return_to) }}">
                           Receipt {{ proof.receipt_key or proof.receipt_id }}
                         </a>
                       </div>

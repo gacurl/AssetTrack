@@ -1420,6 +1420,20 @@ def _safe_local_return_to(return_to: str) -> str | None:
     return None
 
 
+def _safe_report_return_to(return_to: str) -> str | None:
+    target = _safe_local_return_to(return_to)
+    if target and target.startswith("/report"):
+        return target
+    return None
+
+
+def _safe_receipt_context_return_to(return_to: str) -> str | None:
+    target = _safe_local_return_to(return_to)
+    if target and (target.startswith("/report") or target.startswith("/assets/search")):
+        return target
+    return None
+
+
 def _holder_form_error_message(exc: ValueError) -> str:
     message = str(exc)
     if message == "organization is required":
@@ -4681,6 +4695,15 @@ def asset_search():
         finally:
             conn.close()
 
+    receipt_return_args: dict[str, str] = {}
+    if form_state["asset_tag"]:
+        receipt_return_args["asset_tag"] = form_state["asset_tag"]
+    if form_state["serial_number"]:
+        receipt_return_args["serial_number"] = form_state["serial_number"]
+    if _safe_report_return_to(return_to):
+        receipt_return_args["return_to"] = return_to
+    receipt_detail_return_to = url_for("asset_search", **receipt_return_args)
+
     return render_template(
         "asset_search.html",
         form=form_state,
@@ -4688,6 +4711,7 @@ def asset_search():
         error_message=error_message,
         lookup_mode=lookup_mode,
         return_to=return_to,
+        receipt_detail_return_to=receipt_detail_return_to,
     )
 
 
@@ -5484,10 +5508,16 @@ def receipt_detail(receipt_id: int):
         abort(404)
 
     receipt = _receipt_from_queue_row(row)
+    return_to = _safe_receipt_context_return_to(request.args.get("return_to") or "")
+    return_to_label = ""
+    if return_to:
+        return_to_label = "Back to Report" if return_to.startswith("/report") else "Back to Asset Search"
 
     return render_template(
         "receipt_detail.html",
         receipt=receipt,
+        return_to=return_to,
+        return_to_label=return_to_label,
     )
 
 

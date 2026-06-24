@@ -32,7 +32,7 @@
 {% endblock %}
 
 {% block content %}
-  {% if return_to == url_for('human_report') %}
+  {% if return_to and return_to.startswith('/report') %}
     <nav class="actions" aria-label="Contextual navigation">
       <a class="nav-link" href="{{ return_to }}">Back to Report</a>
     </nav>

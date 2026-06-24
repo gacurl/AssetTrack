@@ -611,11 +611,11 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Current State" in response.data
     assert b"Active custody and storage first." in response.data
     assert b"Report Scope" not in response.data
-    assert b"Open manual holder follow-up" in response.data
+    assert b"Review holders with assets out" in response.data
     assert b"Review case space" in response.data
     assert b"Search active asset records" in response.data
     assert b"Utilities" in response.data
-    assert b"Open receipts" in response.data
+    assert b"Search receipts" in response.data
     assert b"Include retired assets" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
     assert response.data.count(b'href="/assets/search?return_to=/report"') == 1
@@ -713,6 +713,13 @@ def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(clien
     assert b'href="/report"' in asset_response.data
     assert b"Back to Report" in asset_response.data
 
+    asset_report_filter_response = client_with_temp_db.get(
+        "/assets/search?asset_tag=RET-100&return_to=/report?include_retired=1"
+    )
+    assert asset_report_filter_response.status_code == 200
+    assert b'href="/report?include_retired=1"' in asset_report_filter_response.data
+    assert b"Back to Report" in asset_report_filter_response.data
+
     holder_response = client_with_temp_db.get("/holders/1?return_to=/report")
     assert holder_response.status_code == 200
     assert b"Back to Report" in holder_response.data
@@ -723,16 +730,33 @@ def test_report_drill_ins_show_back_to_report_only_for_safe_report_context(clien
     assert b"Back to Dashboard" not in receipts_response.data
     assert b"Open Current Status Report" not in receipts_response.data
 
+    receipts_report_filter_response = client_with_temp_db.get("/receipts?return_to=/report?include_retired=1")
+    assert receipts_report_filter_response.status_code == 200
+    assert b'href="/report?include_retired=1"' in receipts_report_filter_response.data
+    assert b"Back to Report" in receipts_report_filter_response.data
+
     cases_response = client_with_temp_db.get("/dashboard/cases?return_to=/report")
     assert cases_response.status_code == 200
     assert b"Back to Report" in cases_response.data
     assert b"Back to Dashboard" not in cases_response.data
     assert b'href="/dashboard/cases/CASE-RETURN?return_to=/report"' in cases_response.data
 
+    cases_report_filter_response = client_with_temp_db.get("/dashboard/cases?return_to=/report?include_retired=1")
+    assert cases_report_filter_response.status_code == 200
+    assert b'href="/report?include_retired=1"' in cases_report_filter_response.data
+    assert b"Back to Report" in cases_report_filter_response.data
+
     case_detail_response = client_with_temp_db.get("/dashboard/cases/CASE-RETURN?return_to=/report")
     assert case_detail_response.status_code == 200
     assert b"Back to Report" in case_detail_response.data
     assert b'href="/dashboard/cases?return_to=/report"' in case_detail_response.data
+
+    case_detail_report_filter_response = client_with_temp_db.get(
+        "/dashboard/cases/CASE-RETURN?return_to=/report?include_retired=1"
+    )
+    assert case_detail_report_filter_response.status_code == 200
+    assert b'href="/report?include_retired=1"' in case_detail_report_filter_response.data
+    assert b"Back to Report" in case_detail_report_filter_response.data
 
     direct_asset_response = client_with_temp_db.get("/assets/search?asset_tag=RET-100")
     assert direct_asset_response.status_code == 200

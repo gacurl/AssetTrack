@@ -4,6 +4,7 @@ import json
 from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from pypdf import PdfReader
@@ -369,6 +370,44 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     assert b"Apple" in response.data
     assert b"iPad" in response.data
     assert b"CASE-20 / 1" in response.data
+
+
+def test_receipt_detail_shows_report_contextual_back_link(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}?return_to=/report?include_retired=1")
+
+    assert response.status_code == 200
+    assert b'href="/report?include_retired=1"' in response.data
+    assert b"Back to Report" in response.data
+    assert b"Download Receipt PDF" in response.data
+    assert b"Receipt delivery queued \xe2\x80\x94 custody already recorded" in response.data
+    assert b"Send Receipt Email" in response.data
+
+
+def test_receipt_detail_shows_asset_search_contextual_back_link(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+    return_to = quote("/assets/search?asset_tag=ISSUE-100&return_to=/report?include_retired=1", safe="")
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}?return_to={return_to}")
+
+    assert response.status_code == 200
+    assert b"Back to Asset Search" in response.data
+    assert b"asset_tag=ISSUE-100" in response.data
+    assert b"return_to=/report?include_retired=1" in response.data
+    assert b"Back to Report" not in response.data
+    assert b"Download Receipt PDF" in response.data
+
+
+def test_receipt_detail_omits_unsafe_contextual_back_link(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get(f"/receipts/{receipt_id}?return_to=//evil.example")
+
+    assert response.status_code == 200
+    assert b"Back to Report" not in response.data
+    assert b"Back to Asset Search" not in response.data
+    assert b"Download Receipt PDF" in response.data
 
 
 def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:

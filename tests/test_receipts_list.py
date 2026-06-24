@@ -223,6 +223,28 @@ def test_receipts_list_links_to_existing_receipt_detail(client_with_temp_db) -> 
     assert detail_response.status_code == 200
 
 
+def test_receipts_list_preserves_safe_report_return_context_in_detail_links(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get("/receipts?return_to=/report?include_retired=1")
+
+    assert response.status_code == 200
+    assert b'href="/report?include_retired=1"' in response.data
+    assert b"Back to Report" in response.data
+    assert f'href="/receipts/{receipt_id}?return_to='.encode("utf-8") in response.data
+    assert b"include_retired" in response.data
+
+
+def test_receipts_list_omits_unsafe_report_return_context(client_with_temp_db) -> None:
+    receipt_id = _create_issue_receipt(client_with_temp_db)
+
+    response = client_with_temp_db.get("/receipts?return_to=//evil.example")
+
+    assert response.status_code == 200
+    assert b"Back to Report" not in response.data
+    assert f'href="/receipts/{receipt_id}?return_to='.encode("utf-8") not in response.data
+
+
 def test_receipts_list_renders_distinct_issue_and_return_titles(client_with_temp_db) -> None:
     issue_receipt_id = _create_issue_receipt(client_with_temp_db)
     return_receipt_id = _create_return_receipt(client_with_temp_db)
