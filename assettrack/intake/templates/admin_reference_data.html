@@ -26,7 +26,7 @@
   <div class="grid">
     <div class="card">
       <h2>Organizations</h2>
-      <p class="card-intro">Create reference values before using them in workflow or asset maintenance screens.</p>
+      <p class="card-intro">Used in workflows and asset maintenance.</p>
       <form method="post" action="{{ url_for('admin_reference_data') }}">
         <input type="hidden" name="action" value="create_organization" />
         <div class="row">
@@ -60,7 +60,7 @@
 
     <div class="card">
       <h2>Buildings</h2>
-      <p class="card-intro">Building values appear in operator-facing location selection and maintenance forms.</p>
+      <p class="card-intro">Buildings appear in operator location choices and maintenance forms.</p>
       <form method="post" action="{{ url_for('admin_reference_data') }}">
         <input type="hidden" name="action" value="create_building" />
         <div class="row">
@@ -105,7 +105,7 @@
 
   <div class="card">
     <h2>Organization to Building Mapping</h2>
-    <p class="card-intro">Map organizations to the buildings they can operate in.</p>
+    <p class="card-intro">Controls which buildings each organization can use.</p>
     <form method="post" action="{{ url_for('admin_reference_data') }}">
       <input type="hidden" name="action" value="map_organization_building" />
       <div class="grid">

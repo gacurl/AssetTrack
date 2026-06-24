@@ -91,7 +91,7 @@
   {% if asset %}
     <div class="card">
       <h2>Edit Asset</h2>
-      <p class="muted">Home location stays relationship-based through `slots` and `home_slot_id`.</p>
+      <p class="muted">Use case and slot only for the asset's confirmed home location.</p>
       <form method="post" action="{{ url_for('admin_edit_asset') }}">
         <input type="hidden" name="action" value="update" />
         <input type="hidden" name="lookup_asset_tag" value="{{ form.lookup_asset_tag or asset.asset_tag }}" />
