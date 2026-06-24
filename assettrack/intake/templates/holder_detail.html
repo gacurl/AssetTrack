@@ -166,7 +166,7 @@
           {% if return_to and return_to != url_for('human_report') %}
             <input type="hidden" name="return_to" value="{{ return_to }}" />
           {% endif %}
-          <button type="submit">Select Holder</button>
+          <button type="submit">{{ "Select for Issue" if return_to == url_for('issue') else "Select Holder" }}</button>
         </form>
       {% else %}
         <span class="holder-status-chip inactive">Inactive holder</span>
@@ -210,17 +210,6 @@
     <div class="summary-card">
       <span class="summary-label">Assets currently assigned</span>
       <div class="summary-value">{{ asset_count }}</div>
-    </div>
-    <div class="summary-card">
-      <span class="summary-label">Holder record</span>
-      <div class="summary-value">{{ holder_display_name(holder) }}</div>
-      <div class="summary-note">
-        {% if holder.organization %}
-          {{ holder.organization }}
-        {% else %}
-          {{ holder_display_type(holder) }}
-        {% endif %}
-      </div>
     </div>
   </section>
 
