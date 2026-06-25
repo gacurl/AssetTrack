@@ -66,6 +66,7 @@ from assettrack.reference_data import (
     list_buildings,
     list_organization_building_mappings,
     list_organizations,
+    set_building_active,
     update_building_name,
 )
 from assettrack.settings import (
@@ -1859,7 +1860,7 @@ def _assign_slot_location_context(form: Optional[dict[str, str]] = None) -> dict
         "building": str((form or {}).get("building") or "").strip(),
         "room": str((form or {}).get("room") or "").strip(),
     }
-    building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings()])
+    building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings(active_only=True)])
     return {
         "form": normalized_form,
         "building_options": building_names,
@@ -2941,7 +2942,7 @@ def _issue_location_context(selected_holder: Optional[dict], form: Optional[dict
         "building": str((form or {}).get("building") or "").strip(),
         "room": str((form or {}).get("room") or "").strip(),
     }
-    all_building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings()])
+    all_building_names = _ordered_location_names([str(row.get("name") or "") for row in list_buildings(active_only=True)])
     allowed_building_names = list(all_building_names)
     constrained_by_org = False
 
@@ -2952,14 +2953,19 @@ def _issue_location_context(selected_holder: Optional[dict], form: Optional[dict
         normalized_holder_org_id = None
 
     if normalized_holder_org_id is not None:
-        mapped_buildings = [
-            str(mapping.get("building_name") or "").strip()
+        holder_mappings = [
+            mapping
             for mapping in list_organization_building_mappings()
             if int(mapping["organization_id"]) == normalized_holder_org_id
         ]
-        mapped_buildings = _ordered_location_names(mapped_buildings)
-        if mapped_buildings:
+        if holder_mappings:
             constrained_by_org = True
+            mapped_buildings = [
+                str(mapping.get("building_name") or "").strip()
+                for mapping in holder_mappings
+                if int(mapping.get("building_is_active") or 0) == 1
+            ]
+            mapped_buildings = _ordered_location_names(mapped_buildings)
             allowed_building_names = mapped_buildings
 
     return {
@@ -2995,6 +3001,10 @@ def _validate_issue_location_form(selected_holder: Optional[dict], form: dict[st
                 errors.append("Choose a valid building.")
         else:
             normalized_form["building"] = matched_name
+    elif context["constrained_by_org"]:
+        errors.append("Choose a building allowed for the selected organization.")
+    elif context["has_reference_buildings"]:
+        errors.append("Choose a valid building.")
 
     if not room:
         errors.append("Enter the current room or area.")
@@ -7459,6 +7469,13 @@ def admin_reference_data():
                     (request.form.get("building_name") or "").strip(),
                 )
                 flash("Updated building name.", "success")
+            elif action == "set_building_active":
+                updated_building = set_building_active(
+                    int((request.form.get("building_id") or "").strip()),
+                    _is_truthy(request.form.get("is_active")),
+                )
+                status_label = "Reactivated" if int(updated_building["is_active"]) == 1 else "Deactivated"
+                flash(f"{status_label} building.", "success")
             elif action == "map_organization_building":
                 create_organization_building_mapping(
                     int((request.form.get("organization_id") or "").strip()),
@@ -7474,6 +7491,7 @@ def admin_reference_data():
         "admin_reference_data.html",
         organizations=list_organizations(),
         buildings=list_buildings(),
+        mapping_buildings=list_buildings(active_only=True),
         mappings=list_organization_building_mappings(),
         error_message=error_message,
     )

@@ -283,6 +283,149 @@ class AdminReferenceDataTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(unchanged["name"], "HQ Nroth")
 
+    def test_admin_can_deactivate_and_reactivate_building(self) -> None:
+        admin_id = create_test_user(username="admin-ref-building-active", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        self.conn.execute(
+            """
+            INSERT INTO buildings (name, created_at, updated_at)
+            VALUES ('HQ North', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        self.conn.commit()
+        building_row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = 'HQ North';"
+        ).fetchone()
+
+        deactivate = self.client.post(
+            "/admin/reference-data",
+            data={
+                "action": "set_building_active",
+                "building_id": str(building_row["id"]),
+                "is_active": "0",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(deactivate.status_code, 200)
+        self.assertIn(b"Deactivated building.", deactivate.data)
+        self.assertIn(b"HQ North", deactivate.data)
+        self.assertIn(b"Inactive", deactivate.data)
+        self.assertIn(b"Reactivate", deactivate.data)
+        inactive = self.conn.execute(
+            "SELECT is_active FROM buildings WHERE id = ?;",
+            (building_row["id"],),
+        ).fetchone()
+        self.assertEqual(inactive["is_active"], 0)
+
+        reactivate = self.client.post(
+            "/admin/reference-data",
+            data={
+                "action": "set_building_active",
+                "building_id": str(building_row["id"]),
+                "is_active": "1",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(reactivate.status_code, 200)
+        self.assertIn(b"Reactivated building.", reactivate.data)
+        self.assertIn(b"Active", reactivate.data)
+        active = self.conn.execute(
+            "SELECT is_active FROM buildings WHERE id = ?;",
+            (building_row["id"],),
+        ).fetchone()
+        self.assertEqual(active["is_active"], 1)
+
+    def test_operator_cannot_deactivate_building(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO buildings (name, created_at, updated_at)
+            VALUES ('HQ North', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        self.conn.commit()
+        building_row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = 'HQ North';"
+        ).fetchone()
+
+        operator_id = create_test_user(username="operator-ref-building-active", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.post(
+            "/admin/reference-data",
+            data={
+                "action": "set_building_active",
+                "building_id": str(building_row["id"]),
+                "is_active": "0",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        unchanged = self.conn.execute(
+            "SELECT is_active FROM buildings WHERE id = ?;",
+            (building_row["id"],),
+        ).fetchone()
+        self.assertEqual(unchanged["is_active"], 1)
+
+    def test_inactive_building_is_hidden_from_new_mapping_select_and_stale_post_rejected(self) -> None:
+        admin_id = create_test_user(username="admin-ref-inactive-map", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        self.conn.execute(
+            """
+            INSERT INTO organizations (name, created_at, updated_at)
+            VALUES ('Operations', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO buildings (name, is_active, created_at, updated_at)
+            VALUES
+                ('Active HQ', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                ('Closed HQ', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        self.conn.commit()
+        organization_row = self.conn.execute(
+            "SELECT id FROM organizations WHERE name = 'Operations';"
+        ).fetchone()
+        closed_row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = 'Closed HQ';"
+        ).fetchone()
+
+        page = self.client.get("/admin/reference-data")
+        self.assertEqual(page.status_code, 200)
+        html = page.data.decode("utf-8")
+        select_start = html.index('<select id="building_id" name="building_id">')
+        select_end = html.index("</select>", select_start)
+        building_select = html[select_start:select_end]
+        self.assertIn("Active HQ", building_select)
+        self.assertNotIn("Closed HQ", building_select)
+        self.assertIn("Closed HQ", html)
+        self.assertIn("Inactive", html)
+
+        stale_post = self.client.post(
+            "/admin/reference-data",
+            data={
+                "action": "map_organization_building",
+                "organization_id": str(organization_row["id"]),
+                "building_id": str(closed_row["id"]),
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(stale_post.status_code, 200)
+        self.assertIn(b"building is inactive", stale_post.data)
+        mapping = self.conn.execute(
+            """
+            SELECT 1
+            FROM organization_buildings
+            WHERE organization_id = ? AND building_id = ?;
+            """,
+            (organization_row["id"], closed_row["id"]),
+        ).fetchone()
+        self.assertIsNone(mapping)
+
     def test_building_name_correction_validates_blank_and_duplicate_names(self) -> None:
         admin_id = create_test_user(username="admin-ref-correct-validation", password="admin-pass", role="admin")
         login_session(self.client, admin_id)
@@ -397,6 +540,78 @@ class AdminReferenceDataTests(unittest.TestCase):
         ).fetchone()["payload"]
         receipt_after = self.conn.execute(
             "SELECT snapshot_json FROM receipt_queue WHERE receipt_key = 'receipt-history-proof';"
+        ).fetchone()["snapshot_json"]
+        self.assertEqual(event_after, event_before)
+        self.assertEqual(receipt_after, receipt_before)
+
+    def test_building_deactivation_does_not_rewrite_events_or_receipt_snapshots(self) -> None:
+        admin_id = create_test_user(username="admin-ref-deactivate-history", password="admin-pass", role="admin")
+        login_session(self.client, admin_id)
+        self.conn.execute(
+            """
+            INSERT INTO buildings (name, created_at, updated_at)
+            VALUES ('HQ North', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        building_row = self.conn.execute(
+            "SELECT id FROM buildings WHERE name = 'HQ North';"
+        ).fetchone()
+        event_payload = {
+            "from_building_room": "Storage/A1",
+            "to_building_room": "HQ North/210",
+        }
+        receipt_snapshot = {
+            "receipt_type": "ISSUE",
+            "location_context": {
+                "building": "HQ North",
+                "room": "210",
+                "building_room": "HQ North/210",
+            },
+        }
+        self.conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+            VALUES ('AT-100', 'ISSUE', '2026-01-01T00:00:00Z', 'admin', NULL, ?, NULL);
+            """,
+            (json.dumps(event_payload, sort_keys=True),),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO receipt_queue (
+                receipt_key, receipt_type, source_event_ids_json, snapshot_json, commit_at,
+                commit_operator_user_id, holder_id, created_at, updated_at
+            )
+            VALUES (
+                'receipt-deactivate-proof', 'ISSUE', '[1]', ?, '2026-01-01T00:00:00Z',
+                ?, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            """,
+            (json.dumps(receipt_snapshot, sort_keys=True), admin_id),
+        )
+        self.conn.commit()
+        event_before = self.conn.execute(
+            "SELECT payload FROM asset_events WHERE asset_tag = 'AT-100';"
+        ).fetchone()["payload"]
+        receipt_before = self.conn.execute(
+            "SELECT snapshot_json FROM receipt_queue WHERE receipt_key = 'receipt-deactivate-proof';"
+        ).fetchone()["snapshot_json"]
+
+        response = self.client.post(
+            "/admin/reference-data",
+            data={
+                "action": "set_building_active",
+                "building_id": str(building_row["id"]),
+                "is_active": "0",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event_after = self.conn.execute(
+            "SELECT payload FROM asset_events WHERE asset_tag = 'AT-100';"
+        ).fetchone()["payload"]
+        receipt_after = self.conn.execute(
+            "SELECT snapshot_json FROM receipt_queue WHERE receipt_key = 'receipt-deactivate-proof';"
         ).fetchone()["snapshot_json"]
         self.assertEqual(event_after, event_before)
         self.assertEqual(receipt_after, receipt_before)

@@ -416,6 +416,78 @@ def test_initialize_schema_adds_holders_organization_column(tmp_path: Path) -> N
     assert "app_settings" in tables
 
 
+def test_initialize_schema_creates_buildings_is_active_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(buildings);").fetchall()}
+    finally:
+        conn.close()
+
+    assert "is_active" in columns
+
+
+def test_initialize_schema_adds_building_is_active_column_to_existing_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE buildings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO buildings (id, name, created_at, updated_at)
+            VALUES (1, 'HQ North', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL UNIQUE
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE asset_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_tag TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_date TEXT NOT NULL,
+                actor TEXT,
+                notes TEXT,
+                payload TEXT
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(buildings);").fetchall()}
+        building = conn.execute("SELECT is_active FROM buildings WHERE id = 1;").fetchone()
+    finally:
+        conn.close()
+
+    assert "is_active" in columns
+    assert building is not None
+    assert building[0] == 1
+
+
 def test_initialize_schema_creates_default_ad_hoc_organization(tmp_path: Path) -> None:
     db_path = tmp_path / "assettrack.db"
     db.initialize_schema(db_path)
