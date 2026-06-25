@@ -146,14 +146,16 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
     response = client_with_temp_db.get("/demo")
 
     assert response.status_code == 200
+    assert "Set-Cookie" not in response.headers
     assert b"AssetTrack Demo" in response.data
-    assert b"Static Sample Overview" in response.data
-    assert b"no operational access" in response.data
-    assert b"Email delivery is not custody" in response.data
-    assert b"does not authenticate visitors" in response.data
+    assert b"Know who has each asset" in response.data
+    assert b"This demo uses sample data only" in response.data
+    assert b"Email does not move assets" in response.data
+    assert b"Saved Issue and Return actions create the proof" in response.data
+    assert b"does not show real records" in response.data
+    assert b"update custody" in response.data
     assert b"demo" in response.data.lower()
     assert b"sample" in response.data.lower()
-    assert b"read-only" in response.data.lower()
     assert b"Safety note:" in response.data
 
     conn = db.get_connection()
@@ -371,7 +373,7 @@ def test_demo_route_and_unauthed_protected_routes_do_not_require_db_access(
     assert b"AssetTrack Demo" in demo_response.data
     assert b"demo" in demo_response.data.lower()
     assert b"sample" in demo_response.data.lower()
-    assert b"read-only" in demo_response.data.lower()
+    assert b"real records" in demo_response.data.lower()
 
     assert dashboard_response.status_code == 403
     assert b"Access Not Allowed" in dashboard_response.data

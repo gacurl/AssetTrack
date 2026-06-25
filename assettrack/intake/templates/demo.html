@@ -370,17 +370,17 @@
   {% endwith %}
   <div class="demo-hero">
     <div class="demo-hero-copy">
-      <p class="demo-kicker">Static Sample Overview</p>
+      <p class="demo-kicker">AssetTrack Demo</p>
       <h2>
-        <span class="demo-hero-line">Know where it is.</span>
-        <span class="demo-hero-line shift-2">Know who has it.</span>
-        <span class="demo-hero-line shift-3">Fix what’s wrong.</span>
+        <span class="demo-hero-line">Know who has each asset,</span>
+        <span class="demo-hero-line shift-2">where it belongs,</span>
+        <span class="demo-hero-line shift-3">and what needs fixing.</span>
       </h2>
-      <p class="demo-standfirst">Read-only sample data only. No live records, no operational access, and no workflow simulation.</p>
+      <p class="demo-standfirst">This demo uses sample data only. It does not show real records or change the real app.</p>
     </div>
     <div class="demo-hero-actions">
-      <a class="chip" href="{{ url_for('intake') }}">Go to Operator Login</a>
-      <p class="demo-hero-support">Public overview only. Review the sample posture, then log in separately for the real operator flow.</p>
+      <a class="chip" href="{{ url_for('intake') }}">Wrong page? Go to Operator Login</a>
+      <p class="demo-hero-support">Public visitors only see this demo page.</p>
     </div>
   </div>
 
@@ -406,59 +406,73 @@
   <section class="demo-story" aria-label="Demo story">
     <div class="card demo-story-card problem">
       <div class="demo-story-header">
-        <p class="demo-story-label">Problem</p>
-        <h2>Custody proof gets scattered.</h2>
+        <p class="demo-story-label">The problem</p>
+        <h2>Equipment tracking gets messy.</h2>
       </div>
+      <p>Equipment tracking gets messy when records live in memory, spreadsheets, emails, and notes.</p>
+      <p>Teams need a simple way to answer:</p>
       <ul class="demo-list">
-        <li><strong>Checked-out assets</strong> drift across spreadsheets, inboxes, and local notes.</li>
-        <li><strong>Operators need proof</strong> of who has what without exposing live records to the public demo.</li>
-        <li><strong>Email delivery is not custody</strong>; receipts notify people, while custody comes from committed events.</li>
+        <li>Who has this asset?</li>
+        <li>Where should it be?</li>
+        <li>When did it last move?</li>
+        <li>What proof do we have?</li>
+        <li>Where is the documentation?</li>
       </ul>
     </div>
 
     <div class="card demo-story-card action">
       <div class="demo-story-header">
-        <p class="demo-story-label">Action</p>
-        <h2>Asset-first issue, staged return, visible proof.</h2>
+        <p class="demo-story-label">How AssetTrack helps</p>
+        <h2>Add, issue, return, and keep proof.</h2>
       </div>
-      <ul class="demo-list">
-        {% for step in workflow_steps %}
-          <li>{{ step }}</li>
-        {% endfor %}
-      </ul>
+      <p>AssetTrack helps your team add, issue, and return assets while keeping proof for each move.</p>
+      <p>Email keeps your customer informed and helps build trust and accountability.</p>
+      <p>Email does not move assets. Saved Issue and Return actions create the proof.</p>
+      <div class="demo-story-header">
+        <p class="demo-story-label">Works where the team works</p>
+        <h2>Local or hosted.</h2>
+      </div>
+      <p>AssetTrack can run on a local computer, a local server, or a hosted server.</p>
+      <p>It is built for offline-first use, so teams are not stuck when internet access is limited.</p>
+      <div class="demo-story-header">
+        <p class="demo-story-label">Start with a spreadsheet</p>
+        <h2>Bring current records forward.</h2>
+      </div>
+      <p>AssetTrack can load your current asset records from a spreadsheet.</p>
+      <p>After setup, the team can use the app to add, issue, or return assets, while keeping proof in one place.</p>
     </div>
 
     <div class="card demo-story-card outcome">
       <div class="demo-story-header">
-        <p class="demo-story-label">Outcome</p>
-        <h2>Separate operators, admins, and public samples.</h2>
+        <p class="demo-story-label">How AssetTrack fixes the pain</p>
+        <h2>Simple tools, clear roles.</h2>
       </div>
       <ul class="demo-list">
-        <li><strong>Operators</strong> use login-only Issue and Return workflows.</li>
-        <li><strong>Admins</strong> manage reference data, recovery, backup, and system tools behind role checks.</li>
-        <li><strong>Public visitors</strong> see static sample rows only, never operational data.</li>
+        <li>Your team gets simple tools to issue assets, return assets, find records, and read receipts.</li>
+        <li>Admins control users, locations, backups, recovery, and system settings.</li>
+        <li>Public visitors only see this demo page.</li>
       </ul>
     </div>
   </section>
 
   <div class="demo-metrics" aria-label="Demo summary">
     <div class="demo-metric">
-      <span>Assets out</span>
+      <span>Assets checked out</span>
       <strong>{{ visible_assets_out }}</strong>
       <small>Static sample rows only</small>
     </div>
     <div class="demo-metric">
-      <span>Holders shown</span>
+      <span>Active holders</span>
       <strong>{{ visible_holders }}</strong>
       <small>Static sample rows only</small>
     </div>
     <div class="demo-metric">
-      <span>Receipts shown</span>
+      <span>Receipts created</span>
       <strong>{{ visible_receipts }}</strong>
       <small>Static notification examples</small>
     </div>
     <div class="demo-metric">
-      <span>Audit events shown</span>
+      <span>Custody records</span>
       <strong>{{ visible_audit_rows }}</strong>
       <small>Static proof examples</small>
     </div>
@@ -534,7 +548,7 @@
 
   <div class="demo-note">
     <strong>Safety note:</strong>
-    <p>This page shows static sample holder, receipt, and event data only. It does not authenticate visitors, expose operational records, create sessions, or submit changes into the custody system.</p>
+    <p>This public demo uses sample data only. It does not show real records, log visitors in, send changes, or update custody.</p>
   </div>
 {% endblock %}
 
