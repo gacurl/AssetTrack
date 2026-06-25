@@ -9,6 +9,9 @@ sending a sample receipt email.
 
 Nothing else.
 
+Normal deployments should leave demo token variables unset unless sample
+receipt sending from `/demo` is intentionally enabled.
+
 ---
 
 ## What works without a token
@@ -50,21 +53,34 @@ Only people with a token can send a sample receipt.
 
 This keeps the demo safe while still useful.
 
+Demo tokens do not:
+
+- authenticate users
+- create sessions
+- grant app access
+- expose operational data
+- create custody events, holders, receipts, assets, or reports
+
 ---
 
 ## Where tokens come from
 
 Tokens are created manually and stored in environment variables.
 
-Example:
+`ASSETTRACK_DEMO_TOKENS` is the preferred variable.
+
+Commented placeholder:
 ```
-ASSETTRACK_DEMO_TOKENS=TEAM-A.20260418.EXP30
+# ASSETTRACK_DEMO_TOKENS=TEAM-A.YYYYMMDD.EXP30
 ```
 
 There is:
 - no database
 - no admin screen
 - no automatic generation
+
+`ASSETTRACK_DEMO_TOKEN` is legacy single-token support. Prefer
+`ASSETTRACK_DEMO_TOKENS` for new configuration.
 
 ---
 
@@ -74,11 +90,11 @@ The token contains its own expiration.
 
 Example:
 ```
-TEAM-A.20260418.EXP30
+TEAM-A.YYYYMMDD.EXP30
 ```
 
 Meaning:
-- issued on April 18, 2026
+- issued on the date encoded as `YYYYMMDD`
 - valid for 30 days
 
 The system checks this locally using UTC.
@@ -133,16 +149,16 @@ Tokens are controlled through environment variables.
 ASSETTRACK_DEMO_TOKENS=
 ```
 
-3. Add your token:
+3. Add your token only if sample receipt sending should be enabled:
 
 ```
-ASSETTRACK_DEMO_TOKENS=TEAM-A.20260418.EXP30
+ASSETTRACK_DEMO_TOKENS=TEAM-A.YYYYMMDD.EXP30
 ```
 
 For multiple tokens:
 
 ```
-ASSETTRACK_DEMO_TOKENS=TEAM-A.20260418.EXP30,TEAM-B.20260418.EXP14
+ASSETTRACK_DEMO_TOKENS=TEAM-A.YYYYMMDD.EXP30,TEAM-B.YYYYMMDD.EXP14
 ```
 
 ---
@@ -152,7 +168,7 @@ ASSETTRACK_DEMO_TOKENS=TEAM-A.20260418.EXP30,TEAM-B.20260418.EXP14
 Edit the value directly:
 
 ```
-ASSETTRACK_DEMO_TOKENS=TEAM-A.20260501.EXP30
+ASSETTRACK_DEMO_TOKENS=TEAM-A.YYYYMMDD.EXP30
 ```
 
 ---
@@ -162,8 +178,10 @@ ASSETTRACK_DEMO_TOKENS=TEAM-A.20260501.EXP30
 Delete it from the list:
 
 ```
-ASSETTRACK_DEMO_TOKENS=TEAM-B.20260418.EXP14
+ASSETTRACK_DEMO_TOKENS=
 ```
+
+Leaving this variable unset or blank disables demo sample receipt sending.
 
 ---
 
