@@ -312,6 +312,138 @@ class ReturnBatchTests(unittest.TestCase):
         )
         self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
 
+    def test_return_preview_blocks_home_slot_occupied_by_slot_occupancy_when_marker_is_null(self) -> None:
+        self._insert_slot(13, "CASE-DRIFT", 1, None)
+        self._insert_asset("RETURN-DRIFT", location_type="IN_CUSTODY", holder_id=5, home_slot_id=13)
+        self._insert_asset("OCCUPANT-DRIFT", location_type="STORAGE", holder_id=None, home_slot_id=13)
+        occupant_id = int(
+            self.conn.execute(
+                "SELECT id FROM assets WHERE asset_tag = ? LIMIT 1;",
+                ("OCCUPANT-DRIFT",),
+            ).fetchone()[0]
+        )
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, ?);
+            """,
+            (13, occupant_id, "2026-01-01T00:00:00Z"),
+        )
+        self.conn.commit()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="RETURN-DRIFT", equipment_type="laptop"))
+
+        preview = self.client.get("/return/preview")
+
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Assigned home slot occupied: RETURN-DRIFT", preview.data)
+        self.assertIn(
+            b"Assigned home slot CASE-DRIFT / 1 is occupied by OCCUPANT-DRIFT.",
+            preview.data,
+        )
+        self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
+        self.assertNotIn(b"Commit Return", preview.data)
+
+    def test_return_commit_blocks_home_slot_occupied_by_slot_occupancy_when_marker_is_null(self) -> None:
+        self._insert_slot(14, "CASE-COMMIT-DRIFT", 2, None)
+        self._insert_asset("RETURN-COMMIT-DRIFT", location_type="IN_CUSTODY", holder_id=5, home_slot_id=14)
+        self._insert_asset("OCCUPANT-COMMIT-DRIFT", location_type="STORAGE", holder_id=None, home_slot_id=14)
+        occupant_id = int(
+            self.conn.execute(
+                "SELECT id FROM assets WHERE asset_tag = ? LIMIT 1;",
+                ("OCCUPANT-COMMIT-DRIFT",),
+            ).fetchone()[0]
+        )
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, ?);
+            """,
+            (14, occupant_id, "2026-01-01T00:00:00Z"),
+        )
+        self.conn.commit()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="RETURN-COMMIT-DRIFT", equipment_type="laptop"))
+
+        blocked = self.client.post(
+            "/return/commit?json=1",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        )
+
+        self.assertEqual(blocked.status_code, 400)
+        self.assertFalse(blocked.json["ok"])
+        self.assertEqual(blocked.json["committed"], 0)
+        self.assertIn("Assigned home slot occupied: RETURN-COMMIT-DRIFT", blocked.json["error"])
+
+        returned_asset = self.conn.execute(
+            "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
+            ("RETURN-COMMIT-DRIFT",),
+        ).fetchone()
+        self.assertEqual(returned_asset["location_type"], "IN_CUSTODY")
+        self.assertEqual(returned_asset["current_holder_id"], 5)
+        event_count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = ? AND event_type = 'RETURN';",
+            ("RETURN-COMMIT-DRIFT",),
+        ).fetchone()
+        receipt_count = self.conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+        self.assertEqual(int(event_count["c"]), 0)
+        self.assertEqual(int(receipt_count["c"]), 0)
+
+    def test_return_preview_blocks_home_slot_marker_occupied_when_slot_occupancy_is_missing(self) -> None:
+        self._insert_slot(15, "CASE-MARKER-DRIFT", 3, "MARKER-OCCUPANT")
+        self._insert_asset("RETURN-MARKER-DRIFT", location_type="IN_CUSTODY", holder_id=5, home_slot_id=15)
+        self.assertIsNone(
+            self.conn.execute(
+                "SELECT 1 FROM slot_occupancy WHERE slot_id = ? LIMIT 1;",
+                (15,),
+            ).fetchone()
+        )
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="RETURN-MARKER-DRIFT", equipment_type="laptop"))
+
+        preview = self.client.get("/return/preview")
+
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"Assigned home slot occupied: RETURN-MARKER-DRIFT", preview.data)
+        self.assertIn(
+            b"Assigned home slot CASE-MARKER-DRIFT / 3 is occupied by MARKER-OCCUPANT.",
+            preview.data,
+        )
+        self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
+        self.assertNotIn(b"Commit Return", preview.data)
+
+    def test_return_commit_blocks_home_slot_marker_occupied_when_slot_occupancy_is_missing(self) -> None:
+        self._insert_slot(16, "CASE-COMMIT-MARKER-DRIFT", 4, "MARKER-COMMIT-OCCUPANT")
+        self._insert_asset("RETURN-COMMIT-MARKER-DRIFT", location_type="IN_CUSTODY", holder_id=5, home_slot_id=16)
+        self.assertIsNone(
+            self.conn.execute(
+                "SELECT 1 FROM slot_occupancy WHERE slot_id = ? LIMIT 1;",
+                (16,),
+            ).fetchone()
+        )
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="RETURN-COMMIT-MARKER-DRIFT", equipment_type="laptop"))
+
+        blocked = self.client.post(
+            "/return/commit?json=1",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+        )
+
+        self.assertEqual(blocked.status_code, 400)
+        self.assertFalse(blocked.json["ok"])
+        self.assertEqual(blocked.json["committed"], 0)
+        self.assertIn("Assigned home slot occupied: RETURN-COMMIT-MARKER-DRIFT", blocked.json["error"])
+
+        returned_asset = self.conn.execute(
+            "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
+            ("RETURN-COMMIT-MARKER-DRIFT",),
+        ).fetchone()
+        self.assertEqual(returned_asset["location_type"], "IN_CUSTODY")
+        self.assertEqual(returned_asset["current_holder_id"], 5)
+        event_count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = ? AND event_type = 'RETURN';",
+            ("RETURN-COMMIT-MARKER-DRIFT",),
+        ).fetchone()
+        receipt_count = self.conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+        self.assertEqual(int(event_count["c"]), 0)
+        self.assertEqual(int(receipt_count["c"]), 0)
+
     def test_return_queue_and_preview_empty_states_show_next_step_guidance(self) -> None:
         render = self.client.get("/return")
         self.assertEqual(render.status_code, 200)

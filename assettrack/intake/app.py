@@ -1183,6 +1183,44 @@ def _asset_home_slot(conn, home_slot_id: object) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def _slot_occupancy_status(conn, slot_id: object) -> Optional[dict]:
+    row = conn.execute(
+        """
+        SELECT
+            s.id,
+            s.case_name,
+            s.slot_position,
+            s.current_asset_tag,
+            so.asset_id AS occupied_asset_id,
+            a.asset_tag AS occupied_asset_tag
+        FROM slots s
+        LEFT JOIN slot_occupancy so ON so.slot_id = s.id
+        LEFT JOIN assets a ON a.id = so.asset_id
+        WHERE s.id = ?
+        LIMIT 1;
+        """,
+        (int(slot_id),),
+    ).fetchone()
+    if row is None:
+        return None
+
+    marker_present = row["current_asset_tag"] is not None
+    occupied_by = str(row["occupied_asset_tag"] or row["current_asset_tag"] or "").strip()
+    if not occupied_by and row["occupied_asset_id"] is not None:
+        occupied_by = f"asset_id {row['occupied_asset_id']}"
+
+    return {
+        "id": int(row["id"]),
+        "case_name": str(row["case_name"] or ""),
+        "slot_position": int(row["slot_position"]),
+        "current_asset_tag": row["current_asset_tag"],
+        "occupied_asset_id": row["occupied_asset_id"],
+        "occupied_asset_tag": str(row["occupied_asset_tag"] or ""),
+        "occupied": bool(row["occupied_asset_id"] is not None or marker_present),
+        "occupied_by": occupied_by or "unknown asset",
+    }
+
+
 def _list_slot_options(conn) -> list[dict]:
     rows = conn.execute(
         """
@@ -3255,14 +3293,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 assets.append(row)
                 continue
 
-            slot = conn.execute(
-                """
-                SELECT id, case_name, slot_position, current_asset_tag
-                FROM slots
-                WHERE id = ?;
-                """,
-                (home_slot_id,),
-            ).fetchone()
+            slot = _slot_occupancy_status(conn, home_slot_id)
             if not slot:
                 row["asset_issues"].append("Assigned home slot not found. Return cannot commit until a valid home slot is assigned.")
                 no_home_slot.append(canon_tag)
@@ -3271,9 +3302,9 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
 
             row["destination_case_name"] = str(slot["case_name"])
             row["destination_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
-            if slot["current_asset_tag"] is not None:
+            if slot["occupied"]:
                 row["asset_issues"].append(
-                    f"Assigned home slot {row['destination_slot']} is occupied by {slot['current_asset_tag']}."
+                    f"Assigned home slot {row['destination_slot']} is occupied by {slot['occupied_by']}."
                 )
                 occupied_home_slot.append(canon_tag)
                 row["before_slot_occupancy"] = "occupied"
@@ -3996,19 +4027,12 @@ def _return_batch(
                     no_home_slot.append(canon_tag)
                     continue
 
-                slot = conn.execute(
-                    """
-                    SELECT id, case_name, slot_position, current_asset_tag
-                    FROM slots
-                    WHERE id = ?;
-                    """,
-                    (home_slot_id,),
-                ).fetchone()
+                slot = _slot_occupancy_status(conn, home_slot_id)
                 if not slot:
                     no_home_slot.append(canon_tag)
                     continue
 
-                if slot["current_asset_tag"] is not None:
+                if slot["occupied"]:
                     occupied_home_slot.append(canon_tag)
 
                 validated_rows.append(
