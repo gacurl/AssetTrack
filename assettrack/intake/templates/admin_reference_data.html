@@ -75,7 +75,9 @@
           <tr>
             <th>ID</th>
             <th>Name</th>
+            <th>Status</th>
             <th>Correction</th>
+            <th>Availability</th>
           </tr>
         </thead>
         <tbody>
@@ -83,6 +85,7 @@
             <tr>
               <td><code>{{ building.id }}</code></td>
               <td>{{ building.name }}</td>
+              <td>{% if building.is_active %}Active{% else %}Inactive{% endif %}</td>
               <td>
                 <form method="post" action="{{ url_for('admin_reference_data') }}">
                   <input type="hidden" name="action" value="update_building_name" />
@@ -92,10 +95,23 @@
                   <button type="submit">Correct name</button>
                 </form>
               </td>
+              <td>
+                <form method="post" action="{{ url_for('admin_reference_data') }}">
+                  <input type="hidden" name="action" value="set_building_active" />
+                  <input type="hidden" name="building_id" value="{{ building.id }}" />
+                  {% if building.is_active %}
+                    <input type="hidden" name="is_active" value="0" />
+                    <button type="submit">Deactivate</button>
+                  {% else %}
+                    <input type="hidden" name="is_active" value="1" />
+                    <button type="submit">Reactivate</button>
+                  {% endif %}
+                </form>
+              </td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="3">No buildings yet.</td>
+              <td colspan="5">No buildings yet.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -122,7 +138,7 @@
           <label for="building_id"><strong>Building</strong></label><br />
           <select id="building_id" name="building_id">
             <option value="">Select building</option>
-            {% for building in buildings %}
+            {% for building in mapping_buildings %}
               <option value="{{ building.id }}">{{ building.name }}</option>
             {% endfor %}
           </select>
@@ -142,7 +158,12 @@
         {% for mapping in mappings %}
           <tr>
             <td>{{ mapping.organization_name }}</td>
-            <td>{{ mapping.building_name }}</td>
+            <td>
+              {{ mapping.building_name }}
+              {% if mapping.building_is_active is defined and not mapping.building_is_active %}
+                (Inactive)
+              {% endif %}
+            </td>
           </tr>
         {% else %}
           <tr>

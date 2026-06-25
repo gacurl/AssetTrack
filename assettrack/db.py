@@ -353,6 +353,7 @@ def _create_schema(conn: sqlite3.Connection):
         CREATE TABLE IF NOT EXISTS buildings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -542,6 +543,13 @@ def _create_schema(conn: sqlite3.Connection):
             """
             ALTER TABLE holders
             ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+            """
+        )
+    if _table_exists(conn, "buildings") and not _column_exists(conn, "buildings", "is_active"):
+        cursor.execute(
+            """
+            ALTER TABLE buildings
+            ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1));
             """
         )
 

@@ -350,6 +350,111 @@ def test_assign_slot_page_shows_known_buildings_as_choices(client_with_temp_db) 
     assert b'<option value="HQ South"' in response.data
 
 
+def test_assign_slot_page_hides_inactive_buildings_from_choices(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ North")
+    _create_building("Closed HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'Closed HQ';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    created = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-ACTIVE-BUILDING-CHOICE",
+            "serial_number": "SER-ACTIVE-BUILDING-CHOICE",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ North",
+            "room": "100",
+        },
+    )
+    assert created.status_code == 302
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-ACTIVE-BUILDING-CHOICE"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'<option value="HQ North"' in response.data
+    assert b'<option value="Closed HQ"' not in response.data
+
+
+def test_assign_slot_rejects_stale_inactive_building_without_appending_slot_assign(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_building("Closed HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (701, 'CASE-INACTIVE-BLD', 1, NULL);
+            """
+        )
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'Closed HQ';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    created = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-INACTIVE-BLD",
+            "serial_number": "SER-INACTIVE-BLD",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ",
+            "room": "100",
+        },
+    )
+    assert created.status_code == 302
+
+    assign_attempt = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "assign",
+            "asset_tag": "AT-INACTIVE-BLD",
+            "building": "Closed HQ",
+            "room": "100",
+            "case_name": "CASE-INACTIVE-BLD",
+            "slot_id": "701",
+        },
+        follow_redirects=True,
+    )
+
+    assert assign_attempt.status_code == 200
+    assert b"Choose a valid building." in assign_attempt.data
+
+    verify_conn = db.get_connection()
+    try:
+        asset_row = verify_conn.execute(
+            "SELECT id, home_slot_id FROM assets WHERE asset_tag = 'AT-INACTIVE-BLD' LIMIT 1;"
+        ).fetchone()
+        occupancy = verify_conn.execute(
+            "SELECT 1 FROM slot_occupancy WHERE asset_id = ? LIMIT 1;",
+            (int(asset_row["id"]),),
+        ).fetchone()
+        slot_row = verify_conn.execute(
+            "SELECT current_asset_tag FROM slots WHERE id = 701;"
+        ).fetchone()
+        events = verify_conn.execute(
+            "SELECT event_type FROM asset_events WHERE asset_tag = 'AT-INACTIVE-BLD' ORDER BY id ASC;"
+        ).fetchall()
+    finally:
+        verify_conn.close()
+
+    assert asset_row["home_slot_id"] is None
+    assert occupancy is None
+    assert slot_row["current_asset_tag"] is None
+    assert [str(row["event_type"]) for row in events] == ["ASSET_CREATED"]
+
+
 def test_assign_slot_rejects_arbitrary_building_without_appending_slot_assign(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     _create_building("HQ")

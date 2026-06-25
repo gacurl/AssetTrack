@@ -89,13 +89,15 @@ def create_organization(name: str) -> dict:
         conn.close()
 
 
-def list_buildings() -> list[dict]:
+def list_buildings(*, active_only: bool = False) -> list[dict]:
     conn = get_connection()
     try:
+        where_clause = "WHERE is_active = 1" if active_only else ""
         rows = conn.execute(
-            """
-            SELECT id, name, created_at, updated_at
+            f"""
+            SELECT id, name, is_active, created_at, updated_at
             FROM buildings
+            {where_clause}
             ORDER BY name COLLATE NOCASE ASC, id ASC;
             """
         ).fetchall()
@@ -109,7 +111,7 @@ def get_building(building_id: int) -> dict | None:
     try:
         row = conn.execute(
             """
-            SELECT id, name, created_at, updated_at
+            SELECT id, name, is_active, created_at, updated_at
             FROM buildings
             WHERE id = ?;
             """,
@@ -128,7 +130,7 @@ def create_building(name: str) -> dict:
     try:
         existing = conn.execute(
             """
-            SELECT id, name, created_at, updated_at
+            SELECT id, name, is_active, created_at, updated_at
             FROM buildings
             WHERE UPPER(name) = UPPER(?)
             LIMIT 1;
@@ -150,7 +152,7 @@ def create_building(name: str) -> dict:
         return dict(
             conn.execute(
                 """
-                SELECT id, name, created_at, updated_at
+                SELECT id, name, is_active, created_at, updated_at
                 FROM buildings
                 WHERE id = ?;
                 """,
@@ -169,7 +171,7 @@ def update_building_name(building_id: int, name: str) -> dict:
     try:
         current = conn.execute(
             """
-            SELECT id, name, created_at, updated_at
+            SELECT id, name, is_active, created_at, updated_at
             FROM buildings
             WHERE id = ?;
             """,
@@ -202,7 +204,7 @@ def update_building_name(building_id: int, name: str) -> dict:
         return dict(
             conn.execute(
                 """
-                SELECT id, name, created_at, updated_at
+                SELECT id, name, is_active, created_at, updated_at
                 FROM buildings
                 WHERE id = ?;
                 """,
@@ -213,22 +215,65 @@ def update_building_name(building_id: int, name: str) -> dict:
         conn.close()
 
 
-def list_organization_building_mappings() -> list[dict]:
+def set_building_active(building_id: int, is_active: bool) -> dict:
+    now_iso = _utc_now_iso()
+    active_value = 1 if is_active else 0
+
     conn = get_connection()
     try:
-        rows = conn.execute(
+        current = conn.execute(
             """
+            SELECT id
+            FROM buildings
+            WHERE id = ?;
+            """,
+            (int(building_id),),
+        ).fetchone()
+        if current is None:
+            raise ValueError("building not found")
+
+        conn.execute(
+            """
+            UPDATE buildings
+            SET is_active = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            (active_value, now_iso, int(building_id)),
+        )
+        conn.commit()
+        return dict(
+            conn.execute(
+                """
+                SELECT id, name, is_active, created_at, updated_at
+                FROM buildings
+                WHERE id = ?;
+                """,
+                (int(building_id),),
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+
+def list_organization_building_mappings(*, active_only: bool = False) -> list[dict]:
+    conn = get_connection()
+    try:
+        where_clause = "WHERE b.is_active = 1" if active_only else ""
+        rows = conn.execute(
+            f"""
             SELECT
                 ob.organization_id,
                 o.name AS organization_name,
                 ob.building_id,
                 b.name AS building_name,
+                b.is_active AS building_is_active,
                 ob.created_at
             FROM organization_buildings ob
             JOIN organizations o
               ON o.id = ob.organization_id
             JOIN buildings b
               ON b.id = ob.building_id
+            {where_clause}
             ORDER BY o.name COLLATE NOCASE ASC, b.name COLLATE NOCASE ASC, ob.organization_id ASC, ob.building_id ASC;
             """
         ).fetchall()
@@ -250,11 +295,13 @@ def create_organization_building_mapping(organization_id: int, building_id: int)
             raise ValueError("organization not found")
 
         building = conn.execute(
-            "SELECT id, name FROM buildings WHERE id = ?;",
+            "SELECT id, name, is_active FROM buildings WHERE id = ?;",
             (int(building_id),),
         ).fetchone()
         if building is None:
             raise ValueError("building not found")
+        if int(building["is_active"]) != 1:
+            raise ValueError("building is inactive")
 
         existing = conn.execute(
             """
@@ -281,6 +328,7 @@ def create_organization_building_mapping(organization_id: int, building_id: int)
             "organization_name": str(organization["name"]),
             "building_id": int(building["id"]),
             "building_name": str(building["name"]),
+            "building_is_active": int(building["is_active"]),
             "created_at": now_iso,
         }
     finally:

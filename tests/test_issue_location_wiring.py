@@ -276,6 +276,116 @@ def test_issue_does_not_reuse_last_current_location_blocked_for_selected_holder(
     assert b"Choose the current building." in scan_response.data
 
 
+def test_issue_hides_inactive_mapped_building_without_falling_back_to_global_buildings(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'HQ North';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    issue_page = client_with_temp_db.get("/issue")
+
+    assert issue_page.status_code == 200
+    assert b'value="HQ North"' not in issue_page.data
+    assert b'value="Warehouse West"' not in issue_page.data
+    assert b"Required before preview." in issue_page.data
+
+
+def test_issue_does_not_reuse_last_current_location_when_building_becomes_inactive(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'HQ North';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    with client_with_temp_db.session_transaction() as sess:
+        sess["last_issue_building"] = "HQ North"
+        sess["last_issue_room"] = "210"
+        sess.pop("issue_building", None)
+        sess.pop("issue_room", None)
+
+    issue_page = client_with_temp_db.get("/issue")
+
+    assert issue_page.status_code == 200
+    assert b'value="HQ North" selected' not in issue_page.data
+    assert b'id="issue-room" type="text" name="room" value=""' in issue_page.data
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["issue_building"] == ""
+        assert sess["issue_room"] == ""
+        assert sess["last_issue_building"] == "HQ North"
+        assert sess["last_issue_room"] == "210"
+
+
+def test_issue_location_post_rejects_inactive_building(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'HQ North';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/issue/location",
+        data={"building": "HQ North", "room": "210"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Choose a building allowed for the selected organization." in response.data
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess.get("last_issue_building") != "HQ North"
+        assert sess.get("last_issue_room") != "210"
+
+
+def test_issue_commit_rejects_stale_inactive_building_without_appending_event(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+    with client_with_temp_db.session_transaction() as sess:
+        sess["issue_building"] = "HQ North"
+        sess["issue_room"] = "210"
+
+    intake_app.SCAN_QUEUE.append(intake_app.Scan.now("ISSUE-100"))
+
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE buildings SET is_active = 0 WHERE name = 'HQ North';")
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/issue/commit?json=1",
+        data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+    )
+
+    assert response.status_code == 400
+    assert response.json["ok"] is False
+    assert response.json["committed"] == 0
+    assert response.json["error"] == "Choose a building allowed for the selected organization."
+
+    conn = db.get_connection()
+    try:
+        event_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_events WHERE asset_tag = 'ISSUE-100' AND event_type = 'ISSUE';"
+        ).fetchone()
+        asset_row = conn.execute(
+            "SELECT location_type, current_holder_id, building_room FROM assets WHERE id = 501 LIMIT 1;"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert event_count is not None
+    assert int(event_count["c"]) == 0
+    assert asset_row is not None
+    assert str(asset_row["location_type"]) == "STORAGE"
+    assert asset_row["current_holder_id"] is None
+    assert str(asset_row["building_room"]) == "Storage/A1"
+
+
 def test_issue_commit_updates_current_location_and_preserves_home_location_context(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
 
