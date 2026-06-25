@@ -367,10 +367,10 @@ def _demo_page_context() -> dict[str, object]:
         "demo_send_enabled": demo_send_enabled,
         "demo_send_limit": DEMO_RECEIPT_SEND_LIMIT,
         "workflow_steps": [
-            "Select the holder and confirm prerequisites.",
-            "Scan assets into the queue without committing immediately.",
-            "Preview the batch before commit so operators can catch mistakes.",
-            "Commit once and let receipts track follow-up notification state.",
+            "Issue starts with the asset scan, then confirms holder and location prerequisites.",
+            "Return stages assets back to storage and previews home-slot readiness before commit.",
+            "Receipts and proof views show custody history; email delivery is notification only.",
+            "Reports summarize stored custody state without replacing admin-only tools or backups.",
         ],
     }
 

@@ -147,7 +147,10 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
 
     assert response.status_code == 200
     assert b"AssetTrack Demo" in response.data
-    assert b"Read-Only Demo" in response.data
+    assert b"Static Sample Overview" in response.data
+    assert b"no operational access" in response.data
+    assert b"Email delivery is not custody" in response.data
+    assert b"does not authenticate visitors" in response.data
     assert b"demo" in response.data.lower()
     assert b"sample" in response.data.lower()
     assert b"read-only" in response.data.lower()

@@ -370,17 +370,17 @@
   {% endwith %}
   <div class="demo-hero">
     <div class="demo-hero-copy">
-      <p class="demo-kicker">Read-Only Demo</p>
+      <p class="demo-kicker">Static Sample Overview</p>
       <h2>
         <span class="demo-hero-line">Know where it is.</span>
         <span class="demo-hero-line shift-2">Know who has it.</span>
         <span class="demo-hero-line shift-3">Fix what’s wrong.</span>
       </h2>
-      <p class="demo-standfirst">Sample data only. No live records. No write access.</p>
+      <p class="demo-standfirst">Read-only sample data only. No live records, no operational access, and no workflow simulation.</p>
     </div>
     <div class="demo-hero-actions">
       <a class="chip" href="{{ url_for('intake') }}">Go to Operator Login</a>
-      <p class="demo-hero-support">Sample-only walkthrough. Read the story, check the proof, then enter the real operator flow.</p>
+      <p class="demo-hero-support">Public overview only. Review the sample posture, then log in separately for the real operator flow.</p>
     </div>
   </div>
 
@@ -389,7 +389,7 @@
       <div>
         <p class="demo-kicker">Optional Demo Action</p>
         <p><strong>Send me a sample receipt</strong></p>
-        <p class="muted">Demo only. No real data. Session limit: {{ demo_send_limit }} sends.</p>
+        <p class="muted">Demo only. No real data. Email delivery does not create custody. Session limit: {{ demo_send_limit }} sends.</p>
       </div>
       <form class="demo-email-form" method="post" action="{{ url_for('demo_send_sample_receipt') }}" data-demo-send-form>
         <input type="hidden" name="token" value="{{ demo_token }}" />
@@ -399,7 +399,7 @@
           <span class="demo-send-spinner" data-demo-send-spinner hidden aria-hidden="true"></span>
         </button>
       </form>
-      <p class="demo-email-privacy">Demo only. No real data. Email is not stored.</p>
+      <p class="demo-email-privacy">Demo only. No real data. Email is not stored and no receipt record is created.</p>
     </section>
   {% endif %}
 
@@ -407,19 +407,19 @@
     <div class="card demo-story-card problem">
       <div class="demo-story-header">
         <p class="demo-story-label">Problem</p>
-        <h2>You do not know where your equipment is.</h2>
+        <h2>Custody proof gets scattered.</h2>
       </div>
       <ul class="demo-list">
-        <li><strong>Checked-out assets</strong> disappear into spreadsheets and inboxes.</li>
-        <li><strong>Supervisors guess</strong> who has what and what still needs follow-up.</li>
-        <li><strong>Small problems stack up</strong> until audits and hand receipts take too long.</li>
+        <li><strong>Checked-out assets</strong> drift across spreadsheets, inboxes, and local notes.</li>
+        <li><strong>Operators need proof</strong> of who has what without exposing live records to the public demo.</li>
+        <li><strong>Email delivery is not custody</strong>; receipts notify people, while custody comes from committed events.</li>
       </ul>
     </div>
 
     <div class="card demo-story-card action">
       <div class="demo-story-header">
         <p class="demo-story-label">Action</p>
-        <h2>Scan. Assign. Track.</h2>
+        <h2>Asset-first issue, staged return, visible proof.</h2>
       </div>
       <ul class="demo-list">
         {% for step in workflow_steps %}
@@ -431,12 +431,12 @@
     <div class="card demo-story-card outcome">
       <div class="demo-story-header">
         <p class="demo-story-label">Outcome</p>
-        <h2>Know what is missing. Instantly.</h2>
+        <h2>Separate operators, admins, and public samples.</h2>
       </div>
       <ul class="demo-list">
-        <li><strong>See who has assets out</strong> without opening the live system.</li>
-        <li><strong>See what needs attention</strong> before follow-up stalls.</li>
-        <li><strong>See the audit trail</strong> that explains how current state was reached.</li>
+        <li><strong>Operators</strong> use login-only Issue and Return workflows.</li>
+        <li><strong>Admins</strong> manage reference data, recovery, backup, and system tools behind role checks.</li>
+        <li><strong>Public visitors</strong> see static sample rows only, never operational data.</li>
       </ul>
     </div>
   </section>
@@ -445,29 +445,29 @@
     <div class="demo-metric">
       <span>Assets out</span>
       <strong>{{ visible_assets_out }}</strong>
-      <small>Matches the visible custody proof below</small>
+      <small>Static sample rows only</small>
     </div>
     <div class="demo-metric">
       <span>Holders shown</span>
       <strong>{{ visible_holders }}</strong>
-      <small>Matches the visible holder proof below</small>
+      <small>Static sample rows only</small>
     </div>
     <div class="demo-metric">
       <span>Receipts shown</span>
       <strong>{{ visible_receipts }}</strong>
-      <small>Matches the visible receipt proof below</small>
+      <small>Static notification examples</small>
     </div>
     <div class="demo-metric">
       <span>Audit events shown</span>
       <strong>{{ visible_audit_rows }}</strong>
-      <small>Matches the visible event proof below</small>
+      <small>Static proof examples</small>
     </div>
   </div>
 
   <section class="demo-proof" aria-label="Supporting proof">
     <div class="demo-proof-section demo-data-card">
       <h2>Who has what</h2>
-      <p><strong>Current custody.</strong> The visible rows below add up to <strong>{{ visible_assets_out }} assets</strong> across <strong>{{ visible_holders }} holders</strong>.</p>
+      <p><strong>Sample custody posture.</strong> These static rows add up to <strong>{{ visible_assets_out }} assets</strong> across <strong>{{ visible_holders }} holders</strong>; they are not live records.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -488,8 +488,8 @@
     </div>
 
     <div class="demo-proof-section demo-data-card">
-      <h2>What needs follow-up</h2>
-      <p><strong>Receipt status.</strong> The visible sample shows <strong>{{ visible_receipts }} receipts</strong> and whether follow-up is still queued or already sent.</p>
+      <h2>Receipt notification examples</h2>
+      <p><strong>Custody is separate from email.</strong> These static receipt examples show notification state only; sending email does not create custody.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -510,8 +510,8 @@
     </div>
 
     <div class="demo-proof-section demo-data-card">
-      <h2>Why the audit trail matters</h2>
-      <p><strong>Event history stays primary.</strong> The visible sample shows <strong>{{ visible_audit_rows }} event rows</strong> explaining how state was reached.</p>
+      <h2>Proof and report posture</h2>
+      <p><strong>Event history stays primary.</strong> Proof and reports explain committed custody state; this public sample shows <strong>{{ visible_audit_rows }} static event rows</strong>.</p>
       <div class="demo-table-wrap">
         <table class="demo-table-wide">
           <thead>
@@ -534,7 +534,7 @@
 
   <div class="demo-note">
     <strong>Safety note:</strong>
-    <p>This page shows sample holder, receipt, and event data only. It does not expose operational records, and it cannot submit changes into the custody system.</p>
+    <p>This page shows static sample holder, receipt, and event data only. It does not authenticate visitors, expose operational records, create sessions, or submit changes into the custody system.</p>
   </div>
 {% endblock %}
 
