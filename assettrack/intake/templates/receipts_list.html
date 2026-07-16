@@ -108,6 +108,15 @@
       background: color-mix(in srgb, var(--color-danger) 14%, white);
       color: var(--color-danger);
     }
+    .receipt-delivery-note {
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+    .receipt-delivery-note[data-state="failed"] {
+      color: var(--color-danger);
+      font-weight: 600;
+    }
     .match-values {
       display: flex;
       flex-wrap: wrap;
@@ -253,7 +262,8 @@
       </thead>
       <tbody>
         {% for receipt in receipts %}
-          {% set email_status_label = "Queued" if receipt.delivery_state == "pending" else receipt.delivery_state %}
+          {% set email_status_label = "Pending" if receipt.delivery_state == "pending" else "Sent" if receipt.delivery_state == "sent" else "Failed" if receipt.delivery_state == "failed" else receipt.delivery_state %}
+          {% set email_status_note = "Initial receipt email has not been sent yet." if receipt.delivery_state == "pending" else "Receipt email has been delivered." if receipt.delivery_state == "sent" else "Email delivery failed; custody remains recorded." if receipt.delivery_state == "failed" else "" %}
           <tr>
             <td data-label="Receipt">
               <div class="receipt-primary">
@@ -267,6 +277,9 @@
                 <div class="receipt-meta">{{ receipt.asset_count }} asset{% if receipt.asset_count != 1 %}s{% endif %}</div>
                 {% if receipt.delivery_state %}
                   <div class="receipt-status" data-state="{{ receipt.delivery_state }}">{{ email_status_label }}</div>
+                  {% if email_status_note %}
+                    <div class="receipt-delivery-note" data-state="{{ receipt.delivery_state }}">{{ email_status_note }}</div>
+                  {% endif %}
                 {% endif %}
                 {% if receipt.matched_asset_tags %}
                   <div class="asset-tag-match match-label">Asset tag search match</div>
