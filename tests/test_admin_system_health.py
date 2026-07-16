@@ -608,19 +608,20 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert response.status_code == 200
     assert b"Back to Dashboard" not in response.data
     assert b'href="/dashboard">Dashboard</a>' in response.data
-    assert b"Current State" in response.data
-    assert b"Active custody and storage first." in response.data
+    assert b"Custody, Audit, Reconciliation, and Proof" in response.data
+    assert b"Reports shows active custody state, audit trail, case reconciliation, and receipt support." in response.data
+    assert b"Use Assets or Holders for individual lookup." in response.data
     assert b"Report Scope" not in response.data
-    assert b"Review holders with assets out" in response.data
-    assert b"Review case space" in response.data
-    assert b"Search active asset records" in response.data
-    assert b"Utilities" in response.data
+    assert b"Holder accountability." in response.data
+    assert b"Case and slot reconciliation." in response.data
+    assert b"Report table links open asset proof." in response.data
+    assert b"Report utilities" in response.data
     assert b"Search receipts" in response.data
     assert b"Include retired assets" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
-    assert response.data.count(b'href="/assets/search?return_to=/report"') == 1
-    assert b'href="/dashboard/cases?return_to=/report"' in response.data
-    assert b'href="/dashboard/holders?return_to=/report"' in response.data
+    assert b'href="/assets/search?return_to=/report"' not in response.data
+    assert b'href="/dashboard/cases?return_to=/report"' not in response.data
+    assert b'href="/dashboard/holders?return_to=/report"' not in response.data
     assert b'href="/receipts?return_to=/report"' in response.data
     assert b' href="/assets/search?asset_tag=AT-100&amp;return_to=/report"' in response.data
     assert b' href="/holders/1?return_to=/report"' in response.data
