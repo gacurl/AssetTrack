@@ -1637,12 +1637,18 @@ def _lookup_asset_for_verification(
                 holder_label = _holder_display_name(holder_row)
 
         location_type = _normalize_location_type(asset.get("location_type"))
+        equipment_type = str(asset.get("equipment_type") or "").strip()
         movement_proof = _asset_last_movement_proof(conn, str(asset.get("asset_tag") or ""))
         results.append(
             {
                 "id": int(asset["id"]),
                 "asset_tag": str(asset.get("asset_tag") or ""),
                 "serial_number": str(asset.get("serial_number") or ""),
+                "equipment_type": equipment_type,
+                "equipment_type_label": ASSET_EQUIPMENT_TYPE_LABELS.get(
+                    equipment_type,
+                    equipment_type.replace("_", " ").title() if equipment_type else "",
+                ),
                 "location_type": location_type,
                 "state_label": _asset_state_label(asset.get("location_type")),
                 "holder_label": holder_label,

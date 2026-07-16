@@ -102,6 +102,7 @@ class AssetSearchUiTests(unittest.TestCase):
         location_type: str,
         home_slot_id: int | None,
         current_holder_id: int | None = None,
+        equipment_type: str = "laptop",
     ) -> None:
         self.conn.execute(
             """
@@ -122,9 +123,9 @@ class AssetSearchUiTests(unittest.TestCase):
                 current_holder_id,
                 home_slot_id
             )
-            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '100', 'HQ/100', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?);
+            VALUES (?, ?, 'Dell', ?, 'HQ', '100', 'HQ/100', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?);
             """,
-            (asset_tag, serial_number, location_type, current_holder_id, home_slot_id),
+            (asset_tag, serial_number, equipment_type, location_type, current_holder_id, home_slot_id),
         )
         self.conn.commit()
 
@@ -132,7 +133,11 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset Search", response.data)
-        self.assertIn(b"Search by asset tag or serial number", response.data)
+        self.assertIn(b"Search assets", response.data)
+        self.assertIn(b"Scan or type asset tag", response.data)
+        self.assertIn(b"Optional serial lookup", response.data)
+        self.assertIn(b"Ready to search", response.data)
+        self.assertIn(b"custody status, holder, assigned location, and existing movement proof", response.data)
         self.assertNotIn(b">Clear<", response.data)
 
     def test_search_finds_asset_by_asset_tag(self) -> None:
@@ -146,10 +151,11 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertNotIn(b"Matched by asset tag.", response.data)
         self.assertIn(b"AT-100", response.data)
         self.assertIn(b"SER-100", response.data)
+        self.assertIn(b"Laptop", response.data)
         self.assertIn(b"In storage", response.data)
         self.assertIn(b"Alex Holder (Field Ops)", response.data)
-        self.assertIn(b"CASE-A", response.data)
-        self.assertIn(b"Slot 4", response.data)
+        self.assertIn(b"Case: CASE-A", response.data)
+        self.assertIn(b"Slot: 4", response.data)
         self.assertIn(b"Problem: holder still assigned", response.data)
         self.assertIn(b"Current state says stored, but a holder is still assigned.", response.data)
         self.assertIn(b"No movement proof recorded", response.data)
@@ -176,11 +182,35 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"AT-200", response.data)
         self.assertIn(b"SER-200", response.data)
         self.assertIn(b"In custody", response.data)
-        self.assertIn(b"Current holder", response.data)
+        self.assertIn(b"Assigned holder", response.data)
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Problem: holder not recorded", response.data)
         self.assertIn(b"Current state says in custody, but no holder is assigned.", response.data)
+
+    def test_search_keeps_supported_asset_types_readable(self) -> None:
+        self._insert_asset("TYPE-LAPTOP", serial_number="SER-LAPTOP", location_type="STORAGE", home_slot_id=None)
+        self._insert_asset(
+            "TYPE-SWITCH",
+            serial_number="SER-SWITCH",
+            location_type="STORAGE",
+            home_slot_id=None,
+            equipment_type="switch",
+        )
+        self._insert_asset(
+            "TYPE-ROUTER",
+            serial_number="SER-ROUTER",
+            location_type="STORAGE",
+            home_slot_id=None,
+            equipment_type="router",
+        )
+
+        response = self.client.get("/assets/search?asset_tag=TYPE-")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Laptop", response.data)
+        self.assertIn(b"Switch", response.data)
+        self.assertIn(b"Router", response.data)
 
     def test_search_shows_stored_status_cue_for_storage_asset(self) -> None:
         self._insert_asset("AT-STORED-1", serial_number="SER-STORED-1", location_type="STORAGE", home_slot_id=None)
@@ -245,7 +275,7 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search?asset_tag=AT-PROOF-1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Last proof", response.data)
+        self.assertIn(b"Last movement proof", response.data)
         self.assertIn(b"<strong>RETURN</strong>", response.data)
         self.assertIn(b"Apr 3, 2026 9:18 AM", response.data)
         self.assertIn(f"Event #{latest_event_id}".encode("utf-8"), response.data)
@@ -380,6 +410,8 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search?asset_tag=AT-MISSING")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Asset not found.", response.data)
+        self.assertIn(b"No asset found", response.data)
+        self.assertIn(b"Check the asset tag or serial number and search again.", response.data)
         self.assertNotIn(b"Asset Found", response.data)
         self.assertIn(b'href="/assets/search"', response.data)
         self.assertIn(b">Clear<", response.data)
