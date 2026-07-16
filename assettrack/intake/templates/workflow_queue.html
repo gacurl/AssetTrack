@@ -1,0 +1,450 @@
+<!-- file: assettrack/intake/templates/workflow_queue.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ page_title or "Return" }}{% endblock %}
+{% block page_heading %}{{ page_heading or "Return" }}{% endblock %}
+{% block page_class %} page-wide{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .pill.good {
+      background: var(--color-success-soft);
+      border: 1px solid var(--color-success);
+      color: var(--color-text);
+      font-weight: 700;
+    }
+    input[type="text"] { padding: 0.6rem; font-size: 1rem; width: 420px; }
+    #issue-building,
+    #issue-room {
+      width: 100%;
+      max-width: 520px;
+      box-sizing: border-box;
+      padding: 0.6rem;
+      font-size: 1rem;
+    }
+    .validation-messages { margin-top: 0.5rem; }
+    .validation-message { margin: 0.35rem 0; }
+    .queue-ts {
+      color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text));
+      font-size: 0.82rem;
+      margin-right: 0.25rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      background: var(--color-primary-soft);
+      border: 1px solid var(--color-surface);
+      white-space: nowrap;
+    }
+    .workflow-action { margin: 0; }
+    .queue-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 12px;
+      background: var(--color-primary-soft);
+    }
+    .queue-item code {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .queue-item form {
+      margin-left: auto;
+    }
+    .queue-remove {
+      padding: 0.3rem 0.55rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.52);
+      color: var(--color-text);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .queue-control-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 0.75rem;
+    }
+    .queue-control-group form {
+      margin: 0;
+    }
+    .queue-control-group .queue-entry-form {
+      flex: 1 1 320px;
+      min-width: 0;
+      margin-top: 10px;
+    }
+    .queue-control-group .queue-entry-form .workflow-action-row {
+      margin-top: 0.65rem;
+    }
+    .queue-control-group .queue-clear-form .workflow-action-row--danger {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+    .queue-action-cluster {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .queue-preview-form {
+      margin: 0 0 0 auto;
+      flex: 0 0 auto;
+      align-self: end;
+    }
+    .queue-preview-form .workflow-action-row {
+      margin-top: 0;
+    }
+    .issue-flow-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-surface);
+    }
+    .issue-flow-section h3 {
+      margin: 0 0 0.55rem 0;
+      font-size: 1rem;
+    }
+    .issue-requirements {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.8rem;
+      align-items: start;
+    }
+    .issue-requirement {
+      display: grid;
+      gap: 0.45rem;
+      padding: 0.7rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 8px;
+      background: var(--color-surface-bg);
+    }
+    .issue-requirement strong {
+      display: block;
+    }
+    .issue-location-compact {
+      display: grid;
+      gap: 0.55rem;
+      margin: 0.2rem 0 0 0;
+    }
+    .issue-location-compact label {
+      display: grid;
+      gap: 0.25rem;
+      font-weight: 700;
+    }
+    .issue-location-compact .workflow-action-row {
+      margin-top: 0.2rem;
+    }
+    .issue-queue-summary {
+      margin: 0;
+      font-weight: 700;
+    }
+    .issue-queue-details {
+      margin-top: 0.55rem;
+    }
+    .issue-queue-details summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .issue-queue-details .queue-list {
+      margin-top: 0.65rem;
+      max-height: 16rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
+    .return-flow-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-surface);
+    }
+    .return-flow-section h3 {
+      margin: 0 0 0.55rem 0;
+      font-size: 1rem;
+    }
+    .return-queue-summary {
+      margin: 0;
+      font-weight: 700;
+    }
+    .return-queue-details {
+      margin-top: 0.55rem;
+    }
+    .return-queue-details summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .return-queue-details .queue-list {
+      margin-top: 0.65rem;
+      max-height: 16rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% set queue_return_to = return_to or url_for('return_queue') %}
+  {% set review_action_label = "Review Before Issue" if issue_location_form is defined else "Review Before Return" %}
+  {% set flashed_messages = get_flashed_messages(with_categories=true) %}
+  {% set message_ns = namespace(global_messages=[], scan_messages=[], location_messages=[]) %}
+  {% for category, message in flashed_messages %}
+    {% if issue_location_form is defined and category.startswith('success') and message.startswith('Current location set to ') %}
+      {% set message_ns.location_messages = message_ns.location_messages + [(category, message)] %}
+    {% elif 'scan-feedback' in category %}
+      {% set message_ns.scan_messages = message_ns.scan_messages + [(category, message)] %}
+    {% else %}
+      {% set message_ns.global_messages = message_ns.global_messages + [(category, message)] %}
+    {% endif %}
+  {% endfor %}
+  {% if message_ns.global_messages %}
+    {% for category, message in message_ns.global_messages %}
+      <div class="flash {{ category|e }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {% if recent_return_cases %}
+    <div class="flash success">
+      Verify home slots:
+      {% for case_name in recent_return_cases %}
+        <a href="{{ url_for('dashboard_case_detail', case_name=case_name) }}">{{ case_name }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if issue_location_form is defined %}
+    <div class="card workflow-card" id="queue-actions">
+      <h2>Stage Assets</h2>
+      <p class="card-intro">Staged only. Nothing issues until commit.</p>
+      {% if message_ns.scan_messages %}
+        {% for category, message in message_ns.scan_messages %}
+          <div class="flash {{ category|e }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <div class="queue-control-group">
+        <div class="queue-entry-form">
+          <form id="issue-queue-form" method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+            <input
+              id="scan-input"
+              type="text"
+              name="scan_text"
+              placeholder="Scan or enter asset tag"
+              data-timeout-lock-target
+            />
+          </form>
+          <div class="workflow-action-row queue-action-cluster">
+            <button type="submit" form="issue-queue-form" data-timeout-lock-target>Add to queue</button>
+            <form method="post" action="{{ url_for('intake') }}" class="queue-clear-form">
+              <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+              <input type="hidden" name="action" value="clear" />
+              <div class="workflow-action-row workflow-action-row--danger">
+                <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="issue-flow-section" id="queue-section">
+        <h3>Queue</h3>
+        {% if queue %}
+          <p class="issue-queue-summary">{{ queue_len }} staged asset{% if queue_len != 1 %}s{% endif %}</p>
+          <details class="issue-queue-details">
+            <summary>Inspect or remove staged assets</summary>
+            <ul id="queue-list" class="queue-list" role="list">
+              {% for s in queue %}
+                <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
+                  <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
+                  <code>{{ s.asset_tag }}</code>
+                  <form method="post" action="{{ url_for('intake') }}">
+                    <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+                    <input type="hidden" name="action" value="remove" />
+                    <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+                    <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% else %}
+          <p class="queue-empty">No assets staged.</p>
+        {% endif %}
+      </div>
+
+      <div class="issue-flow-section">
+        <h3>Requirements</h3>
+        <div class="issue-requirements">
+          <div class="issue-requirement">
+            <strong>Holder</strong>
+            {% if selected_holder %}
+              <span>{{ holder_display_name(selected_holder) }}</span>
+              {% if selected_holder["organization"] and selected_holder["organization"] != holder_display_name(selected_holder) %}
+                <span>{{ selected_holder["organization"] }}</span>
+              {% endif %}
+              {% if selected_holder["identifier"] %}
+                <span>ID {{ selected_holder["identifier"] }}</span>
+              {% endif %}
+            {% else %}
+              <span>Required before preview.</span>
+            {% endif %}
+            <a class="nav-link" href="{{ url_for('holders_search', return_to=queue_return_to) }}">{{ "Change holder" if selected_holder else "Select holder" }}</a>
+          </div>
+
+          <div class="issue-requirement">
+            <strong>Current location</strong>
+            {% if issue_location_ready %}
+              <code class="issue-location-status-value">{{ issue_location_label }}</code>
+            {% else %}
+              <span class="issue-location-status-value">Required before preview.</span>
+            {% endif %}
+            {% if message_ns.location_messages %}
+              {% for category, message in message_ns.location_messages %}
+                <div class="flash {{ category|e }}">{{ message }}</div>
+              {% endfor %}
+            {% endif %}
+            {% if issue_location_constrained_by_org %}
+              <span class="issue-location-status-note">Building list follows selected holder.</span>
+            {% endif %}
+            <form method="post" action="{{ url_for('issue_location_update') }}" class="issue-location-compact">
+              <label for="issue-building">
+                Building
+                {% if issue_location_building_options %}
+                  <select id="issue-building" name="building" data-timeout-lock-target>
+                    <option value="">Choose building</option>
+                    {% for building_name in issue_location_building_options %}
+                      <option value="{{ building_name }}" {% if issue_location_form.building == building_name %}selected{% endif %}>{{ building_name }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input id="issue-building" type="text" name="building" value="{{ issue_location_form.building }}" data-timeout-lock-target />
+                {% endif %}
+              </label>
+              <label for="issue-room">
+                Room / area
+                <input id="issue-room" type="text" name="room" value="{{ issue_location_form.room }}" data-timeout-lock-target />
+              </label>
+              <div class="workflow-action-row">
+                <button type="submit" data-timeout-lock-target>Save location</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {% if blocking_issues and queue_len > 0 %}
+        <div class="issue-flow-section">
+          <h3>Before Review</h3>
+          <div class="validation-messages">
+            {% for issue in blocking_issues %}
+              <p class="validation-message">{{ issue }}</p>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="issue-flow-section">
+        <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
+          <div class="workflow-action-row">
+            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or review_action_label }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% else %}
+  <div class="card workflow-card">
+    <h2>{{ scan_heading or "Stage Returned Assets" }}</h2>
+      <p class="card-intro">Staged only. Nothing returns until commit.</p>
+    {% if message_ns.scan_messages %}
+      {% for category, message in message_ns.scan_messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+      <div class="queue-control-group">
+        <div class="queue-entry-form">
+          <form id="return-queue-form" method="post" action="{{ url_for('intake') }}" style="margin-top: 10px;">
+            <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+            <input
+              id="scan-input"
+              type="text"
+              name="scan_text"
+              placeholder="Scan or enter asset tag"
+              {% if issue_location_form is not defined %}autofocus{% endif %}
+              data-timeout-lock-target
+            />
+          </form>
+          <div class="workflow-action-row queue-action-cluster">
+            <button type="submit" form="return-queue-form" data-timeout-lock-target>Add to queue</button>
+            <form method="post" action="{{ url_for('intake') }}" class="queue-clear-form">
+              <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+              <input type="hidden" name="action" value="clear" />
+              <div class="workflow-action-row workflow-action-row--danger">
+                <button type="submit" class="action-secondary" onclick="return confirm('Clear the queue?');" data-timeout-lock-target>Clear queue</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="return-flow-section" id="queue-section">
+        <h3>Queue</h3>
+        {% if queue %}
+          <p class="return-queue-summary">{{ queue_len }} staged return{% if queue_len != 1 %}s{% endif %}</p>
+          <details class="return-queue-details">
+            <summary>Inspect or remove staged returns</summary>
+            <ul id="queue-list" class="queue-list" role="list">
+              {% for s in queue %}
+                <li class="queue-item" data-asset-tag="{{ s.asset_tag }}">
+                  <time class="queue-ts" datetime="{{ s.scanned_at.isoformat() }}">{{ s.scanned_at.strftime('%H:%M:%S') }} UTC</time>
+                  <code>{{ s.asset_tag }}</code>
+                  <form method="post" action="{{ url_for('intake') }}">
+                    <input type="hidden" name="return_to" value="{{ queue_return_to }}" />
+                    <input type="hidden" name="action" value="remove" />
+                    <input type="hidden" name="queue_index" value="{{ loop.index0 }}" />
+                    <button type="submit" class="queue-remove action-secondary" data-timeout-lock-target>Remove</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% else %}
+          <p class="queue-empty">No returns staged.</p>
+        {% endif %}
+      </div>
+
+      {% if blocking_issues %}
+        <div class="return-flow-section">
+          <h3>Before Review</h3>
+          <div class="validation-messages">
+            {% for issue in blocking_issues %}
+              <p class="validation-message">{{ issue }}</p>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="return-flow-section">
+        <form method="get" action="{{ preview_url or url_for('return_preview') }}" class="queue-preview-form">
+          <div class="workflow-action-row">
+            <button type="submit" class="preview-step" data-timeout-lock-target>{{ preview_label or review_action_label }}</button>
+          </div>
+        </form>
+      </div>
+  </div>
+  {% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+  {% include "_timeout_lock_script.html" %}
+{% endblock %}
