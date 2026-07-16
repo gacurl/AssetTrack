@@ -383,7 +383,8 @@ def test_receipt_detail_shows_report_contextual_back_link(client_with_temp_db) -
     assert b"Back to Report" in response.data
     assert b"Download Receipt PDF" in response.data
     assert b"Receipt delivery queued \xe2\x80\x94 custody already recorded" in response.data
-    assert b"Send Receipt Email" in response.data
+    assert b"Send Initial Receipt Email" in response.data
+    assert b"Initial send emails the receipt for this completed custody action." in response.data
 
 
 def test_receipt_detail_shows_asset_search_contextual_back_link(client_with_temp_db) -> None:
@@ -452,13 +453,14 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
     failed_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert failed_response.status_code == 200
     assert b"Receipt email status" in failed_response.data
-    assert b">failed<" in failed_response.data
-    assert b"Retry Send" in failed_response.data
-    assert b"Send Receipt Email" not in failed_response.data
+    assert b">Failed<" in failed_response.data
+    assert b"Retry Failed Delivery" in failed_response.data
+    assert b"Send Initial Receipt Email" not in failed_response.data
     assert b"Last attempted" in failed_response.data
     assert b"Mar 29, 2026 at 12:00 UTC" in failed_response.data
-    assert b"Current issue" in failed_response.data
+    assert b"Delivery issue" in failed_response.data
     assert b"smtp offline" in failed_response.data
+    assert b"Retry sends the same receipt again. Custody and event history stay unchanged." in failed_response.data
 
     conn = db.get_connection()
     try:
@@ -480,9 +482,9 @@ def test_receipt_detail_shows_delivery_state_from_persisted_queue_metadata(clien
 
     sent_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert sent_response.status_code == 200
-    assert b">sent<" in sent_response.data
-    assert b"Retry Send" not in sent_response.data
-    assert b"Send Receipt Email" not in sent_response.data
+    assert b">Sent<" in sent_response.data
+    assert b"Retry Failed Delivery" not in sent_response.data
+    assert b"Send Initial Receipt Email" not in sent_response.data
     assert b"Delivered" in sent_response.data
     assert b"Mar 29, 2026 at 12:05 UTC" in sent_response.data
 
@@ -532,7 +534,7 @@ def test_receipt_detail_shows_cc_email_when_delivery_metadata_present(client_wit
     assert b"Recipient email" in response.data
     assert b"issue@example.org" in response.data
     assert b"Receipt email status" in response.data
-    assert b">sent<" in response.data
+    assert b">Sent<" in response.data
     assert b"CC email" in response.data
     assert b"oversight@example.org" in response.data
 
@@ -547,7 +549,7 @@ def test_receipt_detail_shows_neutral_cc_state_when_delivery_metadata_missing(cl
     assert b"issue@example.org" in response.data
     assert b"Receipt email status" in response.data
     assert b'data-state="pending"' in response.data
-    assert b">Queued<" in response.data
+    assert b">Pending<" in response.data
     assert b"CC email" in response.data
     assert b"None" in response.data
 
@@ -587,8 +589,8 @@ def test_receipt_detail_hides_delivery_state_for_historical_nonqueued_receipt(cl
 
     assert response.status_code == 200
     assert b"Receipt email status" not in response.data
-    assert b"Retry Send" not in response.data
-    assert b"Send Receipt Email" not in response.data
+    assert b"Retry Failed Delivery" not in response.data
+    assert b"Send Initial Receipt Email" not in response.data
     assert b">pending<" not in response.data
 
 
@@ -1144,8 +1146,8 @@ def test_receipt_send_failed_retry_remains_recoverable_after_repeated_failure(
 
     detail_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert detail_response.status_code == 200
-    assert b">failed<" in detail_response.data
-    assert b"Retry Send" in detail_response.data
+    assert b">Failed<" in detail_response.data
+    assert b"Retry Failed Delivery" in detail_response.data
 
     conn = db.get_connection()
     try:
@@ -1572,14 +1574,15 @@ def test_receipt_detail_shows_resend_action_only_to_admin_after_send(client_with
 
     operator_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert operator_response.status_code == 200
-    assert b"Resend receipt email" not in operator_response.data
+    assert b"Resend Delivered Receipt" not in operator_response.data
 
     admin_id = create_test_user(username="receipt-resend-view-admin", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
     admin_response = client_with_temp_db.get(f"/receipts/{receipt_id}")
     assert admin_response.status_code == 200
     assert f'action="/receipts/{receipt_id}/resend"'.encode("utf-8") in admin_response.data
-    assert b"Resend receipt email" in admin_response.data
+    assert b"Resend Delivered Receipt" in admin_response.data
+    assert b"Resend emails another copy. Custody and event history stay unchanged." in admin_response.data
 
 
 def test_send_receipt_email_adds_configured_cc_recipient(

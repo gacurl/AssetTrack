@@ -91,7 +91,8 @@ def test_receipts_list_shows_asset_tag_in_default_results(client_with_temp_db) -
     assert response.status_code == 200
     assert b"Asset Tag" in response.data
     assert b"ISSUE-100" in response.data
-    assert b">Queued<" in response.data
+    assert b">Pending<" in response.data
+    assert b"Initial receipt email has not been sent yet." in response.data
 
 
 def test_receipts_list_shows_failed_delivery_state_from_persisted_queue_metadata(client_with_temp_db) -> None:
@@ -119,7 +120,8 @@ def test_receipts_list_shows_failed_delivery_state_from_persisted_queue_metadata
 
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
-    assert b">failed<" in response.data
+    assert b">Failed<" in response.data
+    assert b"Email delivery failed; custody remains recorded." in response.data
 
 
 def test_receipts_list_hides_delivery_state_for_historical_nonqueued_receipt(client_with_temp_db) -> None:
@@ -158,8 +160,8 @@ def test_receipts_list_hides_delivery_state_for_historical_nonqueued_receipt(cli
     assert response.status_code == 200
     assert f'href="/receipts/{receipt_id}"'.encode("utf-8") in response.data
     assert b">pending<" not in response.data
-    assert b">sent<" not in response.data
-    assert b">failed<" not in response.data
+    assert b">Sent<" not in response.data
+    assert b">Failed<" not in response.data
 
 
 def test_receipts_list_renders_clear_search_link_when_filters_are_active(client_with_temp_db) -> None:

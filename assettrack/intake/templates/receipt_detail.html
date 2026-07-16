@@ -59,6 +59,17 @@
       font-size: 0.92rem;
       line-height: 1.5;
     }
+    .receipt-action-form {
+      display: inline-grid;
+      gap: 0.25rem;
+      align-items: start;
+    }
+    .receipt-action-note {
+      max-width: 19rem;
+      color: var(--color-text-muted);
+      font-size: 0.86rem;
+      line-height: 1.35;
+    }
     .receipt-summary {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -207,8 +218,9 @@
   {% set operator = receipt.commit_operator %}
   {% set holder = receipt.holder_snapshot %}
   {% set organization = receipt.organization_snapshot %}
-  {% set email_status_label = "Queued" if receipt.delivery.state == "pending" else receipt.delivery.state %}
-  {% set receipt_action_label = "Retry Send" if receipt.delivery.state == "failed" else "Send Receipt Email" %}
+  {% set email_status_label = "Pending" if receipt.delivery.state == "pending" else "Sent" if receipt.delivery.state == "sent" else "Failed" if receipt.delivery.state == "failed" else receipt.delivery.state %}
+  {% set receipt_action_label = "Retry Failed Delivery" if receipt.delivery.state == "failed" else "Send Initial Receipt Email" %}
+  {% set receipt_action_note = "Retry sends the same receipt again. Custody and event history stay unchanged." if receipt.delivery.state == "failed" else "Initial send emails the receipt for this completed custody action." %}
   {% set email_timing_label = "Delivered" if receipt.delivery.sent_at else "Last attempted" if receipt.delivery.last_attempt_at else "" %}
   {% set email_timing_value = receipt.delivery_display.sent_at or receipt.delivery_display.last_attempt_at %}
   {% set holder_display_name = holder.name if holder and holder.name else receipt.holder_display_name %}
@@ -251,8 +263,9 @@
       {% if send_blocked_by_recovery %}
         <span class="pill bad">Recovery mode blocks {{ receipt_action_label|lower }}</span>
       {% else %}
-        <form method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
+        <form class="receipt-action-form" method="post" action="{{ url_for('receipt_send', receipt_id=receipt.id) }}">
           <button type="submit">{{ receipt_action_label }}</button>
+          <span class="receipt-action-note">{{ receipt_action_note }}</span>
         </form>
       {% endif %}
     {% endif %}
@@ -260,8 +273,9 @@
       {% if recovery_mode.active %}
         <span class="pill bad">Recovery mode blocks resend receipt email</span>
       {% else %}
-        <form method="post" action="{{ url_for('receipt_resend', receipt_id=receipt.id) }}">
-          <button type="submit">Resend receipt email</button>
+        <form class="receipt-action-form" method="post" action="{{ url_for('receipt_resend', receipt_id=receipt.id) }}">
+          <button type="submit">Resend Delivered Receipt</button>
+          <span class="receipt-action-note">Resend emails another copy. Custody and event history stay unchanged.</span>
         </form>
       {% endif %}
     {% endif %}
@@ -315,7 +329,7 @@
         </section>
 
         <section class="summary-group summary-status">
-          <h2 class="summary-group-title">Do I Need To Act?</h2>
+          <h2 class="summary-group-title">Delivery Support</h2>
           {% if receipt.delivery.state %}
             <div class="summary-value">
               <div class="summary-label">Receipt email status</div>
@@ -346,7 +360,7 @@
           {% endif %}
           {% if receipt.delivery.last_error %}
             <div class="summary-value">
-              <div class="summary-label">Current issue</div>
+              <div class="summary-label">Delivery issue</div>
               <div class="summary-copy">{{ receipt.delivery.last_error }}</div>
             </div>
           {% endif %}
@@ -356,6 +370,25 @@
               <div class="summary-copy">
                 {{ "Blocked during recovery mode" if send_blocked_by_recovery else receipt_action_label }}
               </div>
+            </div>
+            <div class="summary-value">
+              <div class="summary-label">Custody impact</div>
+              <div class="summary-copy">Email delivery does not create, reverse, or change custody.</div>
+            </div>
+          {% elif receipt.delivery.state == "sent" %}
+            <div class="summary-value">
+              <div class="summary-label">Available action</div>
+              <div class="summary-copy">
+                {% if authenticated_role == "admin" %}
+                  {{ "Blocked during recovery mode" if recovery_mode.active else "Resend Delivered Receipt" }}
+                {% else %}
+                  No delivery action available for your role.
+                {% endif %}
+              </div>
+            </div>
+            <div class="summary-value">
+              <div class="summary-label">Custody impact</div>
+              <div class="summary-copy">Resend emails another copy only. Custody is already recorded.</div>
             </div>
           {% endif %}
         </section>

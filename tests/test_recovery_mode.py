@@ -160,7 +160,7 @@ def test_receipt_detail_shows_recovery_block_message_for_resend_action(client_wi
     response = client_with_temp_db.get(f"/receipts/{receipt_id}")
 
     assert response.status_code == 200
-    assert b"Recovery mode blocks retry send" in response.data
+    assert b"Recovery mode blocks retry failed delivery" in response.data
     assert b"Receipt resend and retry actions are paused until an admin acknowledges recovery mode." in response.data
     assert b"Blocked during recovery mode" in response.data
 
