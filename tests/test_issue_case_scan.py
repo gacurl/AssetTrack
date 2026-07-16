@@ -92,7 +92,10 @@ def test_issue_case_scan_expands_expected_assets(client_with_temp_db) -> None:
     assert response.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["CI100", "CI101"]
     assert b"Case CASE-2 added 2 assets to queue." in response.data
-    assert b"Queue (2)" in response.data
+    assert b"assettrack/intake/templates/issue_queue.html" in response.data
+    assert b"2 staged assets" in response.data
+    assert b"Inspect or remove staged assets" in response.data
+    assert b"2 staged returns" not in response.data
     assert b"CASE2" not in response.data
 
 

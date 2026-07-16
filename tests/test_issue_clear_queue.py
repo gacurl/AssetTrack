@@ -70,7 +70,8 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     assert issue_page.status_code == 200
     assert b"Issue Holder" in issue_page.data
     assert b"Issue Holder" in issue_page.data
-    assert b"0 assets queued" in issue_page.data
+    assert b"assettrack/intake/templates/issue_queue.html" in issue_page.data
+    assert b"No assets staged." in issue_page.data
 
     rescan = client_with_temp_db.post(
         "/",
@@ -82,7 +83,7 @@ def test_operator_clear_queue_from_issue_returns_to_issue(client_with_temp_db) -
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["RESCANAFTERCLEAR"]
     assert b"Issue Holder" in rescan.data
     assert b"Issue Holder" in rescan.data
-    assert b"Queue (1)" in rescan.data
+    assert b"1 staged asset" in rescan.data
 
 
 def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicates(client_with_temp_db) -> None:
@@ -117,7 +118,9 @@ def test_operator_can_remove_one_queue_item_by_index_without_affecting_duplicate
 
     issue_page = client_with_temp_db.get("/issue")
     assert issue_page.status_code == 200
-    assert b"Queue (2)" in issue_page.data
+    assert b"assettrack/intake/templates/issue_queue.html" in issue_page.data
+    assert b"2 staged assets" in issue_page.data
+    assert b"Inspect or remove staged assets" in issue_page.data
 
 
 def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_with_temp_db) -> None:
@@ -147,9 +150,8 @@ def test_operator_can_clear_queue_from_issue_preview_and_return_to_issue(client_
 
     assert response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"<h2>Issue</h2>" in response.data
-    assert b"Queue (0)" in response.data
-    assert b"0 assets queued" in response.data
+    assert b"assettrack/intake/templates/issue_queue.html" in response.data
+    assert b"No assets staged." in response.data
 
 
 def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(client_with_temp_db) -> None:
@@ -185,11 +187,10 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
 
     assert response.status_code == 200
     assert len(intake_app.SCAN_QUEUE) == 0
-    assert b"<h2>Issue</h2>" in response.data
+    assert b"assettrack/intake/templates/issue_queue.html" in response.data
     assert b"Issue Holder" in response.data
     assert b"Issue Holder" in response.data
-    assert b"Queue (0)" in response.data
-    assert b"0 assets queued" in response.data
+    assert b"No assets staged." in response.data
 
     with client_with_temp_db.session_transaction() as sess:
         assert sess.get("holder_id") == 1
@@ -202,7 +203,7 @@ def test_issue_preview_discard_preserves_selected_holder_and_allows_rescan(clien
 
     assert rescan.status_code == 200
     assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["TAGRESCAN"]
-    assert b"Queue (1)" in rescan.data
+    assert b"1 staged asset" in rescan.data
     assert b"Issue Holder" in rescan.data
     assert b"Issue Holder" in rescan.data
 

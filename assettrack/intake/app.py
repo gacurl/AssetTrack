@@ -5025,7 +5025,7 @@ def issue():
         )
 
     return render_template(
-        "return_queue.html",
+        "issue_queue.html",
         page_title="Issue",
         page_heading="Issue",
         scan_heading="Add to Queue",
