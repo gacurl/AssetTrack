@@ -367,6 +367,7 @@ def test_return_receipt_detail_renders_from_snapshot(client_with_temp_db) -> Non
     assert b"Return Holder One" in response.data
     assert b"return.one@example.org" in response.data
     assert b"RETURN-200" in response.data
+    assert b"Tablet" in response.data
     assert b"Apple" in response.data
     assert b"iPad" in response.data
     assert b"CASE-20 / 1" in response.data

@@ -15,7 +15,7 @@ AssetTrack records:
 - every custody, location, and status change
 - email communication associated with Issue and Return custody actions
 
-The smallest useful AssetTrack product is a local, role-protected, SQLite-backed custody system for field operators. It must support person-assigned assets such as laptops and location-assigned assets such as switches, routers, access points, and other physical network devices without splitting them into separate systems.
+The smallest useful AssetTrack product is a local, role-protected, SQLite-backed custody system for field operators. It must support person-assigned laptops and location-assigned switches and routers without splitting them into separate systems.
 
 The append-only event history remains the authoritative custody record. Email receipts communicate and document Issue and Return activity, but email delivery never creates, reverses, or modifies custody state. Delivery failure must not roll back committed events or receipt records.
 
@@ -145,7 +145,7 @@ Pages that can create unnecessary operator load if surfaced too broadly: generic
 
 ## Minimum Network-Device Workflow
 
-Barebones operator/admin flow for a switch, router, access point, or similar physical network device:
+Barebones operator/admin flow for a switch or router:
 
 1. Find the device in `/assets/search`, `/report`, Dashboard custody map, or case/slot drilldowns.
 2. Review current location type, building/case/slot, status, and last movement proof.
@@ -236,7 +236,7 @@ Do not implement these in Issue 29-1. They are candidate issue cards only.
 - Whether admin and operator reports should be consolidated.
 - Whether any report/export is low-value enough for future removal.
 - Whether a dedicated asset detail/history page is needed beyond current Asset Search proof rows.
-- Whether future schema changes are ever needed for access point equipment typing, location movement, receipt delivery history, or network-device status detail.
+- Whether future schema changes are ever needed for location movement, receipt delivery history, or network-device status detail.
 - Whether any candidate removal would require security, persistence, schema, event, or email behavior approval before implementation.
 
 ## Non-Negotiable Implementation Guardrails For Future Issues

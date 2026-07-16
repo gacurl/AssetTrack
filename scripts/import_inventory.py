@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 from assettrack.audit import record_event
+from assettrack.assets import SUPPORTED_EQUIPMENT_TYPE_MESSAGE, validate_new_equipment_type
 from assettrack.db import assert_schema_present
 
 DB_PATH = Path("data/assettrack.db")
@@ -132,6 +133,18 @@ def load_rows() -> list[ImportRow]:
             )
         seen_slots[slot_key] = (asset_tag, row_number, case_number, slot_number)
 
+        equipment_type = as_text(row["equipment_type"])
+        try:
+            equipment_type = validate_new_equipment_type(equipment_type)
+        except ValueError as exc:
+            raise ImportStopError(
+                "Unsupported equipment_type.\n"
+                f"row_number={row_number}\n"
+                f"asset_tag={asset_tag}\n"
+                f"equipment_type={equipment_type}\n"
+                f"{exc or SUPPORTED_EQUIPMENT_TYPE_MESSAGE}"
+            ) from exc
+
         prepared.append(
             ImportRow(
                 row_number=row_number,
@@ -141,7 +154,7 @@ def load_rows() -> list[ImportRow]:
                 slot_position=slot_position,
                 slot_number=slot_number,
                 serial_number=as_text(row["serial_number"]),
-                equipment_type=as_text(row["equipment_type"]),
+                equipment_type=equipment_type,
                 manufacturer=as_text(row["manufacturer"]),
                 model=as_text(row["model"]),
                 model_code=as_text(row["model_code"]),

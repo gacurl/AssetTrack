@@ -35,7 +35,16 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import assettrack.db as db_module
-from assettrack.assets import get_asset_table_columns
+from assettrack.assets import (
+    APPROVED_NEW_EQUIPMENT_TYPES,
+    EQUIPMENT_TYPE_LABELS,
+    SUPPORTED_EQUIPMENT_TYPE_MESSAGE,
+    equipment_type_label,
+    get_asset_table_columns,
+    is_approved_new_equipment_type,
+    normalize_equipment_type,
+    validate_new_equipment_type,
+)
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
@@ -124,26 +133,8 @@ INTAKE_TIMEOUT_SECONDS = int(os.getenv("ASSETTRACK_INTAKE_TIMEOUT_SECONDS", str(
 TERMINAL_LOCATION_TYPE = "DISPOSED"
 TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
-ASSET_EQUIPMENT_TYPE_OPTIONS = (
-    "laptop",
-    "monitor",
-    "large tv",
-    "switch",
-    "other network equipment",
-    "peripheral",
-    "voip",
-    "other",
-)
-ASSET_EQUIPMENT_TYPE_LABELS = {
-    "laptop": "Laptop",
-    "monitor": "Monitor",
-    "large tv": "Large TV",
-    "switch": "Switch",
-    "other network equipment": "Other Network Equipment",
-    "peripheral": "Peripheral",
-    "voip": "VoIP",
-    "other": "Other",
-}
+ASSET_EQUIPMENT_TYPE_OPTIONS = APPROVED_NEW_EQUIPMENT_TYPES
+ASSET_EQUIPMENT_TYPE_LABELS = EQUIPMENT_TYPE_LABELS
 DEMO_SUMMARY = {
     "assets_in_custody": 18,
     "pending_receipts": 2,
@@ -207,12 +198,14 @@ def _equipment_type_form_options(current_value: object = "") -> list[dict[str, o
 
 
 def _equipment_type_is_allowed(value: object, *, allow_current: object = "") -> bool:
-    selected = str(value or "").strip()
+    selected_raw = str(value or "").strip()
+    selected = normalize_equipment_type(selected_raw)
     if not selected:
         return False
-    if selected in ASSET_EQUIPMENT_TYPE_OPTIONS:
+    if is_approved_new_equipment_type(selected):
         return True
-    return bool(str(allow_current or "").strip()) and selected == str(allow_current or "").strip()
+    current_raw = str(allow_current or "").strip()
+    return bool(current_raw) and selected_raw == current_raw
 
 
 @app.after_request
@@ -1312,8 +1305,11 @@ def _validate_admin_new_asset_form(
         errors.append("Enter a manufacturer.")
     if not form_state["equipment_type"]:
         errors.append("Choose an asset type.")
-    elif form_state["equipment_type"] not in ASSET_EQUIPMENT_TYPE_OPTIONS:
-        errors.append("Choose a valid asset type.")
+    else:
+        try:
+            form_state["equipment_type"] = validate_new_equipment_type(form_state["equipment_type"])
+        except ValueError as exc:
+            errors.append(str(exc))
     if not form_state["building"]:
         errors.append("Enter the building.")
     if not form_state["room"]:
@@ -2331,6 +2327,7 @@ def _create_admin_asset_in_tx(
     assign_case_number: Optional[str],
     assign_slot_number: Optional[int],
 ) -> dict:
+    equipment_type = validate_new_equipment_type(equipment_type)
     existing_asset = conn.execute(
         """
         SELECT 1
@@ -4188,9 +4185,9 @@ def intake():
         if submitted_equipment_type is None:
             selected_equipment_type = current_equipment_type
         else:
-            selected_equipment_type = (submitted_equipment_type or "").strip() or "laptop"
-        if not _equipment_type_is_allowed(selected_equipment_type, allow_current=current_equipment_type):
-            flash("Choose a valid asset type.", "error")
+            selected_equipment_type = normalize_equipment_type(submitted_equipment_type) or "laptop"
+        if not is_approved_new_equipment_type(selected_equipment_type):
+            flash(SUPPORTED_EQUIPMENT_TYPE_MESSAGE, "error")
             touch_session()
             if redirect_target.startswith("/") and not redirect_target.startswith("//"):
                 return redirect(redirect_target)
@@ -4412,8 +4409,12 @@ def add_assets():
         queue=SCAN_QUEUE,
         queue_len=len(SCAN_QUEUE),
         latest=(SCAN_QUEUE[-1].asset_tag if SCAN_QUEUE else ""),
-        equipment_type=(session.get("equipment_type") or "laptop").strip() or "laptop",
-        equipment_type_options=_equipment_type_form_options((session.get("equipment_type") or "laptop").strip() or "laptop"),
+        equipment_type=(
+            normalize_equipment_type(session.get("equipment_type"))
+            if is_approved_new_equipment_type(session.get("equipment_type"))
+            else "laptop"
+        ),
+        equipment_type_options=_equipment_type_form_options(),
         slot_options=slot_options,
         case_options=case_options,
     )
@@ -7879,7 +7880,7 @@ def admin_new_asset():
                 "asset_tag": (request.form.get("asset_tag") or "").strip().upper(),
                 "serial_number": (request.form.get("serial_number") or "").strip(),
                 "manufacturer": (request.form.get("manufacturer") or "").strip(),
-                "equipment_type": (request.form.get("equipment_type") or "").strip() or "laptop",
+                "equipment_type": normalize_equipment_type(request.form.get("equipment_type")) or "laptop",
                 "building": (request.form.get("building") or "").strip(),
                 "room": (request.form.get("room") or "").strip(),
                 "model": (request.form.get("model") or "").strip(),
@@ -8102,7 +8103,7 @@ def admin_edit_asset():
                     form_state["equipment_type"],
                     allow_current=asset_view["equipment_type"],
                 ):
-                    errors.append("Choose a valid asset type.")
+                    errors.append(SUPPORTED_EQUIPMENT_TYPE_MESSAGE)
                 if not form_state["building"]:
                     errors.append("building is required.")
                 if not form_state["room"]:
@@ -8430,7 +8431,7 @@ def admin_replace_asset():
             "replacement_asset_tag": (request.form.get("replacement_asset_tag") or "").strip().upper(),
             "replacement_serial_number": (request.form.get("replacement_serial_number") or "").strip(),
             "replacement_manufacturer": (request.form.get("replacement_manufacturer") or "").strip(),
-            "replacement_equipment_type": (request.form.get("replacement_equipment_type") or "").strip() or "laptop",
+            "replacement_equipment_type": normalize_equipment_type(request.form.get("replacement_equipment_type")) or "laptop",
             "replacement_model": (request.form.get("replacement_model") or "").strip(),
             "replacement_model_code": (request.form.get("replacement_model_code") or "").strip(),
             "replacement_notes": (request.form.get("replacement_notes") or "").strip(),
@@ -8466,6 +8467,8 @@ def admin_replace_asset():
                     errors.append("replacement manufacturer is required.")
                 if not form_state["replacement_equipment_type"]:
                     errors.append("replacement equipment_type is required.")
+                elif not is_approved_new_equipment_type(form_state["replacement_equipment_type"]):
+                    errors.append(SUPPORTED_EQUIPMENT_TYPE_MESSAGE)
                 if not form_state["confirm_retire"]:
                     errors.append("You must confirm the failed asset is being retired.")
                 if not form_state["confirm_slot"]:
@@ -8480,6 +8483,7 @@ def admin_replace_asset():
                         failed_asset=failed_asset_view,
                         error_message=error_message,
                         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                        equipment_type_options=_equipment_type_form_options(form_state["replacement_equipment_type"]),
                     )
 
                 try:
@@ -8578,6 +8582,7 @@ def admin_replace_asset():
                         failed_asset=failed_asset_view,
                         error_message=error_message,
                         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                        equipment_type_options=_equipment_type_form_options(form_state["replacement_equipment_type"]),
                     )
                 except sqlite3.IntegrityError as e:
                     conn.rollback()
@@ -8588,6 +8593,7 @@ def admin_replace_asset():
                         failed_asset=failed_asset_view,
                         error_message=error_message,
                         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+                        equipment_type_options=_equipment_type_form_options(form_state["replacement_equipment_type"]),
                     )
                 except Exception:
                     conn.rollback()
@@ -8610,6 +8616,7 @@ def admin_replace_asset():
         failed_asset=failed_asset_view,
         error_message=error_message,
         failure_type_options=sorted(RETIRE_FAILURE_TYPES),
+        equipment_type_options=_equipment_type_form_options(form_state["replacement_equipment_type"]),
     )
 
 

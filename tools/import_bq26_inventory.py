@@ -3,6 +3,7 @@
 import sqlite3
 from datetime import datetime, timezone
 import pandas as pd
+from assettrack.assets import validate_new_equipment_type
 
 DB_PATH = "data/assettrack.db"
 EXCEL_PATH = "data/import/BQ26 ETP.xlsx"
@@ -36,7 +37,7 @@ def main():
             case_name = f"CASE-{case_number}"
 
             serial_number = as_text(r["serial_number"])
-            equipment_type = as_text(r["equipment_type"])
+            equipment_type = validate_new_equipment_type(as_text(r["equipment_type"]))
             manufacturer = as_text(r["manufacturer"])
             model = as_text(r["model"])
             model_code = as_text(r["model_code"])

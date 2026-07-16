@@ -53,8 +53,8 @@ Other optional identifiers (future-friendly, not required now):
 
 **equipment_type** (enum)
 - Required
-- For now, we can keep this narrow (ex: `laptop`)
-- Expand later if needed (tablet, printer, etc.)
+- New assets support `laptop`, `switch`, and `router`.
+- Legacy values remain readable for existing records.
 
 ---
 

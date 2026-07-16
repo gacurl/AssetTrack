@@ -241,7 +241,7 @@ This is an admin workflow. The named manual `Add Assets` launcher is not shown i
 1. Enter `asset_tag`.
 2. Enter `serial_number`.
 3. Enter `manufacturer`.
-4. Enter `equipment_type`.
+4. Choose `equipment_type` (`laptop`, `switch`, or `router`).
 5. Enter `building`.
 6. Enter `room`.
 

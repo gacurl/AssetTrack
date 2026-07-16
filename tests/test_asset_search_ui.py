@@ -212,6 +212,21 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Switch", response.data)
         self.assertIn(b"Router", response.data)
 
+    def test_search_keeps_legacy_asset_type_readable(self) -> None:
+        self._insert_asset(
+            "TYPE-LEGACY",
+            serial_number="SER-LEGACY",
+            location_type="STORAGE",
+            home_slot_id=None,
+            equipment_type="tablet",
+        )
+
+        response = self.client.get("/assets/search?asset_tag=TYPE-LEGACY")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"TYPE-LEGACY", response.data)
+        self.assertIn(b"Tablet", response.data)
+
     def test_search_shows_stored_status_cue_for_storage_asset(self) -> None:
         self._insert_asset("AT-STORED-1", serial_number="SER-STORED-1", location_type="STORAGE", home_slot_id=None)
 

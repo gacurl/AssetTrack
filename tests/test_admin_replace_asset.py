@@ -114,6 +114,28 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Replace Failed Asset", response.data)
 
+    def test_loaded_replace_form_offers_only_supported_replacement_types(self) -> None:
+        self._insert_slot(9, "CASE-TYPES", 1, None)
+        failed_id = self._insert_asset(
+            "FAIL-TYPES",
+            serial_number="SER-FAIL-TYPES",
+            location_type="STORAGE",
+            holder_id=None,
+            home_slot_id=9,
+        )
+        self._assign_slot(9, failed_id, "FAIL-TYPES")
+
+        response = self.client.post(
+            "/admin/assets/replace",
+            data={"action": "lookup", "failed_asset_tag": "FAIL-TYPES"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<option value="laptop"', response.data)
+        self.assertIn(b'<option value="switch"', response.data)
+        self.assertIn(b'<option value="router"', response.data)
+        self.assertNotIn(b'<option value="monitor"', response.data)
+
     def test_swap_from_storage_success(self) -> None:
         self._insert_slot(10, "CASE-A", 1, None)
         failed_id = self._insert_asset(
@@ -389,6 +411,44 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertEqual(failed["location_type"], "STORAGE")
         self.assertEqual(failed["home_slot_id"], 13)
         replacement = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = 'NEW-500';").fetchone()
+        self.assertIsNone(replacement)
+
+    def test_unsupported_replacement_equipment_type_is_rejected_without_partial_updates(self) -> None:
+        self._insert_slot(14, "CASE-E", 5, None)
+        failed_id = self._insert_asset(
+            "FAIL-600",
+            serial_number="SER-FAIL-600",
+            location_type="STORAGE",
+            holder_id=None,
+            home_slot_id=14,
+        )
+        self._assign_slot(14, failed_id, "FAIL-600")
+
+        response = self.client.post(
+            "/admin/assets/replace",
+            data={
+                "action": "replace",
+                "failed_asset_tag": "FAIL-600",
+                "failure_type": "HARDWARE",
+                "failure_notes": "Broken.",
+                "replacement_asset_tag": "NEW-600",
+                "replacement_serial_number": "SER-NEW-600",
+                "replacement_manufacturer": "Lenovo",
+                "replacement_equipment_type": "monitor",
+                "confirm_retire": "yes",
+                "confirm_slot": "yes",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
+        failed = self.conn.execute(
+            "SELECT location_type, home_slot_id FROM assets WHERE id = ?;",
+            (failed_id,),
+        ).fetchone()
+        self.assertEqual(failed["location_type"], "STORAGE")
+        self.assertEqual(failed["home_slot_id"], 14)
+        replacement = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = 'NEW-600';").fetchone()
         self.assertIsNone(replacement)
 
 

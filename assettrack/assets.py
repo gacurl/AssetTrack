@@ -14,11 +14,51 @@ No audit/state engine.
 No legacy integration.
 """
 
+APPROVED_NEW_EQUIPMENT_TYPES = ("laptop", "switch", "router")
+SUPPORTED_EQUIPMENT_TYPE_MESSAGE = "Supported asset types are Laptop, Switch, and Router."
+EQUIPMENT_TYPE_LABELS = {
+    "laptop": "Laptop",
+    "switch": "Switch",
+    "router": "Router",
+    "monitor": "Monitor",
+    "large tv": "Large TV",
+    "other network equipment": "Other Network Equipment",
+    "peripheral": "Peripheral",
+    "voip": "VoIP",
+    "other": "Other",
+}
+
+
+def normalize_equipment_type(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def equipment_type_label(value: object) -> str:
+    normalized = normalize_equipment_type(value)
+    if normalized in EQUIPMENT_TYPE_LABELS:
+        return EQUIPMENT_TYPE_LABELS[normalized]
+    return normalized.replace("_", " ").title() if normalized else ""
+
+
+def is_approved_new_equipment_type(value: object) -> bool:
+    return normalize_equipment_type(value) in APPROVED_NEW_EQUIPMENT_TYPES
+
+
+def validate_new_equipment_type(value: object) -> str:
+    normalized = normalize_equipment_type(value)
+    if not normalized:
+        raise ValueError(f"equipment_type is required. {SUPPORTED_EQUIPMENT_TYPE_MESSAGE}")
+    if normalized not in APPROVED_NEW_EQUIPMENT_TYPES:
+        raise ValueError(SUPPORTED_EQUIPMENT_TYPE_MESSAGE)
+    return normalized
+
+
 def get_asset_table_columns(db_connection: sqlite3.Connection) -> set[str]:
     """Return column names for the assets table."""
     cursor = db_connection.execute("PRAGMA table_info(assets);")
     rows = cursor.fetchall()
     return {row[1] for row in rows}
+
 
 def create_asset(
     db_connection: sqlite3.Connection,
@@ -34,7 +74,6 @@ def create_asset(
         raise ValueError("asset_tag is required")
 
     table_columns = get_asset_table_columns(db_connection)
-
     insert_values: dict[str, Any] = {
         key: value
         for key, value in asset_data.items()
@@ -42,6 +81,10 @@ def create_asset(
     }
 
     insert_values["asset_tag"] = asset_tag
+    if "equipment_type" in table_columns:
+        insert_values["equipment_type"] = validate_new_equipment_type(
+            insert_values.get("equipment_type")
+        )
 
     # Required NOT NULL defaults (schema-driven)
     if "custody_state" in table_columns and not insert_values.get("custody_state"):
@@ -49,7 +92,7 @@ def create_asset(
 
     if "accountability_status" in table_columns and not insert_values.get("accountability_status"):
         insert_values["accountability_status"] = "accountable"
-    
+
     if "created_date" in table_columns and not insert_values.get("created_date"):
         insert_values["created_date"] = date.today().isoformat()  # "YYYY-MM-DD"
 
@@ -74,14 +117,18 @@ def create_asset(
         db_connection.execute(sql_statement, sql_values)
     except sqlite3.IntegrityError as error:
         raise ValueError(f"create_asset failed: {error}") from error
-    
+
+    event_payload = dict(asset_data)
+    if "equipment_type" in insert_values:
+        event_payload["equipment_type"] = insert_values["equipment_type"]
+
     record_event(
         db_connection,
         asset_tag=asset_tag,
         event_type="created",
         event_date=str(asset_data.get("created_date") or ""),
         actor="system",
-        payload=dict(asset_data),
+        payload=event_payload,
     )
 
 def get_asset_by_tag(
@@ -183,4 +230,3 @@ def retire_asset(
         event_date=str(updated_date or ""),
         actor="system",
     )
-

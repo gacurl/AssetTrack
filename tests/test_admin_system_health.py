@@ -86,7 +86,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
             'AT-100',
             'SN-100',
             'Dell',
-            'laptop',
+            'tablet',
             'HQ',
             '100',
             'ModelX',
@@ -372,12 +372,12 @@ def test_admin_can_open_human_readable_report_with_data_sections(client_with_tem
             current_holder_id,
             home_slot_id
         )
-        VALUES (
-            'AT-100',
-            'SN-100',
-            'Dell',
-            'laptop',
-            'Report HQ',
+            VALUES (
+                'AT-100',
+                'SN-100',
+                'Dell',
+                'tablet',
+                'Report HQ',
             '100',
             'Latitude',
             'LAT',
@@ -512,12 +512,12 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
             current_holder_id,
             home_slot_id
         )
-        VALUES (
-            'AT-100',
-            'SN-100',
-            'Dell',
-            'laptop',
-            'Report HQ',
+            VALUES (
+                'AT-100',
+                'SN-100',
+                'Dell',
+                'tablet',
+                'Report HQ',
             '100',
             'Latitude',
             'LAT',
@@ -628,6 +628,7 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Last 10 Events" in response.data
     assert b"Active assets" in response.data
     assert b"1 active records" in response.data
+    assert b"tablet" in response.data
     assert b"Retired hidden" in response.data
     assert b"AT-OLD-1" not in response.data
     assert b'<details class="report-section" open>' not in response.data
