@@ -126,6 +126,53 @@ def test_inventory_xlsx_import_appends_events_and_reconciles_current_state(
         persisted.close()
 
 
+def test_inventory_xlsx_import_accepts_laptop_switch_and_router(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path, excel_path = _configure_import(monkeypatch, tmp_path)
+    _write_inventory(
+        excel_path,
+        [
+            _inventory_row(clean_asset_tag="IMPORT-LAPTOP", serial_number="SER-LAPTOP", equipment_type="laptop"),
+            _inventory_row(clean_asset_tag="IMPORT-SWITCH", serial_number="SER-SWITCH", equipment_type="switch", slot_helper=2, slot_number="2"),
+            _inventory_row(clean_asset_tag="IMPORT-ROUTER", serial_number="SER-ROUTER", equipment_type="router", slot_helper=3, slot_number="3"),
+        ],
+    )
+
+    rows = import_inventory.load_rows()
+    result = import_inventory.run_import(rows)
+
+    assert result == (3, 3, 3)
+    conn = sqlite3.connect(db_path)
+    try:
+        values = conn.execute(
+            "SELECT equipment_type FROM assets ORDER BY asset_tag;"
+        ).fetchall()
+        assert [row[0] for row in values] == ["laptop", "router", "switch"]
+    finally:
+        conn.close()
+
+
+def test_inventory_xlsx_import_rejects_unsupported_equipment_type_before_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path, excel_path = _configure_import(monkeypatch, tmp_path)
+    _write_inventory(excel_path, [_inventory_row(equipment_type="monitor")])
+
+    with pytest.raises(import_inventory.ImportStopError) as excinfo:
+        import_inventory.load_rows()
+
+    assert "Supported asset types are Laptop, Switch, and Router." in str(excinfo.value)
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 def test_inventory_import_rolls_back_current_state_and_events_together(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -230,7 +230,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
                 "asset_tag": "AT-EDIT-1",
                 "serial_number": "SER-EDIT-1A",
                 "manufacturer": "Lenovo",
-                "equipment_type": "monitor",
+                "equipment_type": "switch",
                 "building": "HQ",
                 "room": "210",
                 "model": "X1",
@@ -252,7 +252,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(asset_row["serial_number"], "SER-EDIT-1A")
         self.assertEqual(asset_row["manufacturer"], "Lenovo")
-        self.assertEqual(asset_row["equipment_type"], "monitor")
+        self.assertEqual(asset_row["equipment_type"], "switch")
         self.assertEqual(asset_row["building_room"], "HQ/210")
         self.assertEqual(asset_row["home_slot_id"], 202)
         self.assertEqual(asset_row["case_number"], "CASE-B")
@@ -351,7 +351,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Choose a valid asset type.", response.data)
+        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
 
     def test_edit_in_custody_asset_updates_home_slot_without_occupancy(self) -> None:
         self._insert_slot(301, "CASE-C", 3)

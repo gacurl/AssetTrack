@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from assettrack.assets import create_asset, retire_asset, update_asset
+from assettrack.assets import SUPPORTED_EQUIPMENT_TYPE_MESSAGE, create_asset, retire_asset, update_asset, validate_new_equipment_type
 from assettrack.audit import record_event
 from assettrack.db import bootstrap_db, get_connection
 
@@ -264,6 +264,10 @@ def _apply_one_event(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
             raise BatchCommitError(
                 f"Asset {asset_tag} does not exist; equipment_type is required to create it"
             )
+        try:
+            data["equipment_type"] = validate_new_equipment_type(equipment_type)
+        except ValueError as exc:
+            raise BatchCommitError(str(exc) or SUPPORTED_EQUIPMENT_TYPE_MESSAGE) from exc
 
     event_date = _normalize_iso8601_timestamp(str(data.get("timestamp", "")))
     actor = str(data.get("operator_id", "")).strip() or None

@@ -100,7 +100,13 @@
           </div>
           <div class="row">
             <label for="replacement_equipment_type"><strong>equipment_type</strong> (required)</label><br />
-            <input type="text" id="replacement_equipment_type" name="replacement_equipment_type" value="{{ form.replacement_equipment_type or 'laptop' }}" required />
+            <select id="replacement_equipment_type" name="replacement_equipment_type" required>
+              {% for option in equipment_type_options %}
+                <option value="{{ option.value }}" {% if (form.replacement_equipment_type or 'laptop') == option.value %}selected{% endif %}>
+                  {{ option.label }}
+                </option>
+              {% endfor %}
+            </select>
           </div>
           <div class="row">
             <label for="replacement_model"><strong>model</strong> (optional)</label><br />
