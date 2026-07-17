@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,151 @@ def _create_building(name: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def _insert_slot_move_fixture(
+    *,
+    asset_tag: str = "MOVE-100",
+    source_slot_id: int = 810,
+    destination_slot_id: int = 811,
+    destination_occupied: bool = False,
+    current_holder_id: int | None = None,
+) -> None:
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES
+                (?, 'CASE-SRC', 1, ?),
+                (?, 'CASE-DST', 2, ?);
+            """,
+            (
+                source_slot_id,
+                asset_tag,
+                destination_slot_id,
+                "OTHER-DEST" if destination_occupied else None,
+            ),
+        )
+        cursor = conn.execute(
+            """
+            INSERT INTO assets (
+                asset_tag,
+                serial_number,
+                equipment_type,
+                manufacturer,
+                model,
+                building,
+                room,
+                building_room,
+                custody_state,
+                accountability_status,
+                condition,
+                created_date,
+                updated_date,
+                location_type,
+                current_holder_id,
+                home_slot_id,
+                case_number,
+                slot_number
+            )
+            VALUES (?, 'SER-MOVE-100', 'switch', 'Cisco', 'Catalyst', 'SRC', '101', 'SRC/101',
+                    'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z',
+                    'STORAGE', ?, ?, 'CASE-SRC', '1');
+            """,
+            (asset_tag, current_holder_id, source_slot_id),
+        )
+        asset_id = int(cursor.lastrowid)
+        conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, '2026-01-01T00:00:00Z');
+            """,
+            (source_slot_id, asset_id),
+        )
+        if destination_occupied:
+            other_cursor = conn.execute(
+                """
+                INSERT INTO assets (
+                    asset_tag,
+                    serial_number,
+                    equipment_type,
+                    manufacturer,
+                    building,
+                    room,
+                    building_room,
+                    custody_state,
+                    accountability_status,
+                    condition,
+                    created_date,
+                    updated_date,
+                    location_type,
+                    current_holder_id,
+                    home_slot_id,
+                    case_number,
+                    slot_number
+                )
+                VALUES ('OTHER-DEST', 'SER-OTHER-DEST', 'router', 'Cisco', 'DST', '202', 'DST/202',
+                        'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z',
+                        'STORAGE', NULL, ?, 'CASE-DST', '2');
+                """,
+                (destination_slot_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                VALUES (?, ?, '2026-01-01T00:00:00Z');
+                """,
+                (destination_slot_id, int(other_cursor.lastrowid)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _slot_move_state(asset_tag: str = "MOVE-100") -> dict[str, object]:
+    conn = db.get_connection()
+    try:
+        asset = conn.execute(
+            """
+            SELECT id, location_type, current_holder_id, home_slot_id, building, room, building_room, case_number, slot_number
+            FROM assets
+            WHERE asset_tag = ?;
+            """,
+            (asset_tag,),
+        ).fetchone()
+        source_slot = conn.execute("SELECT current_asset_tag FROM slots WHERE id = 810;").fetchone()
+        destination_slot = conn.execute("SELECT current_asset_tag FROM slots WHERE id = 811;").fetchone()
+        occupancy = conn.execute(
+            """
+            SELECT slot_id
+            FROM slot_occupancy
+            WHERE asset_id = ?
+            ORDER BY slot_id ASC;
+            """,
+            (int(asset["id"]),),
+        ).fetchall()
+        events = conn.execute(
+            """
+            SELECT event_type, payload, holder_id
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id ASC;
+            """,
+            (asset_tag,),
+        ).fetchall()
+        receipts = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+    finally:
+        conn.close()
+
+    return {
+        "asset": dict(asset),
+        "source_slot": dict(source_slot),
+        "destination_slot": dict(destination_slot),
+        "occupancy_slots": [int(row["slot_id"]) for row in occupancy],
+        "events": [dict(row) for row in events],
+        "receipt_count": int(receipts["c"]),
+    }
 
 
 def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_db) -> None:
@@ -240,7 +386,7 @@ def test_assign_slot_page_can_select_unslotted_asset_from_list(client_with_temp_
             "asset_tag": "AT-SELECT-1",
             "serial_number": "SER-SELECT-1",
             "manufacturer": "Dell",
-            "equipment_type": "monitor",
+            "equipment_type": "laptop",
             "building": "HQ",
             "room": "100",
         },
@@ -516,3 +662,238 @@ def test_assign_slot_rejects_arbitrary_building_without_appending_slot_assign(cl
     assert asset_row["home_slot_id"] is None
     assert occupancy is None
     assert [str(row["event_type"]) for row in events] == ["ASSET_CREATED"]
+
+
+def test_operator_denied_slot_move_preview_and_commit(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-slot-move", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+    _insert_slot_move_fixture()
+
+    entry_response = client_with_temp_db.get("/admin/slot-move")
+    preview_response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "preview",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+        },
+    )
+    commit_response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "commit",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+        },
+    )
+
+    assert entry_response.status_code == 403
+    assert preview_response.status_code == 403
+    assert commit_response.status_code == 403
+    assert _slot_move_state()["occupancy_slots"] == [810]
+
+
+def test_slot_move_entry_lists_occupied_sources_without_slot_id(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+
+    response = client_with_temp_db.get("/admin/slot-move")
+
+    assert response.status_code == 200
+    assert b"Select Source Slot" in response.data
+    assert b"MOVE-100" in response.data
+    assert b"SER-MOVE-100" in response.data
+    assert b"switch" in response.data
+    assert b"CASE-SRC" in response.data
+    assert b"SRC/101" in response.data
+    assert b"Select" in response.data
+    assert b"slot_id is required" not in response.data
+    assert b"Provide a valid" not in response.data
+    assert b"/admin/slot-move?slot_id=" not in response.data
+
+
+def test_slot_move_entry_does_not_offer_empty_slots_as_sources(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+
+    response = client_with_temp_db.get("/admin/slot-move")
+
+    assert response.status_code == 200
+    assert b"CASE-SRC" in response.data
+    assert b"CASE-DST" not in response.data
+
+
+def test_slot_move_selecting_source_continues_to_destination_selection(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+
+    response = client_with_temp_db.get("/admin/slot-move?slot_id=810")
+
+    assert response.status_code == 200
+    assert b"Source Slot Details" in response.data
+    assert b"Move To Destination Slot" in response.data
+    assert b"Preview Move" in response.data
+    assert b'name="source_slot_id" value="810"' in response.data
+
+
+def test_slot_move_valid_slot_id_deep_link_still_works(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(source_slot_id=820, destination_slot_id=821)
+
+    response = client_with_temp_db.get("/admin/slot-move?slot_id=820")
+
+    assert response.status_code == 200
+    assert b"MOVE-100" in response.data
+    assert b"CASE-SRC" in response.data
+    assert b"Move To Destination Slot" in response.data
+
+
+def test_slot_move_preview_displays_facts_without_changing_state(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(current_holder_id=44)
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "preview",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+            "notes": "rack move",
+        },
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Preview Move" in response.data
+    assert b"MOVE-100" in response.data
+    assert b"SER-MOVE-100" in response.data
+    assert b"switch" in response.data
+    assert b"CASE-SRC" in response.data
+    assert b"CASE-DST" in response.data
+    assert b"SRC" in response.data
+    assert b"101" in response.data
+    assert b"DST" in response.data
+    assert b"202" in response.data
+    assert b"Custody will not change." in response.data
+    assert b"No custody receipt will be generated." in response.data
+    assert b"Confirm Move" in response.data
+    assert after == before
+
+
+def test_slot_move_confirm_moves_storage_asset_without_custody_or_receipt_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(current_holder_id=44)
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "commit",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+            "notes": "rack move",
+        },
+        follow_redirects=True,
+    )
+    state = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Moved asset MOVE-100 from case CASE-SRC, slot 1 to case CASE-DST, slot 2." in response.data
+    assert state["source_slot"]["current_asset_tag"] is None
+    assert state["destination_slot"]["current_asset_tag"] == "MOVE-100"
+    assert state["occupancy_slots"] == [811]
+    assert state["receipt_count"] == 0
+
+    asset = state["asset"]
+    assert asset["location_type"] == "STORAGE"
+    assert int(asset["current_holder_id"]) == 44
+    assert int(asset["home_slot_id"]) == 811
+    assert asset["building"] == "DST"
+    assert asset["room"] == "202"
+    assert asset["building_room"] == "DST/202"
+    assert asset["case_number"] == "CASE-DST"
+    assert str(asset["slot_number"]) == "2"
+
+    events = state["events"]
+    assert [event["event_type"] for event in events] == ["SLOT_MOVE"]
+    assert events[0]["holder_id"] is None
+    payload = json.loads(str(events[0]["payload"]))
+    assert payload["from_slot"] == {
+        "slot_id": 810,
+        "building_room": "SRC/101",
+        "case_number": "CASE-SRC",
+        "slot_number": 1,
+    }
+    assert payload["to_slot"] == {
+        "slot_id": 811,
+        "building_room": "DST/202",
+        "case_number": "CASE-DST",
+        "slot_number": 2,
+    }
+
+
+def test_slot_move_commit_rejects_stale_empty_source_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    conn = db.get_connection()
+    try:
+        conn.execute("DELETE FROM slot_occupancy WHERE slot_id = 810;")
+        conn.execute("UPDATE slots SET current_asset_tag = NULL WHERE id = 810;")
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "commit",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+        },
+        follow_redirects=True,
+    )
+    state = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Source slot is missing or empty." in response.data
+    assert state["source_slot"]["current_asset_tag"] is None
+    assert state["destination_slot"]["current_asset_tag"] is None
+    assert state["occupancy_slots"] == []
+    assert state["events"] == []
+    assert state["receipt_count"] == 0
+
+
+def test_slot_move_commit_rejects_stale_occupied_destination_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(destination_occupied=True)
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "commit",
+            "source_slot_id": "810",
+            "building_room": "DST/202",
+            "case_number": "CASE-DST",
+            "slot_number": "2",
+        },
+        follow_redirects=True,
+    )
+    state = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Destination slot is already occupied." in response.data
+    assert state["source_slot"]["current_asset_tag"] == "MOVE-100"
+    assert state["destination_slot"]["current_asset_tag"] == "OTHER-DEST"
+    assert state["occupancy_slots"] == [810]
+    assert state["events"] == []
+    assert state["receipt_count"] == 0

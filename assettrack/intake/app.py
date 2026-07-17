@@ -1721,12 +1721,12 @@ def _asset_search_status_cue(*, location_type: str, holder_label: str, movement_
 
 
 def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict[str, object]:
-    event_type_values = tuple(issue_event_type_values() + return_event_type_values())
+    event_type_values = tuple(issue_event_type_values() + return_event_type_values() + ("SLOT_MOVE",))
     placeholders = ", ".join("?" for _ in event_type_values)
     active_events_where = ACTIVE_EVENTS_WHERE.replace("id NOT IN", "e.id NOT IN", 1)
     event_row = conn.execute(
         f"""
-        SELECT e.id, e.event_type, e.event_date
+        SELECT e.id, e.event_type, e.event_date, e.payload
         FROM asset_events e
         WHERE UPPER(e.asset_tag) = UPPER(?)
           AND UPPER(e.event_type) IN ({placeholders})
@@ -1745,9 +1745,20 @@ def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict
             "event_date_display": "",
             "receipt_id": None,
             "receipt_key": "",
+            "source_case": "",
+            "source_slot": "",
+            "destination_case": "",
+            "destination_slot": "",
         }
 
     event_id = int(event_row["id"])
+    payload: dict[str, object] = {}
+    try:
+        payload = json.loads(str(event_row["payload"] or "{}"))
+    except json.JSONDecodeError:
+        payload = {}
+    from_slot = payload.get("from_slot") if isinstance(payload.get("from_slot"), dict) else {}
+    to_slot = payload.get("to_slot") if isinstance(payload.get("to_slot"), dict) else {}
     receipt_row = conn.execute(
         """
         SELECT id, receipt_key
@@ -1770,6 +1781,10 @@ def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict
         "event_date_display": _report_event_display_timestamp(event_row["event_date"]),
         "receipt_id": None if receipt_row is None else int(receipt_row["id"]),
         "receipt_key": "" if receipt_row is None else str(receipt_row["receipt_key"] or ""),
+        "source_case": str(from_slot.get("case_number") or ""),
+        "source_slot": str(from_slot.get("slot_number") or ""),
+        "destination_case": str(to_slot.get("case_number") or ""),
+        "destination_slot": str(to_slot.get("slot_number") or ""),
     }
 
 
@@ -2013,6 +2028,179 @@ def _build_admin_slot_move_source_view(conn, slot_id: int) -> Optional[dict]:
         "current_asset_tag": str(slot_row["current_asset_tag"] or ""),
         "occupied": occupied,
         "asset": asset_view,
+    }
+
+
+def _list_admin_slot_move_sources(conn) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            s.id AS slot_id,
+            s.case_name,
+            s.slot_position,
+            a.asset_tag,
+            a.serial_number,
+            a.equipment_type,
+            a.building_room,
+            a.location_type
+        FROM slots s
+        JOIN slot_occupancy so ON so.slot_id = s.id
+        JOIN assets a ON a.id = so.asset_id
+        ORDER BY UPPER(s.case_name), s.slot_position, a.asset_tag
+        LIMIT 200;
+        """
+    ).fetchall()
+    return [
+        {
+            "slot_id": int(row["slot_id"]),
+            "case_name": str(row["case_name"] or ""),
+            "slot_position": int(row["slot_position"]),
+            "asset_tag": str(row["asset_tag"] or ""),
+            "serial_number": str(row["serial_number"] or ""),
+            "equipment_type": str(row["equipment_type"] or ""),
+            "building_room": str(row["building_room"] or ""),
+            "location_type": str(row["location_type"] or ""),
+        }
+        for row in rows
+    ]
+
+
+def _split_building_room(value: object) -> dict[str, str]:
+    text = str(value or "").strip()
+    if "/" not in text:
+        return {"building": text, "room": ""}
+    building, room = text.split("/", 1)
+    return {"building": building.strip(), "room": room.strip()}
+
+
+def _build_admin_slot_move_preview(
+    conn,
+    *,
+    source_slot_id: int,
+    building_room: str,
+    case_number: str,
+    slot_number: str,
+) -> dict:
+    if not building_room:
+        raise ValueError("building/room is required.")
+    if not case_number:
+        raise ValueError("case_number is required.")
+    if not slot_number:
+        raise ValueError("slot_number is required.")
+
+    try:
+        destination_slot_position = int(slot_number)
+    except ValueError as exc:
+        raise ValueError("slot_number must be an integer.") from exc
+
+    source_slot = conn.execute(
+        """
+        SELECT
+            s.id,
+            s.case_name,
+            s.slot_position,
+            so.asset_id,
+            a.asset_tag,
+            a.serial_number,
+            a.equipment_type,
+            a.location_type,
+            a.current_holder_id,
+            a.building_room,
+            a.home_slot_id
+        FROM slots s
+        LEFT JOIN slot_occupancy so ON so.slot_id = s.id
+        LEFT JOIN assets a ON a.id = so.asset_id
+        WHERE s.id = ?
+        LIMIT 1;
+        """,
+        (source_slot_id,),
+    ).fetchone()
+    if not source_slot or source_slot["asset_id"] is None:
+        raise ValueError("Source slot is missing or empty.")
+
+    asset_id = int(source_slot["asset_id"])
+    asset_tag = str(source_slot["asset_tag"] or "")
+    location_type = _normalize_location_type(source_slot["location_type"])
+    if _is_terminal_location_type(location_type):
+        raise ValueError("Asset is retired/disposed and cannot be moved.")
+    if location_type != "STORAGE":
+        raise ValueError("Asset must be location_type=STORAGE.")
+    if location_type == "IN_CUSTODY":
+        raise ValueError("Asset is IN_CUSTODY and cannot be moved.")
+
+    destination_slot = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+          AND slot_position = ?
+        LIMIT 1;
+        """,
+        (case_number, destination_slot_position),
+    ).fetchone()
+    if not destination_slot:
+        raise ValueError("Destination slot does not exist.")
+
+    destination_slot_id = int(destination_slot["id"])
+    if destination_slot_id == int(source_slot["id"]):
+        raise ValueError("Moving to the same slot is not allowed.")
+
+    destination_occupied = conn.execute(
+        """
+        SELECT 1
+        FROM slot_occupancy
+        WHERE slot_id = ?
+        LIMIT 1;
+        """,
+        (destination_slot_id,),
+    ).fetchone()
+    if destination_occupied:
+        raise ValueError("Destination slot is already occupied.")
+    if str(destination_slot["current_asset_tag"] or "").strip():
+        raise ValueError("Destination slot is already occupied.")
+
+    extra_asset_slot = conn.execute(
+        """
+        SELECT slot_id
+        FROM slot_occupancy
+        WHERE asset_id = ? AND slot_id <> ?
+        LIMIT 1;
+        """,
+        (asset_id, source_slot_id),
+    ).fetchone()
+    if extra_asset_slot:
+        raise ValueError("Asset already appears in another slot.")
+
+    source_building_room = str(source_slot["building_room"] or "")
+    source_location = _split_building_room(source_building_room)
+    destination_location = _split_building_room(building_room)
+
+    return {
+        "asset": {
+            "asset_id": asset_id,
+            "asset_tag": asset_tag,
+            "serial_number": str(source_slot["serial_number"] or ""),
+            "equipment_type": str(source_slot["equipment_type"] or ""),
+            "location_type": location_type,
+            "current_holder_id": source_slot["current_holder_id"],
+            "home_slot_id": source_slot["home_slot_id"],
+        },
+        "source": {
+            "slot_id": int(source_slot["id"]),
+            "case_number": str(source_slot["case_name"] or ""),
+            "slot_number": int(source_slot["slot_position"]),
+            "building_room": source_building_room,
+            "building": source_location["building"],
+            "room": source_location["room"],
+        },
+        "destination": {
+            "slot_id": destination_slot_id,
+            "case_number": str(destination_slot["case_name"] or ""),
+            "slot_number": int(destination_slot["slot_position"]),
+            "building_room": building_room,
+            "building": destination_location["building"],
+            "room": destination_location["room"],
+        },
     }
 
 
@@ -9211,15 +9399,18 @@ def admin_slot_move():
     case_number = ""
     slot_number = ""
     notes = ""
+    move_preview: Optional[dict] = None
+    source_slots: list[dict] = []
 
     if source_slot_id_raw:
         try:
             source_slot_id = int(source_slot_id_raw)
         except ValueError:
-            flash("slot_id must be an integer.", "error")
+            flash("Select a valid source slot.", "error")
 
     conn = get_connection()
     try:
+        source_slots = _list_admin_slot_move_sources(conn)
         if source_slot_id is not None:
             source_slot = _build_admin_slot_move_source_view(conn, source_slot_id)
             if source_slot:
@@ -9229,132 +9420,105 @@ def admin_slot_move():
                 slot_number = str(source_slot.get("slot_position") or "")
             elif request.method == "GET":
                 flash("Source slot not found.", "error")
-        elif request.method == "GET":
-            flash("slot_id is required.", "error")
 
         if request.method == "POST":
+            action = (request.form.get("action") or "preview").strip().lower()
             building_room = (request.form.get("building_room") or "").strip()
             case_number = (request.form.get("case_number") or "").strip().upper()
             slot_number = (request.form.get("slot_number") or "").strip()
             notes = (request.form.get("notes") or "").strip()
 
             if source_slot_id is None:
-                flash("slot_id is required.", "error")
+                flash("Select a source slot.", "error")
                 return render_template(
                     "admin_slot_move.html",
                     source_slot=source_slot,
+                    source_slots=source_slots,
                     source_slot_id=source_slot_id_raw,
                     building_room=building_room,
                     case_number=case_number,
                     slot_number=slot_number,
                     notes=notes,
+                    move_preview=move_preview,
                 )
 
-            if not building_room:
-                flash("building/room is required.", "error")
-            if not case_number:
-                flash("case_number is required.", "error")
-            if not slot_number:
-                flash("slot_number is required.", "error")
             if not source_slot or not source_slot.get("occupied"):
                 flash("Source slot is missing or empty.", "error")
 
-            if not building_room or not case_number or not slot_number or not source_slot or not source_slot.get("occupied"):
+            if not source_slot or not source_slot.get("occupied"):
                 return render_template(
                     "admin_slot_move.html",
                     source_slot=source_slot,
+                    source_slots=source_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
                     slot_number=slot_number,
                     notes=notes,
+                    move_preview=move_preview,
                 )
 
             try:
-                destination_slot_position = int(slot_number)
-            except ValueError:
-                flash("slot_number must be an integer.", "error")
+                move_preview = _build_admin_slot_move_preview(
+                    conn,
+                    source_slot_id=source_slot_id,
+                    building_room=building_room,
+                    case_number=case_number,
+                    slot_number=slot_number,
+                )
+            except ValueError as e:
+                flash(str(e), "error")
                 return render_template(
                     "admin_slot_move.html",
                     source_slot=source_slot,
+                    source_slots=source_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
                     slot_number=slot_number,
                     notes=notes,
+                    move_preview=move_preview,
+                )
+
+            if action == "preview":
+                return render_template(
+                    "admin_slot_move.html",
+                    source_slot=source_slot,
+                    source_slots=source_slots,
+                    source_slot_id=source_slot_id,
+                    building_room=building_room,
+                    case_number=case_number,
+                    slot_number=slot_number,
+                    notes=notes,
+                    move_preview=move_preview,
+                )
+            if action != "commit":
+                flash("Unknown action.", "error")
+                return render_template(
+                    "admin_slot_move.html",
+                    source_slot=source_slot,
+                    source_slots=source_slots,
+                    source_slot_id=source_slot_id,
+                    building_room=building_room,
+                    case_number=case_number,
+                    slot_number=slot_number,
+                    notes=notes,
+                    move_preview=move_preview,
                 )
 
             try:
                 conn.execute("BEGIN;")
 
-                source_slot_locked = conn.execute(
-                    """
-                    SELECT s.id, s.case_name, s.slot_position, so.asset_id, a.asset_tag, a.location_type
-                    FROM slots s
-                    LEFT JOIN slot_occupancy so ON so.slot_id = s.id
-                    LEFT JOIN assets a ON a.id = so.asset_id
-                    WHERE s.id = ?
-                    LIMIT 1;
-                    """,
-                    (source_slot_id,),
-                ).fetchone()
-                if not source_slot_locked:
-                    raise ValueError("Source slot is missing or empty.")
-                if source_slot_locked["asset_id"] is None:
-                    raise ValueError("Source slot is missing or empty.")
-
-                asset_id = int(source_slot_locked["asset_id"])
-                asset_tag = str(source_slot_locked["asset_tag"] or "")
-                location_type = _normalize_location_type(source_slot_locked["location_type"])
-                if _is_terminal_location_type(location_type):
-                    raise ValueError("Asset is retired/disposed and cannot be moved.")
-                if location_type != "STORAGE":
-                    raise ValueError("Asset must be location_type=STORAGE.")
-                if location_type == "IN_CUSTODY":
-                    raise ValueError("Asset is IN_CUSTODY and cannot be moved.")
-
-                destination_slot = conn.execute(
-                    """
-                    SELECT id, case_name, slot_position, current_asset_tag
-                    FROM slots
-                    WHERE UPPER(case_name) = UPPER(?)
-                      AND slot_position = ?
-                    LIMIT 1;
-                    """,
-                    (case_number, destination_slot_position),
-                ).fetchone()
-                if not destination_slot:
-                    raise ValueError("Destination slot does not exist.")
-
-                destination_slot_id = int(destination_slot["id"])
-                if destination_slot_id == int(source_slot_locked["id"]):
-                    raise ValueError("Moving to the same slot is not allowed.")
-
-                destination_occupied = conn.execute(
-                    """
-                    SELECT 1
-                    FROM slot_occupancy
-                    WHERE slot_id = ?
-                    LIMIT 1;
-                    """,
-                    (destination_slot_id,),
-                ).fetchone()
-                if destination_occupied:
-                    raise ValueError("Destination slot is already occupied.")
-                if str(destination_slot["current_asset_tag"] or "").strip():
-                    raise ValueError("Destination slot is already occupied.")
-
-                extra_asset_slot = conn.execute(
-                    """
-                    SELECT slot_id
-                    FROM slot_occupancy
-                    WHERE asset_id = ? AND slot_id <> ?
-                    LIMIT 1;
-                    """,
-                    (asset_id, source_slot_id),
-                ).fetchone()
-                if extra_asset_slot:
-                    raise ValueError("Asset already appears in another slot.")
+                move_preview = _build_admin_slot_move_preview(
+                    conn,
+                    source_slot_id=source_slot_id,
+                    building_room=building_room,
+                    case_number=case_number,
+                    slot_number=slot_number,
+                )
+                asset_id = int(move_preview["asset"]["asset_id"])
+                asset_tag = str(move_preview["asset"]["asset_tag"])
+                destination_slot_id = int(move_preview["destination"]["slot_id"])
 
                 delete_source = conn.execute(
                     """
@@ -9398,15 +9562,21 @@ def admin_slot_move():
                 if "home_slot_id" in asset_columns:
                     update_clauses.append("home_slot_id = ?")
                     update_values.append(destination_slot_id)
+                if "building" in asset_columns:
+                    update_clauses.append("building = ?")
+                    update_values.append(str(move_preview["destination"]["building"]))
+                if "room" in asset_columns:
+                    update_clauses.append("room = ?")
+                    update_values.append(str(move_preview["destination"]["room"]))
                 if "building_room" in asset_columns:
                     update_clauses.append("building_room = ?")
                     update_values.append(building_room)
                 if "case_number" in asset_columns:
                     update_clauses.append("case_number = ?")
-                    update_values.append(str(destination_slot["case_name"]))
+                    update_values.append(str(move_preview["destination"]["case_number"]))
                 if "slot_number" in asset_columns:
                     update_clauses.append("slot_number = ?")
-                    update_values.append(str(destination_slot["slot_position"]))
+                    update_values.append(str(move_preview["destination"]["slot_number"]))
                 if "updated_date" in asset_columns:
                     update_clauses.append("updated_date = ?")
                     update_values.append(now_iso)
@@ -9419,15 +9589,16 @@ def admin_slot_move():
 
                 payload = {
                     "from_slot": {
-                        "slot_id": int(source_slot_locked["id"]),
-                        "case_number": str(source_slot_locked["case_name"] or ""),
-                        "slot_number": int(source_slot_locked["slot_position"]),
+                        "slot_id": int(move_preview["source"]["slot_id"]),
+                        "building_room": str(move_preview["source"]["building_room"]),
+                        "case_number": str(move_preview["source"]["case_number"]),
+                        "slot_number": int(move_preview["source"]["slot_number"]),
                     },
                     "to_slot": {
                         "slot_id": destination_slot_id,
                         "building_room": building_room,
-                        "case_number": str(destination_slot["case_name"] or ""),
-                        "slot_number": int(destination_slot["slot_position"]),
+                        "case_number": str(move_preview["destination"]["case_number"]),
+                        "slot_number": int(move_preview["destination"]["slot_number"]),
                     },
                 }
                 conn.execute(
@@ -9462,19 +9633,21 @@ def admin_slot_move():
                 return render_template(
                     "admin_slot_move.html",
                     source_slot=source_slot,
+                    source_slots=source_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
                     slot_number=slot_number,
                     notes=notes,
+                    move_preview=move_preview,
                 )
             except Exception:
                 conn.rollback()
                 raise
 
             flash(
-                f"Moved asset {asset_tag} from {source_slot_locked['case_name']} slot {source_slot_locked['slot_position']} "
-                f"to {destination_slot['case_name']} slot {destination_slot['slot_position']}.",
+                f"Moved asset {asset_tag} from case {move_preview['source']['case_number']}, slot {move_preview['source']['slot_number']} "
+                f"to case {move_preview['destination']['case_number']}, slot {move_preview['destination']['slot_number']}.",
                 "success",
             )
             return redirect(url_for("admin_slot_move", slot_id=destination_slot_id))
@@ -9484,11 +9657,13 @@ def admin_slot_move():
     return render_template(
         "admin_slot_move.html",
         source_slot=source_slot,
+        source_slots=source_slots,
         source_slot_id=source_slot_id,
         building_room=building_room,
         case_number=case_number,
         slot_number=slot_number,
         notes=notes,
+        move_preview=move_preview,
     )
 
 

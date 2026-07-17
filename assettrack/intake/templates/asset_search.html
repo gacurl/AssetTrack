@@ -237,6 +237,14 @@
                       {% endif %}
                     </div>
                     <div><code>Event #{{ proof.event_id }}</code></div>
+                    {% if proof.source_case or proof.destination_case %}
+                      <div>
+                        From case <code>{{ proof.source_case or "Not recorded" }}</code>,
+                        slot <code>{{ proof.source_slot or "Not recorded" }}</code>
+                        to case <code>{{ proof.destination_case or "Not recorded" }}</code>,
+                        slot <code>{{ proof.destination_slot or "Not recorded" }}</code>
+                      </div>
+                    {% endif %}
                     {% if proof.receipt_id %}
                       <div>
                         <a class="nav-link" href="{{ url_for('receipt_detail', receipt_id=proof.receipt_id, return_to=receipt_detail_return_to) }}">

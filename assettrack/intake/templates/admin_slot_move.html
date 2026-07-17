@@ -8,6 +8,20 @@
 {% block extra_head %}
   <style>
     .grid { display: grid; grid-template-columns: repeat(2, minmax(240px, 1fr)); gap: 0.75rem 1rem; }
+    .slot-move-source-table td:last-child,
+    .slot-move-source-table th:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .slot-move-source-table .asset-tag-cell code {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .slot-move-source-table .asset-meta {
+      color: var(--color-text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.15rem;
+    }
   </style>
 {% endblock %}
 
@@ -24,9 +38,50 @@
     {% endif %}
   {% endwith %}
 
-  <div class="card">
-    <h2>Source Slot Details</h2>
-    {% if source_slot %}
+  {% if not source_slot or not source_slot.occupied %}
+    <div class="card">
+      <h2>Select Source Slot</h2>
+      {% if source_slots %}
+        <table class="slot-move-source-table">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Source slot</th>
+              <th>Location</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in source_slots %}
+              <tr>
+                <td class="asset-tag-cell">
+                  <code>{{ row.asset_tag }}</code>
+                  <div class="asset-meta">
+                    {{ row.equipment_type or "Unknown" }}
+                    {% if row.serial_number %} &middot; {{ row.serial_number }}{% endif %}
+                  </div>
+                </td>
+                <td><code>{{ row.case_name }}</code> slot <code>{{ row.slot_position }}</code></td>
+                <td>{{ row.building_room or "Not recorded" }}</td>
+                <td>
+                  <form method="get" action="{{ url_for('admin_slot_move') }}">
+                    <input type="hidden" name="slot_id" value="{{ row.slot_id }}" />
+                    <button type="submit">Select</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">No occupied source slots found.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if source_slot %}
+    <div class="card">
+      <h2>Source Slot Details</h2>
       <div class="grid">
         <div><strong>slot_id:</strong> <code>{{ source_slot.slot_id }}</code></div>
         <div><strong>case_number:</strong> <code>{{ source_slot.case_name }}</code></div>
@@ -37,16 +92,15 @@
         <div><strong>location_type:</strong> <code>{{ source_slot.asset.location_type if source_slot.asset else "" }}</code></div>
         <div><strong>home_slot_id:</strong> {{ source_slot.asset.home_slot_id if source_slot.asset and source_slot.asset.home_slot_id is not none else "none" }}</div>
       </div>
-    {% else %}
-      <p class="muted">Provide a valid <code>slot_id</code> query param, e.g. <code>/admin/slot-move?slot_id=1</code>.</p>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
-  {% if source_slot %}
+  {% if source_slot and source_slot.occupied %}
     <div class="card">
       <h2>Move To Destination Slot</h2>
       <p class="muted">Destination must exist and be empty.</p>
       <form method="post" action="{{ url_for('admin_slot_move') }}">
+        <input type="hidden" name="action" value="preview" />
         <input type="hidden" name="source_slot_id" value="{{ source_slot.slot_id }}" />
 
         <div class="row">
@@ -100,7 +154,48 @@
           />
         </div>
 
-        <button type="submit">Move Asset</button>
+        <button type="submit">Preview Move</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if move_preview %}
+    <div class="card" id="move-preview">
+      <h2>Preview Move</h2>
+      <div class="grid">
+        <div><strong>asset_tag:</strong> <code>{{ move_preview.asset.asset_tag }}</code></div>
+        <div><strong>serial number:</strong> {{ move_preview.asset.serial_number or "Not recorded" }}</div>
+        <div><strong>equipment type:</strong> {{ move_preview.asset.equipment_type or "Unknown" }}</div>
+        <div><strong>location_type:</strong> <code>{{ move_preview.asset.location_type }}</code></div>
+      </div>
+
+      <h3>Source</h3>
+      <div class="grid">
+        <div><strong>case:</strong> <code>{{ move_preview.source.case_number }}</code></div>
+        <div><strong>slot:</strong> <code>{{ move_preview.source.slot_number }}</code></div>
+        <div><strong>building:</strong> {{ move_preview.source.building or "Not recorded" }}</div>
+        <div><strong>room:</strong> {{ move_preview.source.room or "Not recorded" }}</div>
+      </div>
+
+      <h3>Destination</h3>
+      <div class="grid">
+        <div><strong>case:</strong> <code>{{ move_preview.destination.case_number }}</code></div>
+        <div><strong>slot:</strong> <code>{{ move_preview.destination.slot_number }}</code></div>
+        <div><strong>building:</strong> {{ move_preview.destination.building or "Not recorded" }}</div>
+        <div><strong>room:</strong> {{ move_preview.destination.room or "Not recorded" }}</div>
+      </div>
+
+      <p><strong>Custody will not change.</strong></p>
+      <p><strong>No custody receipt will be generated.</strong></p>
+
+      <form method="post" action="{{ url_for('admin_slot_move') }}">
+        <input type="hidden" name="action" value="commit" />
+        <input type="hidden" name="source_slot_id" value="{{ move_preview.source.slot_id }}" />
+        <input type="hidden" name="building_room" value="{{ building_room or '' }}" />
+        <input type="hidden" name="case_number" value="{{ case_number or '' }}" />
+        <input type="hidden" name="slot_number" value="{{ slot_number or '' }}" />
+        <input type="hidden" name="notes" value="{{ notes or '' }}" />
+        <button type="submit">Confirm Move</button>
       </form>
     </div>
   {% endif %}
