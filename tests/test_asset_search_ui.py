@@ -40,6 +40,7 @@ class AssetSearchUiTests(unittest.TestCase):
         *,
         event_type: str,
         event_date: str,
+        payload: dict[str, object] | None = None,
         supersedes_event_id: int | None = None,
         correction_reason: str | None = None,
     ) -> int:
@@ -56,9 +57,16 @@ class AssetSearchUiTests(unittest.TestCase):
                 supersedes_event_id,
                 correction_reason
             )
-            VALUES (?, ?, ?, 'system', NULL, '{}', NULL, ?, ?);
+            VALUES (?, ?, ?, 'system', NULL, ?, NULL, ?, ?);
             """,
-            (asset_tag, event_type, event_date, supersedes_event_id, correction_reason),
+            (
+                asset_tag,
+                event_type,
+                event_date,
+                json.dumps(payload or {}),
+                supersedes_event_id,
+                correction_reason,
+            ),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
@@ -296,6 +304,65 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(f"Event #{latest_event_id}".encode("utf-8"), response.data)
         self.assertNotIn(f"Event #{old_event_id}".encode("utf-8"), response.data)
         self.assertIn(b"No receipt linked", response.data)
+
+    def test_search_shows_slot_move_event_as_movement_proof_without_state_change(self) -> None:
+        self._insert_slot(30, "1", 4)
+        self._insert_asset("55555", serial_number="SER-55555", location_type="STORAGE", home_slot_id=30)
+        asset_row = self.conn.execute("SELECT id FROM assets WHERE asset_tag = '55555';").fetchone()
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (30, ?, '2026-04-04T10:00:00+00:00');
+            """,
+            (int(asset_row["id"]),),
+        )
+        self.conn.commit()
+        before_state = self.conn.execute(
+            """
+            SELECT location_type, current_holder_id, home_slot_id
+            FROM assets
+            WHERE asset_tag = '55555';
+            """
+        ).fetchone()
+        before_occupancy = self.conn.execute(
+            "SELECT slot_id FROM slot_occupancy WHERE asset_id = ? ORDER BY slot_id;",
+            (int(asset_row["id"]),),
+        ).fetchall()
+        event_id = self._insert_event(
+            "55555",
+            event_type="SLOT_MOVE",
+            event_date="2026-04-04T10:15:00+00:00",
+            payload={
+                "from_slot": {"case_number": "1", "slot_number": 4},
+                "to_slot": {"case_number": "CASE-1", "slot_number": 3},
+            },
+        )
+
+        response = self.client.get("/assets/search?asset_tag=55555")
+
+        after_state = self.conn.execute(
+            """
+            SELECT location_type, current_holder_id, home_slot_id
+            FROM assets
+            WHERE asset_tag = '55555';
+            """
+        ).fetchone()
+        after_occupancy = self.conn.execute(
+            "SELECT slot_id FROM slot_occupancy WHERE asset_id = ? ORDER BY slot_id;",
+            (int(asset_row["id"]),),
+        ).fetchall()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"<strong>SLOT_MOVE</strong>", response.data)
+        self.assertIn(b"Apr 4, 2026 10:15 AM", response.data)
+        self.assertIn(f"Event #{event_id}".encode("utf-8"), response.data)
+        self.assertIn(b"From case <code>1</code>,", response.data)
+        self.assertIn(b"slot <code>4</code>", response.data)
+        self.assertIn(b"to case <code>CASE-1</code>,", response.data)
+        self.assertIn(b"slot <code>3</code>", response.data)
+        self.assertIn(b"No receipt linked", response.data)
+        self.assertEqual(dict(before_state), dict(after_state))
+        self.assertEqual([int(row["slot_id"]) for row in before_occupancy], [int(row["slot_id"]) for row in after_occupancy])
 
     def test_search_shows_receipt_link_for_movement_proof(self) -> None:
         self._insert_asset("AT-RECEIPT-1", serial_number="SER-RECEIPT-1", location_type="IN_CUSTODY", home_slot_id=None)
