@@ -115,24 +115,130 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b'id="asset-count">1<' in response.data
     assert b"assettrack.db" in response.data
     assert b"Add Assets" not in response.data
-    assert b"Access" in response.data
-    assert b"Setup Data" in response.data
-    assert b"Storage" in response.data
-    assert b"Delivery" in response.data
-    assert b"Reports/Backup" in response.data
-    assert b"Recovery" in response.data
     assert b"Users" in response.data
-    assert b"Organizations / Buildings" in response.data
+    assert b"Reference Data" in response.data
+    assert b"Assets" in response.data
+    assert b"Storage" in response.data
+    assert b"Receipts and Email" in response.data
+    assert b"Backup and Recovery" in response.data
+    assert b"Corrections" in response.data
+    assert b"Manage Users" in response.data
+    assert b"Organizations and Buildings" in response.data
     assert b"Import Holders" in response.data
-    assert b"Empty Slots" in response.data
+    assert b"Create Asset" in response.data
+    assert b"Edit Asset" in response.data
+    assert b"Retire Asset" in response.data
+    assert b"Replace Asset" in response.data
+    assert b"Provision Slots" in response.data
     assert b"Assign Slot" in response.data
+    assert b"Move Slot" in response.data
+    assert b"Receipt Search" in response.data
     assert b"Receipt CC" in response.data
     assert b"Status Report" in response.data
-    assert b"DB Backup" in response.data
-    assert b"Restore Backup" in response.data
+    assert b"Download DB Backup" in response.data
+    assert b"Restore Database" in response.data
+    assert b"Force Vacate Slot" in response.data
+    assert b"High Risk" in response.data
+    removed_descriptions = [
+        b"Create accounts, assign roles, deactivate users, and issue temporary passwords.",
+        b"User creation, role assignment, activation, deactivation, and temporary passwords.",
+        b"Routine setup for organizations, buildings, holder records, and allowed building mappings.",
+        b"Add one asset record through the guarded admin form.",
+        b"Find receipts, review delivery state, and open retry or resend actions when authorized.",
+        b"High-risk tools. Use only after verifying the physical state and the audit impact.",
+        b"Event correction remains an amend-only protected API action",
+    ]
+    for removed_description in removed_descriptions:
+        assert removed_description not in response.data
+    expected_links = [
+        b'href="/admin/users"',
+        b'href="/admin/reference-data"',
+        b'href="/admin/holders/import"',
+        b'href="/admin/assets/new"',
+        b'href="/admin/assets/edit"',
+        b'href="/admin/assets/retire"',
+        b'href="/admin/assets/replace"',
+        b'href="/admin/slots/provision"',
+        b'href="/admin/assign-slot"',
+        b'href="/admin/slot-move"',
+        b'href="/receipts"',
+        b'href="/admin/receipt-cc"',
+        b'href="/admin/report"',
+        b'href="/admin/db/export"',
+        b'href="/admin/db/restore"',
+        b'href="/admin/force-vacate"',
+    ]
+    for expected_link in expected_links:
+        assert expected_link in response.data
     assert response.data.count(b"<details class=\"disclosure-section") >= 3
     assert b"System Snapshot" in response.data
     assert b"Restore History" in response.data
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/users",
+        "/admin/reference-data",
+        "/admin/holders/import",
+        "/admin/assets/new",
+        "/admin/assets/edit",
+        "/admin/assets/retire",
+        "/admin/assets/replace",
+        "/admin/slots/provision",
+        "/admin/assign-slot",
+        "/admin/slot-move",
+        "/receipts",
+        "/admin/receipt-cc",
+        "/admin/report",
+        "/admin/db/export",
+        "/admin/db/restore",
+        "/admin/force-vacate",
+    ],
+)
+def test_admin_tools_link_destinations_remain_reachable_for_admin(client_with_temp_db, path: str) -> None:
+    admin_id = create_test_user(username=f"admin-link-{path.replace('/', '-').strip('-')}", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get(path)
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/users",
+        "/admin/reference-data",
+        "/admin/holders/import",
+        "/admin/assets/new",
+        "/admin/assets/edit",
+        "/admin/assets/retire",
+        "/admin/assets/replace",
+        "/admin/slots/provision",
+        "/admin/assign-slot",
+        "/admin/slot-move",
+        "/admin/receipt-cc",
+        "/admin/report",
+        "/admin/db/export",
+        "/admin/db/restore",
+        "/admin/force-vacate",
+    ],
+)
+def test_admin_tools_protected_link_destinations_remain_denied_for_operator(
+    client_with_temp_db,
+    path: str,
+) -> None:
+    operator_id = create_test_user(
+        username=f"operator-link-{path.replace('/', '-').strip('-')}",
+        password="op-pass",
+        role="operator",
+    )
+    login_session(client_with_temp_db, operator_id)
+
+    response = client_with_temp_db.get(path)
+
+    assert response.status_code == 403
 
 
 def test_operator_is_forbidden_for_system_health(client_with_temp_db) -> None:
