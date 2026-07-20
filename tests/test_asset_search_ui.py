@@ -41,6 +41,8 @@ class AssetSearchUiTests(unittest.TestCase):
         event_type: str,
         event_date: str,
         payload: dict[str, object] | None = None,
+        holder_id: int | None = None,
+        notes: str | None = None,
         supersedes_event_id: int | None = None,
         correction_reason: str | None = None,
     ) -> int:
@@ -57,13 +59,15 @@ class AssetSearchUiTests(unittest.TestCase):
                 supersedes_event_id,
                 correction_reason
             )
-            VALUES (?, ?, ?, 'system', NULL, ?, NULL, ?, ?);
+            VALUES (?, ?, ?, 'system', ?, ?, ?, ?, ?);
             """,
             (
                 asset_tag,
                 event_type,
                 event_date,
+                notes,
                 json.dumps(payload or {}),
+                holder_id,
                 supersedes_event_id,
                 correction_reason,
             ),
@@ -71,7 +75,14 @@ class AssetSearchUiTests(unittest.TestCase):
         self.conn.commit()
         return int(cursor.lastrowid)
 
-    def _insert_receipt(self, receipt_id: int, receipt_key: str, source_event_ids: list[int]) -> None:
+    def _insert_receipt(
+        self,
+        receipt_id: int,
+        receipt_key: str,
+        source_event_ids: list[int],
+        *,
+        receipt_type: str = "ISSUE",
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO receipt_queue (
@@ -86,9 +97,9 @@ class AssetSearchUiTests(unittest.TestCase):
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, 'ISSUE', ?, '{}', '2026-04-03T09:20:00+00:00', 1, NULL, '2026-04-03T09:20:00+00:00', '2026-04-03T09:20:00+00:00');
+            VALUES (?, ?, ?, ?, '{}', '2026-04-03T09:20:00+00:00', 1, NULL, '2026-04-03T09:20:00+00:00', '2026-04-03T09:20:00+00:00');
             """,
-            (receipt_id, receipt_key, json.dumps(source_event_ids)),
+            (receipt_id, receipt_key, receipt_type, json.dumps(source_event_ids)),
         )
         self.conn.commit()
 
@@ -167,6 +178,7 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Problem: holder still assigned", response.data)
         self.assertIn(b"Current state says stored, but a holder is still assigned.", response.data)
         self.assertIn(b"No movement proof recorded", response.data)
+        self.assertIn(b'href="/assets/history?asset_tag=AT-100', response.data)
         self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
 
     def test_admin_search_links_asset_tag_to_admin_edit_asset(self) -> None:
@@ -430,6 +442,130 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(f"Event #{active_event_id}".encode("utf-8"), response.data)
         self.assertNotIn(f"Event #{superseded_event_id}".encode("utf-8"), response.data)
         self.assertNotIn(f"Event #{correction_event_id}".encode("utf-8"), response.data)
+
+    def test_asset_history_requires_login(self) -> None:
+        anonymous_client = intake_app.app.test_client()
+
+        response = anonymous_client.get("/assets/history?asset_tag=AT-100")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_asset_history_shows_complete_events_receipts_and_corrections(self) -> None:
+        self._insert_holder(3, "Casey Holder", "Signal")
+        self._insert_slot(41, "CASE-HIST", 1)
+        self._insert_asset(
+            "HIST-LAPTOP",
+            serial_number="SER-HIST-LAPTOP",
+            location_type="STORAGE",
+            home_slot_id=41,
+            current_holder_id=None,
+            equipment_type="laptop",
+        )
+        asset_row = self.conn.execute("SELECT id FROM assets WHERE asset_tag = 'HIST-LAPTOP';").fetchone()
+        self.conn.execute(
+            "INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at) VALUES (41, ?, '2026-04-03T09:00:00+00:00');",
+            (int(asset_row["id"]),),
+        )
+        self.conn.commit()
+        created_event_id = self._insert_event(
+            "HIST-LAPTOP",
+            event_type="ASSET_CREATED",
+            event_date="2026-04-01T08:00:00+00:00",
+            payload={"equipment_type": "laptop"},
+            notes="Initial import",
+        )
+        issue_event_id = self._insert_event(
+            "HIST-LAPTOP",
+            event_type="ISSUE",
+            event_date="2026-04-02T09:00:00+00:00",
+            holder_id=3,
+        )
+        return_event_id = self._insert_event(
+            "HIST-LAPTOP",
+            event_type="RETURN",
+            event_date="2026-04-03T09:00:00+00:00",
+            holder_id=3,
+        )
+        superseded_event_id = self._insert_event(
+            "HIST-LAPTOP",
+            event_type="RETURN",
+            event_date="2026-04-04T09:00:00+00:00",
+        )
+        correction_event_id = self._insert_event(
+            "HIST-LAPTOP",
+            event_type="ASSET_UPDATED",
+            event_date="2026-04-05T09:00:00+00:00",
+            supersedes_event_id=superseded_event_id,
+            correction_reason="Incorrect duplicate return.",
+        )
+        self._insert_receipt(51, "ISSUE:51", [issue_event_id])
+        self._insert_receipt(52, "RETURN:52", [return_event_id], receipt_type="RETURN")
+        before_state = self.conn.execute(
+            "SELECT location_type, current_holder_id, home_slot_id FROM assets WHERE asset_tag = 'HIST-LAPTOP';"
+        ).fetchone()
+
+        response = self.client.get("/assets/history?asset_tag=HIST-LAPTOP")
+        after_state = self.conn.execute(
+            "SELECT location_type, current_holder_id, home_slot_id FROM assets WHERE asset_tag = 'HIST-LAPTOP';"
+        ).fetchone()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset History: HIST-LAPTOP", response.data)
+        self.assertIn(b"Type:</strong> Laptop", response.data)
+        self.assertIn(b"Status:</strong>", response.data)
+        self.assertIn(b"In storage", response.data)
+        self.assertIn(b"Holder:</strong>", response.data)
+        self.assertIn(b"Not assigned", response.data)
+        self.assertIn(b"Current slot:</strong>", response.data)
+        self.assertIn(b"CASE-HIST / 1", response.data)
+        self.assertIn(b"Append-Only Event History (5)", response.data)
+        for event_id in [created_event_id, issue_event_id, return_event_id, superseded_event_id, correction_event_id]:
+            self.assertIn(f"#{event_id}".encode("utf-8"), response.data)
+        self.assertLess(response.data.index(f"#{created_event_id}".encode("utf-8")), response.data.index(f"#{issue_event_id}".encode("utf-8")))
+        self.assertLess(response.data.index(f"#{issue_event_id}".encode("utf-8")), response.data.index(f"#{return_event_id}".encode("utf-8")))
+        self.assertIn(b"Initial import", response.data)
+        self.assertIn(b"Casey Holder (Signal)", response.data)
+        self.assertIn(b'href="/receipts/51?return_to=/assets/history?', response.data)
+        self.assertIn(b"ISSUE:51", response.data)
+        self.assertIn(b"RETURN:52", response.data)
+        self.assertIn(b"Correction:</strong> supersedes event", response.data)
+        self.assertIn(b"Superseded by:</strong> event", response.data)
+        self.assertIn(b"Incorrect duplicate return.", response.data)
+        self.assertIn(b"<summary>Recorded facts</summary>", response.data)
+        self.assertNotIn(b"<form", response.data)
+        self.assertEqual(dict(before_state), dict(after_state))
+
+    def test_asset_history_supports_switch_and_router_without_holder(self) -> None:
+        for equipment_type, asset_tag in [("switch", "HIST-SWITCH"), ("router", "HIST-ROUTER")]:
+            with self.subTest(equipment_type=equipment_type):
+                self._insert_asset(
+                    asset_tag,
+                    serial_number=f"SER-{asset_tag}",
+                    location_type="STORAGE",
+                    home_slot_id=None,
+                    equipment_type=equipment_type,
+                )
+                event_id = self._insert_event(
+                    asset_tag,
+                    event_type="SLOT_MOVE",
+                    event_date="2026-04-04T10:15:00+00:00",
+                    payload={
+                        "from_slot": {"case_number": "CASE-OLD", "slot_number": 1},
+                        "to_slot": {"case_number": "CASE-NEW", "slot_number": 2},
+                    },
+                )
+
+                response = self.client.get(f"/assets/history?asset_tag={asset_tag}")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(asset_tag.encode("utf-8"), response.data)
+                self.assertIn(equipment_type.title().encode("utf-8"), response.data)
+                self.assertIn(b"Holder:</strong>", response.data)
+                self.assertIn(b"Not assigned", response.data)
+                self.assertIn(b"SLOT_MOVE", response.data)
+                self.assertIn(f"#{event_id}".encode("utf-8"), response.data)
+                self.assertIn(b"CASE-OLD", response.data)
+                self.assertIn(b"CASE-NEW", response.data)
 
     def test_partial_asset_tag_search_returns_matching_assets(self) -> None:
         self._insert_holder(1, "Alex Holder", "Field Ops")
