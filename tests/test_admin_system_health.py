@@ -129,6 +129,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Edit Asset" in response.data
     assert b"Retire Asset" in response.data
     assert b"Replace Asset" in response.data
+    assert b"Import Switch/Router CSV" in response.data
     assert b"Provision Slots" in response.data
     assert b"Assign Slot" in response.data
     assert b"Move Slot" in response.data
@@ -158,6 +159,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         b'href="/admin/assets/edit"',
         b'href="/admin/assets/retire"',
         b'href="/admin/assets/replace"',
+        b'href="/admin/network-assets/import"',
         b'href="/admin/slots/provision"',
         b'href="/admin/assign-slot"',
         b'href="/admin/slot-move"',
@@ -185,6 +187,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         "/admin/assets/edit",
         "/admin/assets/retire",
         "/admin/assets/replace",
+        "/admin/network-assets/import",
         "/admin/slots/provision",
         "/admin/assign-slot",
         "/admin/slot-move",
@@ -215,6 +218,8 @@ def test_admin_tools_link_destinations_remain_reachable_for_admin(client_with_te
         "/admin/assets/edit",
         "/admin/assets/retire",
         "/admin/assets/replace",
+        "/admin/network-assets/import",
+        "/admin/network-assets/import/template.csv",
         "/admin/slots/provision",
         "/admin/assign-slot",
         "/admin/slot-move",
@@ -257,6 +262,37 @@ def test_operator_is_forbidden_for_holder_import_page(client_with_temp_db) -> No
     response = client_with_temp_db.get("/admin/holders/import")
 
     assert response.status_code == 403
+
+
+def test_admin_network_asset_import_page_exposes_existing_cli_process(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-network-import", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get("/admin/network-assets/import")
+
+    assert response.status_code == 200
+    assert b"Import Switch/Router CSV" in response.data
+    assert b"AssetTrack supports Laptop, Switch, and Router" in response.data
+    assert b"python scripts/import_network_assets_csv.py" in response.data
+    assert b"network_switch_router_staging_template_v1.csv" in response.data
+    assert b'href="/admin/network-assets/import/template.csv"' in response.data
+    assert b"Duplicate asset tags and serial numbers are rejected" in response.data
+    assert b"switch</code> or <code>router" in response.data
+    assert b"No upload page is provided here" in response.data
+    assert b"IP address" in response.data
+    assert b"CMDB relationship" in response.data
+
+
+def test_admin_network_asset_import_template_downloads_existing_csv(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-network-template", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.get("/admin/network-assets/import/template.csv")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+    assert b"asset_tag,barcode,serial_number,equipment_type" in response.data
+    assert b"case_identifier,slot_identifier,notes_comments" in response.data
 
 
 def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:

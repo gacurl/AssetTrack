@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Import Switch/Router CSV{% endblock %}
+{% block page_heading %}Admin: Import Switch/Router CSV{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
+    .command-block { display: block; overflow-x: auto; padding: 0.75rem; }
+    .compact-list { margin: 0.5rem 0 0 1.25rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="workflow-local-nav" aria-label="Network asset import navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+  </nav>
+
+  <div class="card">
+    <h2>Switch/Router Import</h2>
+    <p class="import-help">
+      Use the existing command-line CSV importer for custody-only switch and router records.
+      AssetTrack supports Laptop, Switch, and Router; this CSV path imports Switch and Router only.
+    </p>
+    <p>
+      <a class="nav-link" href="{{ url_for('admin_network_asset_import_template') }}">Download CSV template</a>
+    </p>
+  </div>
+
+  <details class="disclosure-section" open>
+    <summary>
+      <span class="disclosure-title">Import command</span>
+      <span class="disclosure-hint">Run from the AssetTrack project</span>
+    </summary>
+    <div class="disclosure-body">
+      <code class="command-block">python scripts/import_network_assets_csv.py path/to/network_switch_router_staging_template_v1.csv --db data/assettrack.db --actor admin</code>
+      <p class="import-help">Review the CSV before running. The importer validates rows and stops on errors.</p>
+    </div>
+  </details>
+
+  <details class="disclosure-section">
+    <summary>
+      <span class="disclosure-title">CSV requirements</span>
+      <span class="disclosure-hint">Custody fields only</span>
+    </summary>
+    <div class="disclosure-body">
+      <p class="import-help">Allowed columns:</p>
+      <ul class="compact-list">
+        <li><code>asset_tag</code>, <code>barcode</code>, <code>serial_number</code></li>
+        <li><code>equipment_type</code>: <code>switch</code> or <code>router</code></li>
+        <li><code>manufacturer</code>, <code>model</code>, <code>location_building</code></li>
+        <li><code>case_identifier</code>, <code>slot_identifier</code>, <code>notes_comments</code></li>
+      </ul>
+      <p class="import-help">Do not add IP address, MAC address, VLAN, switch port, topology, patch panel, firmware, monitoring, configuration, or CMDB relationship data.</p>
+    </div>
+  </details>
+
+  <details class="disclosure-section">
+    <summary>
+      <span class="disclosure-title">Validation</span>
+      <span class="disclosure-hint">Existing behavior</span>
+    </summary>
+    <div class="disclosure-body">
+      <p class="import-help">Duplicate asset tags and serial numbers are rejected before import.</p>
+      <p class="import-help">Unsupported equipment types are rejected. Empty slots must already exist before assignment.</p>
+      <p class="import-help">No upload page is provided here; use the validated command-line path.</p>
+    </div>
+  </details>
+{% endblock %}
