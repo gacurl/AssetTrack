@@ -1788,6 +1788,151 @@ def _asset_last_movement_proof(conn: sqlite3.Connection, asset_tag: str) -> dict
     }
 
 
+def _asset_history_payload_items(payload_text: object) -> list[dict[str, str]]:
+    try:
+        payload = json.loads(str(payload_text or "{}"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    items: list[dict[str, str]] = []
+    for key in sorted(payload.keys()):
+        value = payload.get(key)
+        if isinstance(value, (dict, list)):
+            display_value = json.dumps(value, sort_keys=True)
+        else:
+            display_value = str(value if value is not None else "")
+        items.append({"key": str(key), "value": display_value})
+    return items
+
+
+def _build_asset_history_view(conn: sqlite3.Connection, asset_tag: str) -> Optional[dict[str, object]]:
+    asset = conn.execute(
+        """
+        SELECT
+            a.*,
+            h.id AS holder_record_id,
+            h.holder_type AS holder_record_type,
+            h.name AS holder_record_name,
+            h.organization AS holder_record_organization
+        FROM assets a
+        LEFT JOIN holders h
+          ON h.id = a.current_holder_id
+        WHERE UPPER(a.asset_tag) = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag,),
+    ).fetchone()
+    if asset is None:
+        return None
+
+    asset_dict = dict(asset)
+    holder = None
+    if asset_dict.get("holder_record_id") is not None:
+        holder = {
+            "id": int(asset_dict["holder_record_id"]),
+            "holder_type": str(asset_dict.get("holder_record_type") or ""),
+            "name": str(asset_dict.get("holder_record_name") or ""),
+            "organization": str(asset_dict.get("holder_record_organization") or ""),
+        }
+    current_slot = _asset_current_slot(conn, int(asset_dict["id"]), str(asset_dict["asset_tag"]))
+    home_slot = _asset_home_slot(conn, asset_dict.get("home_slot_id"))
+
+    event_rows = conn.execute(
+        """
+        SELECT
+            e.id,
+            e.asset_tag,
+            e.event_type,
+            e.event_date,
+            e.actor,
+            e.notes,
+            e.payload,
+            e.holder_id,
+            e.supersedes_event_id,
+            e.correction_reason,
+            superseder.id AS superseded_by_event_id,
+            h.name AS holder_name,
+            h.organization AS holder_organization
+        FROM asset_events e
+        LEFT JOIN asset_events superseder
+          ON superseder.supersedes_event_id = e.id
+        LEFT JOIN holders h
+          ON h.id = e.holder_id
+        WHERE UPPER(e.asset_tag) = UPPER(?)
+        ORDER BY e.event_date ASC, e.id ASC;
+        """,
+        (asset_dict["asset_tag"],),
+    ).fetchall()
+
+    events: list[dict[str, object]] = []
+    for event_row in event_rows:
+        receipts = [
+            {
+                "id": int(receipt_row["id"]),
+                "receipt_key": str(receipt_row["receipt_key"] or ""),
+                "receipt_type": str(receipt_row["receipt_type"] or ""),
+            }
+            for receipt_row in conn.execute(
+                """
+                SELECT id, receipt_key, receipt_type
+                FROM receipt_queue
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM json_each(receipt_queue.source_event_ids_json)
+                    WHERE CAST(json_each.value AS INTEGER) = ?
+                )
+                ORDER BY commit_at ASC, id ASC;
+                """,
+                (int(event_row["id"]),),
+            ).fetchall()
+        ]
+        events.append(
+            {
+                "id": int(event_row["id"]),
+                "event_type": normalize_event_type(event_row["event_type"]),
+                "event_date": str(event_row["event_date"] or ""),
+                "event_date_display": _report_event_display_timestamp(event_row["event_date"]),
+                "actor": str(event_row["actor"] or ""),
+                "notes": str(event_row["notes"] or ""),
+                "holder_id": event_row["holder_id"],
+                "holder_name": str(event_row["holder_name"] or ""),
+                "holder_organization": str(event_row["holder_organization"] or ""),
+                "supersedes_event_id": event_row["supersedes_event_id"],
+                "superseded_by_event_id": event_row["superseded_by_event_id"],
+                "correction_reason": str(event_row["correction_reason"] or ""),
+                "payload_items": _asset_history_payload_items(event_row["payload"]),
+                "receipts": receipts,
+            }
+        )
+
+    equipment_type = str(asset_dict.get("equipment_type") or "").strip()
+    return {
+        "asset": {
+            "asset_tag": str(asset_dict.get("asset_tag") or ""),
+            "serial_number": str(asset_dict.get("serial_number") or ""),
+            "equipment_type": equipment_type,
+            "equipment_type_label": ASSET_EQUIPMENT_TYPE_LABELS.get(
+                equipment_type,
+                equipment_type.replace("_", " ").title() if equipment_type else "",
+            ),
+            "manufacturer": str(asset_dict.get("manufacturer") or ""),
+            "model": str(asset_dict.get("model") or ""),
+            "location_type": _normalize_location_type(asset_dict.get("location_type")),
+            "state_label": _asset_state_label(asset_dict.get("location_type")),
+            "building_room": str(asset_dict.get("building_room") or ""),
+            "building": str(asset_dict.get("building") or ""),
+            "room": str(asset_dict.get("room") or ""),
+            "case_number": str(asset_dict.get("case_number") or ""),
+            "slot_number": str(asset_dict.get("slot_number") or ""),
+        },
+        "holder": holder,
+        "current_slot": current_slot,
+        "home_slot": home_slot,
+        "events": events,
+    }
+
+
 def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     errors: list[str] = []
     asset = _find_asset_for_scan_tag(conn, scan_tag)
@@ -5006,6 +5151,31 @@ def asset_search():
         return_to=return_to,
         receipt_detail_return_to=receipt_detail_return_to,
     )
+
+
+@app.get("/assets/history")
+@require_login
+def asset_history():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+
+    asset_tag = (request.args.get("asset_tag") or "").strip().upper()
+    return_to = _safe_local_return_to(request.args.get("return_to") or "")
+    if not asset_tag:
+        return redirect(url_for("asset_search"))
+
+    conn = get_connection()
+    try:
+        history = _build_asset_history_view(conn, asset_tag)
+    finally:
+        conn.close()
+
+    if history is None:
+        abort(404)
+
+    return render_template("asset_history.html", history=history, return_to=return_to)
 
 
 @app.get("/preview")

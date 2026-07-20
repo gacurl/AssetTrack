@@ -200,6 +200,9 @@
                     <code>{{ asset.asset_tag or "" }}</code>
                   {% endif %}
                   <span>Serial: {{ asset.serial_number or "Not recorded" }}</span>
+                  {% if asset.asset_tag %}
+                    <a class="nav-link" href="{{ url_for('asset_history', asset_tag=asset.asset_tag, return_to=request.full_path.rstrip('?')) }}">History</a>
+                  {% endif %}
                 </div>
               </td>
               <td>
