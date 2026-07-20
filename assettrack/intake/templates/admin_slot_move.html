@@ -9,7 +9,9 @@
   <style>
     .grid { display: grid; grid-template-columns: repeat(2, minmax(240px, 1fr)); gap: 0.75rem 1rem; }
     .slot-move-source-table td:last-child,
-    .slot-move-source-table th:last-child {
+    .slot-move-source-table th:last-child,
+    .slot-move-destination-table td:last-child,
+    .slot-move-destination-table th:last-child {
       text-align: right;
       white-space: nowrap;
     }
@@ -21,6 +23,15 @@
       color: var(--color-text-muted);
       font-size: 0.85rem;
       margin-top: 0.15rem;
+    }
+    .slot-list-toggle summary {
+      cursor: pointer;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .slot-list-toggle summary .muted {
+      font-weight: 400;
+      margin-left: 0.35rem;
     }
   </style>
 {% endblock %}
@@ -38,10 +49,30 @@
     {% endif %}
   {% endwith %}
 
-  {% if not source_slot or not source_slot.occupied %}
+  {% if source_slot %}
+    <div class="card">
+      <h2>Source Slot Details</h2>
+      <div class="grid">
+        <div><strong>slot_id:</strong> <code>{{ source_slot.slot_id }}</code></div>
+        <div><strong>case_number:</strong> <code>{{ source_slot.case_name }}</code></div>
+        <div><strong>slot_number:</strong> <code>{{ source_slot.slot_position }}</code></div>
+        <div><strong>occupied:</strong> <code>{{ "yes" if source_slot.occupied else "no" }}</code></div>
+        <div><strong>building/room:</strong> {{ source_slot.asset.building_room if source_slot.asset else "" }}</div>
+        <div><strong>asset_tag:</strong> <code>{{ source_slot.asset.asset_tag if source_slot.asset else source_slot.current_asset_tag or "" }}</code></div>
+        <div><strong>location_type:</strong> <code>{{ source_slot.asset.location_type if source_slot.asset else "" }}</code></div>
+        <div><strong>home_slot_id:</strong> {{ source_slot.asset.home_slot_id if source_slot.asset and source_slot.asset.home_slot_id is not none else "none" }}</div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if source_slots %}
     <div class="card">
       <h2>Select Source Slot</h2>
-      {% if source_slots %}
+      <details class="slot-list-toggle"{% if not source_slot or not source_slot.occupied %} open{% endif %}>
+        <summary>
+          Occupied Source Slots
+          <span class="muted">{{ source_slots|length }} shown</span>
+        </summary>
         <table class="slot-move-source-table">
           <thead>
             <tr>
@@ -73,89 +104,12 @@
             {% endfor %}
           </tbody>
         </table>
-      {% else %}
-        <p class="muted">No occupied source slots found.</p>
-      {% endif %}
+      </details>
     </div>
-  {% endif %}
-
-  {% if source_slot %}
+  {% elif not source_slot or not source_slot.occupied %}
     <div class="card">
-      <h2>Source Slot Details</h2>
-      <div class="grid">
-        <div><strong>slot_id:</strong> <code>{{ source_slot.slot_id }}</code></div>
-        <div><strong>case_number:</strong> <code>{{ source_slot.case_name }}</code></div>
-        <div><strong>slot_number:</strong> <code>{{ source_slot.slot_position }}</code></div>
-        <div><strong>occupied:</strong> <code>{{ "yes" if source_slot.occupied else "no" }}</code></div>
-        <div><strong>building/room:</strong> {{ source_slot.asset.building_room if source_slot.asset else "" }}</div>
-        <div><strong>asset_tag:</strong> <code>{{ source_slot.asset.asset_tag if source_slot.asset else source_slot.current_asset_tag or "" }}</code></div>
-        <div><strong>location_type:</strong> <code>{{ source_slot.asset.location_type if source_slot.asset else "" }}</code></div>
-        <div><strong>home_slot_id:</strong> {{ source_slot.asset.home_slot_id if source_slot.asset and source_slot.asset.home_slot_id is not none else "none" }}</div>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if source_slot and source_slot.occupied %}
-    <div class="card">
-      <h2>Move To Destination Slot</h2>
-      <p class="muted">Destination must exist and be empty.</p>
-      <form method="post" action="{{ url_for('admin_slot_move') }}">
-        <input type="hidden" name="action" value="preview" />
-        <input type="hidden" name="source_slot_id" value="{{ source_slot.slot_id }}" />
-
-        <div class="row">
-          <label for="building_room"><strong>building/room</strong> (required)</label><br />
-          <input
-            type="text"
-            id="building_room"
-            name="building_room"
-            value="{{ building_room or '' }}"
-            placeholder="e.g. BQ26-101"
-            autocomplete="off"
-            required
-          />
-        </div>
-
-        <div class="row">
-          <label for="case_number"><strong>case_number</strong> (required)</label><br />
-          <input
-            type="text"
-            id="case_number"
-            name="case_number"
-            value="{{ case_number or '' }}"
-            placeholder="e.g. CASE-01"
-            autocomplete="off"
-            required
-          />
-        </div>
-
-        <div class="row">
-          <label for="slot_number"><strong>slot_number</strong> (required)</label><br />
-          <input
-            type="text"
-            id="slot_number"
-            name="slot_number"
-            value="{{ slot_number or '' }}"
-            placeholder="e.g. 2"
-            autocomplete="off"
-            required
-          />
-        </div>
-
-        <div class="row">
-          <label for="notes"><strong>notes</strong> (optional)</label><br />
-          <input
-            type="text"
-            id="notes"
-            name="notes"
-            value="{{ notes or '' }}"
-            placeholder="Optional move note"
-            autocomplete="off"
-          />
-        </div>
-
-        <button type="submit">Preview Move</button>
-      </form>
+      <h2>Select Source Slot</h2>
+      <p class="muted">No occupied source slots found.</p>
     </div>
   {% endif %}
 
@@ -191,12 +145,57 @@
       <form method="post" action="{{ url_for('admin_slot_move') }}">
         <input type="hidden" name="action" value="commit" />
         <input type="hidden" name="source_slot_id" value="{{ move_preview.source.slot_id }}" />
-        <input type="hidden" name="building_room" value="{{ building_room or '' }}" />
-        <input type="hidden" name="case_number" value="{{ case_number or '' }}" />
-        <input type="hidden" name="slot_number" value="{{ slot_number or '' }}" />
+        <input type="hidden" name="destination_slot_id" value="{{ move_preview.destination.slot_id }}" />
+        <input type="hidden" name="expected_asset_id" value="{{ move_preview.asset.asset_id }}" />
+        <input type="hidden" name="expected_destination_slot_id" value="{{ move_preview.destination.slot_id }}" />
         <input type="hidden" name="notes" value="{{ notes or '' }}" />
         <button type="submit">Confirm Move</button>
       </form>
+    </div>
+  {% endif %}
+
+  {% if source_slot and source_slot.occupied %}
+    <div class="card">
+      <h2>Move To Destination Slot</h2>
+      <p class="muted">Only empty slots are shown. Building/room stays with the selected asset.</p>
+      {% if destination_slots %}
+        <details class="slot-list-toggle"{% if not move_preview %} open{% endif %}>
+          <summary>
+            Empty Destination Slots
+            <span class="muted">{{ destination_slots|length }} shown</span>
+          </summary>
+          <table class="slot-move-destination-table">
+            <thead>
+              <tr>
+                <th>Building/room</th>
+                <th>Case</th>
+                <th>Slot</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in destination_slots %}
+                <tr>
+                  <td>{{ row.building_room or "Not recorded" }}</td>
+                  <td><code>{{ row.case_name }}</code></td>
+                  <td><code>{{ row.slot_position }}</code></td>
+                  <td>
+                    <form method="post" action="{{ url_for('admin_slot_move') }}">
+                      <input type="hidden" name="action" value="preview" />
+                      <input type="hidden" name="source_slot_id" value="{{ source_slot.slot_id }}" />
+                      <input type="hidden" name="destination_slot_id" value="{{ row.slot_id }}" />
+                      <input type="hidden" name="notes" value="{{ notes or '' }}" />
+                      <button type="submit">Select</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% else %}
+        <p class="muted">No empty destination slots found.</p>
+      {% endif %}
     </div>
   {% endif %}
 {% endblock %}
