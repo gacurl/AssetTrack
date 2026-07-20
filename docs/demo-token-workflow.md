@@ -9,8 +9,12 @@ sending a sample receipt email.
 
 Nothing else.
 
-Normal deployments should leave demo token variables unset unless sample
-receipt sending from `/demo` is intentionally enabled.
+`/demo` is a public sample/demo surface for demonstration and support. It is
+separate from the offline operational AssetTrack custody application.
+
+Standalone operational deployments do not require `/demo` or demo tokens.
+Operational deployments should leave `ASSETTRACK_DEMO_TOKENS` unset unless
+sample receipt sending from the public demo is intentionally enabled.
 
 ---
 
@@ -25,6 +29,9 @@ They can:
 
 This is all sample content.  
 No real system data is shown.
+
+The public demo must not contain an operational custody database or real
+operational data.
 
 ---
 
@@ -129,10 +136,38 @@ Important:
 - the email address is not saved to the database
 - nothing is written to the event log
 - no account is created
+- no custody event, receipt record, holder, asset, or report is created
 
 The system only stores (in session):
 - send count
 - last send time (for cooldown)
+
+SMTP is required only if sample receipt sending is intentionally enabled for
+the public demo. The email remains demo-only and does not affect operational
+custody.
+
+---
+
+## Deployment boundary
+
+Standalone operational computer:
+
+- runs the core AssetTrack custody application
+- uses local SQLite persistence
+- uses protected users and roles
+- does not need demo tokens
+- should normally leave `ASSETTRACK_DEMO_TOKENS` unset
+- does not require internet access for runtime
+
+Public server:
+
+- serves demo/support content only
+- must not host operational custody data
+- needs demo tokens only when sample receipt sending is intentionally enabled
+- needs SMTP only when sample email sending is intentionally enabled
+- remains a separate concern from the field deployment
+
+Server hardening remains relevant while a public demo server remains online.
 
 ---
 
