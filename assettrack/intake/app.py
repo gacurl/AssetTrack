@@ -7332,6 +7332,26 @@ def admin_holder_import():
     return render_template("admin_holder_import.html", report=report)
 
 
+@app.get("/admin/network-assets/import")
+@require_login
+@require_role("admin")
+def admin_network_asset_import():
+    return render_template("admin_network_asset_import.html")
+
+
+@app.get("/admin/network-assets/import/template.csv")
+@require_login
+@require_role("admin")
+def admin_network_asset_import_template():
+    template_path = Path(__file__).resolve().parents[2] / "docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv"
+    return send_file(
+        template_path,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="network_switch_router_staging_template_v1.csv",
+    )
+
+
 def _load_admin_human_report_data(resolved_db_path: Path, *, include_retired_assets: bool = True) -> dict:
     recent_events_limit = 10
     conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)

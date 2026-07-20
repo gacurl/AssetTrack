@@ -2,11 +2,13 @@
 
 ## Purpose
 
-Use `network_switch_router_staging_template_v1.csv` to prepare switch and router custody records for operator review.
+Use `network_switch_router_staging_template_v1.csv` to prepare switch and router custody records for administrator review and import.
 
-This template is a planning and staging artifact only. It does not upload data, create assets, append events, or implement import behavior.
+This template feeds the existing command-line importer. It does not create an admin upload page or add network-management behavior.
 
 AssetTrack tracks equipment custody and storage. It is not a CMDB or network configuration system.
+
+AssetTrack supports these asset categories: Laptop, Switch, and Router. This CSV import path is only for Switch and Router records.
 
 ## Allowed Rows
 
@@ -48,9 +50,10 @@ AssetTrack tracks equipment custody and storage. It is not a CMDB or network con
 
 ## Duplicate Handling
 
-- Treat repeated `asset_tag`, `barcode`, or `serial_number` values as review items.
-- Do not silently merge, overwrite, or discard duplicate rows.
-- Resolve duplicates during staging review before any future import attempt.
+- Repeated canonical `asset_tag` values are rejected.
+- Repeated `serial_number` values are rejected.
+- Existing matching `asset_tag` or `serial_number` values in AssetTrack are rejected.
+- The importer does not silently merge, overwrite, or discard duplicate rows.
 
 ## Rejected Fields
 
@@ -66,8 +69,12 @@ Do not add or record CMDB-like or network configuration fields, including:
 - running configuration
 - device configuration
 
-## Review Before Import
+## Import Command
 
-Operators must review staged rows against this CSV and Markdown contract before any future import work proceeds.
+Run from the AssetTrack project after reviewing the CSV:
 
-Import behavior is intentionally out of scope. A later issue must define validation, preview, duplicate resolution, event behavior, and commit boundaries before runtime implementation begins.
+```bash
+python scripts/import_network_assets_csv.py path/to/network_switch_router_staging_template_v1.csv --db data/assettrack.db --actor admin
+```
+
+The importer validates headers, supported equipment types, duplicates, CMDB-like columns, and optional slot assignment before committing rows.
