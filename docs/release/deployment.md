@@ -119,6 +119,31 @@ For normal field use:
 2. Perform the required operator workflows.
 3. Stop the app with `docker compose down` when finished.
 
+## Public demo boundary
+
+The public `/demo` page is a separate demo/support surface. It is not required
+for the standalone operational AssetTrack deployment.
+
+Standalone operational computer:
+
+- runs the protected custody application
+- uses local SQLite persistence
+- does not need a demo token
+- should normally leave `ASSETTRACK_DEMO_TOKENS` unset
+- does not require internet access for runtime
+
+Public demo server:
+
+- must not contain an operational custody database or real operational data
+- uses demo tokens only when sample receipt sending is intentionally enabled
+- uses SMTP only when sample email sending is intentionally enabled
+- remains separate from the operational field deployment
+
+Sample demo email remains demo-only. It does not create custody, events,
+receipts, holders, assets, or reports.
+
+Server hardening remains relevant while a public demo server remains online.
+
 ## Related release documents
 
 - [Smoke Test](smoke-test.md)

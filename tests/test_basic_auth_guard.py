@@ -149,11 +149,13 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
     assert "Set-Cookie" not in response.headers
     assert b"AssetTrack Demo" in response.data
     assert b"Know who has each asset" in response.data
-    assert b"This demo uses sample data only" in response.data
+    assert b"This public demo/support page uses sample data only" in response.data
     assert b"Email does not move assets" in response.data
     assert b"Saved Issue and Return actions create the proof" in response.data
+    assert b"The field custody app is separate and protected." in response.data
     assert b"does not show real records" in response.data
     assert b"update custody" in response.data
+    assert b"Operational deployments should leave demo tokens unset." in response.data
     assert b"demo" in response.data.lower()
     assert b"sample" in response.data.lower()
     assert b"Safety note:" in response.data
@@ -194,6 +196,7 @@ def test_demo_sample_receipt_form_is_hidden_without_valid_token(
     assert b"Send me a sample receipt" not in expired.data
     assert b"Send me a sample receipt" in valid.data
     assert b"Demo only. No real data." in valid.data
+    assert b"does not create custody, events, receipts, holders, or assets" in valid.data
 
 
 def test_demo_sample_receipt_send_requires_valid_token(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:

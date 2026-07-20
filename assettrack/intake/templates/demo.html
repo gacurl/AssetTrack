@@ -376,11 +376,11 @@
         <span class="demo-hero-line shift-2">where it belongs,</span>
         <span class="demo-hero-line shift-3">and what needs fixing.</span>
       </h2>
-      <p class="demo-standfirst">This demo uses sample data only. It does not show real records or change the real app.</p>
+      <p class="demo-standfirst">This public demo/support page uses sample data only. It does not show real records or change the operational app.</p>
     </div>
     <div class="demo-hero-actions">
       <a class="chip" href="{{ url_for('intake') }}">Wrong page? Go to Operator Login</a>
-      <p class="demo-hero-support">Public visitors only see this demo page.</p>
+      <p class="demo-hero-support">The field custody app is separate and protected.</p>
     </div>
   </div>
 
@@ -389,7 +389,7 @@
       <div>
         <p class="demo-kicker">Optional Demo Action</p>
         <p><strong>Send me a sample receipt</strong></p>
-        <p class="muted">Demo only. No real data. Email delivery does not create custody. Session limit: {{ demo_send_limit }} sends.</p>
+        <p class="muted">Demo only. No real data. Email delivery does not create custody, events, receipts, holders, or assets. Session limit: {{ demo_send_limit }} sends.</p>
       </div>
       <form class="demo-email-form" method="post" action="{{ url_for('demo_send_sample_receipt') }}" data-demo-send-form>
         <input type="hidden" name="token" value="{{ demo_token }}" />
@@ -450,7 +450,7 @@
       <ul class="demo-list">
         <li>Your team gets simple tools to issue assets, return assets, find records, and read receipts.</li>
         <li>Admins control users, locations, backups, recovery, and system settings.</li>
-        <li>Public visitors only see this demo page.</li>
+        <li>Public visitors only see this demo/support page; operational custody stays protected.</li>
       </ul>
     </div>
   </section>
@@ -548,7 +548,7 @@
 
   <div class="demo-note">
     <strong>Safety note:</strong>
-    <p>This public demo uses sample data only. It does not show real records, log visitors in, send changes, or update custody.</p>
+    <p>This public demo uses sample data only. It does not show real records, log visitors in, send changes, or update custody. Operational deployments should leave demo tokens unset.</p>
   </div>
 {% endblock %}
 
