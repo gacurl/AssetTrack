@@ -42,6 +42,8 @@ def _create_building(name: str) -> None:
 def _insert_slot_move_fixture(
     *,
     asset_tag: str = "MOVE-100",
+    equipment_type: str = "switch",
+    location_type: str = "STORAGE",
     source_slot_id: int = 810,
     destination_slot_id: int = 811,
     destination_occupied: bool = False,
@@ -85,11 +87,11 @@ def _insert_slot_move_fixture(
                 case_number,
                 slot_number
             )
-            VALUES (?, 'SER-MOVE-100', 'switch', 'Cisco', 'Catalyst', 'SRC', '101', 'SRC/101',
+            VALUES (?, 'SER-MOVE-100', ?, 'Cisco', 'Catalyst', 'SRC', '101', 'SRC/101',
                     'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z',
-                    'STORAGE', ?, ?, 'CASE-SRC', '1');
+                    ?, ?, ?, 'CASE-SRC', '1');
             """,
-            (asset_tag, current_holder_id, source_slot_id),
+            (asset_tag, equipment_type, location_type, current_holder_id, source_slot_id),
         )
         asset_id = int(cursor.lastrowid)
         conn.execute(
@@ -182,6 +184,41 @@ def _slot_move_state(asset_tag: str = "MOVE-100") -> dict[str, object]:
         "events": [dict(row) for row in events],
         "receipt_count": int(receipts["c"]),
     }
+
+
+def _slot_move_expected_fields(asset_tag: str = "MOVE-100", destination_slot_id: int = 811) -> dict[str, str]:
+    conn = db.get_connection()
+    try:
+        asset = conn.execute("SELECT id FROM assets WHERE asset_tag = ? LIMIT 1;", (asset_tag,)).fetchone()
+    finally:
+        conn.close()
+    return {
+        "expected_asset_id": str(int(asset["id"])),
+        "expected_destination_slot_id": str(destination_slot_id),
+    }
+
+
+def _slot_move_commit_data(
+    source_slot_id: int = 810,
+    case_number: str = "CASE-DST",
+    slot_number: str = "2",
+    *,
+    expected_asset_tag: str = "MOVE-100",
+    destination_slot_id: int = 811,
+    include_expected: bool = True,
+) -> dict[str, str]:
+    data = {
+        "action": "commit",
+        "source_slot_id": str(source_slot_id),
+        "destination_slot_id": str(destination_slot_id),
+        "building_room": "DST/202",
+        "case_number": case_number,
+        "slot_number": slot_number,
+        "notes": "rack move",
+    }
+    if include_expected:
+        data.update(_slot_move_expected_fields(expected_asset_tag, destination_slot_id))
+    return data
 
 
 def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_db) -> None:
@@ -736,8 +773,80 @@ def test_slot_move_selecting_source_continues_to_destination_selection(client_wi
     assert response.status_code == 200
     assert b"Source Slot Details" in response.data
     assert b"Move To Destination Slot" in response.data
-    assert b"Preview Move" in response.data
+    assert b"Occupied Source Slots" in response.data
+    assert b"Empty Destination Slots" in response.data
+    assert b"Only empty slots are shown." in response.data
     assert b'name="source_slot_id" value="810"' in response.data
+    assert b'name="destination_slot_id" value="811"' in response.data
+    source_details_index = response.data.index(b"Source Slot Details")
+    source_list_index = response.data.index(b"Occupied Source Slots")
+    destination_list_index = response.data.index(b"Empty Destination Slots")
+    destination_slot_index = response.data.index(b'name="destination_slot_id" value="811"')
+    assert source_details_index < source_list_index
+    assert destination_list_index < destination_slot_index
+
+
+def test_slot_move_destination_list_shows_empty_slots_and_excludes_source(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+
+    response = client_with_temp_db.get("/admin/slot-move?slot_id=810")
+
+    assert response.status_code == 200
+    assert b"SRC/101" in response.data
+    assert b"<code>CASE-DST</code>" in response.data
+    assert b"<code>2</code>" in response.data
+    assert b'name="destination_slot_id" value="811"' in response.data
+    assert b'name="destination_slot_id" value="810"' not in response.data
+    assert b'id="building_room"' not in response.data
+    assert b'id="case_number"' not in response.data
+    assert b'id="slot_number"' not in response.data
+
+
+def test_slot_move_destination_list_hides_occupied_slots(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(destination_occupied=True)
+
+    response = client_with_temp_db.get("/admin/slot-move?slot_id=810")
+
+    assert response.status_code == 200
+    assert b'name="destination_slot_id" value="811"' not in response.data
+    assert b"No empty destination slots found." in response.data
+
+
+def test_slot_move_selecting_destination_reaches_preview(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data={
+            "action": "preview",
+            "source_slot_id": "810",
+            "destination_slot_id": "811",
+            "building_room": "SRC/101",
+        },
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Preview Move" in response.data
+    assert b"Confirm Move" in response.data
+    assert b"MOVE-100" in response.data
+    assert b"CASE-SRC" in response.data
+    assert b"CASE-DST" in response.data
+    assert b"Empty Destination Slots" in response.data
+    assert b'name="destination_slot_id" value="811"' in response.data
+    assert b'name="expected_destination_slot_id" value="811"' in response.data
+    preview_index = response.data.index(b"Preview Move")
+    confirm_index = response.data.index(b"Confirm Move")
+    destination_list_index = response.data.index(b"Empty Destination Slots")
+    destination_select_index = response.data.rindex(b'name="destination_slot_id" value="811"')
+    assert preview_index < destination_list_index
+    assert confirm_index < destination_list_index
+    assert destination_list_index < destination_select_index
+    assert after == before
 
 
 def test_slot_move_valid_slot_id_deep_link_still_works(client_with_temp_db) -> None:
@@ -762,9 +871,7 @@ def test_slot_move_preview_displays_facts_without_changing_state(client_with_tem
         data={
             "action": "preview",
             "source_slot_id": "810",
-            "building_room": "DST/202",
-            "case_number": "CASE-DST",
-            "slot_number": "2",
+            "destination_slot_id": "811",
             "notes": "rack move",
         },
     )
@@ -780,11 +887,51 @@ def test_slot_move_preview_displays_facts_without_changing_state(client_with_tem
     assert b"SRC" in response.data
     assert b"101" in response.data
     assert b"DST" in response.data
-    assert b"202" in response.data
+    assert b"101" in response.data
     assert b"Custody will not change." in response.data
     assert b"No custody receipt will be generated." in response.data
     assert b"Confirm Move" in response.data
     assert after == before
+
+
+@pytest.mark.parametrize(
+    ("equipment_type", "holder_id"),
+    [
+        ("laptop", 44),
+        ("switch", None),
+        ("router", None),
+    ],
+)
+def test_slot_move_confirm_moves_supported_stored_asset_types_without_custody_or_receipt_change(
+    client_with_temp_db,
+    equipment_type: str,
+    holder_id: int | None,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(equipment_type=equipment_type, current_holder_id=holder_id)
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data=_slot_move_commit_data(),
+        follow_redirects=True,
+    )
+    state = _slot_move_state()
+
+    assert response.status_code == 200
+    assert state["source_slot"]["current_asset_tag"] is None
+    assert state["destination_slot"]["current_asset_tag"] == "MOVE-100"
+    assert state["occupancy_slots"] == [811]
+    assert state["receipt_count"] == 0
+    assert state["asset"]["location_type"] == "STORAGE"
+    assert state["asset"]["current_holder_id"] == holder_id
+    assert int(state["asset"]["home_slot_id"]) == 811
+    assert state["asset"]["building"] == "SRC"
+    assert state["asset"]["room"] == "101"
+    assert state["asset"]["building_room"] == "SRC/101"
+    assert state["asset"]["case_number"] == "CASE-DST"
+    assert str(state["asset"]["slot_number"]) == "2"
+    assert [event["event_type"] for event in state["events"]] == ["SLOT_MOVE"]
+    assert state["events"][0]["holder_id"] is None
 
 
 def test_slot_move_confirm_moves_storage_asset_without_custody_or_receipt_change(client_with_temp_db) -> None:
@@ -793,14 +940,7 @@ def test_slot_move_confirm_moves_storage_asset_without_custody_or_receipt_change
 
     response = client_with_temp_db.post(
         "/admin/slot-move",
-        data={
-            "action": "commit",
-            "source_slot_id": "810",
-            "building_room": "DST/202",
-            "case_number": "CASE-DST",
-            "slot_number": "2",
-            "notes": "rack move",
-        },
+        data=_slot_move_commit_data(),
         follow_redirects=True,
     )
     state = _slot_move_state()
@@ -816,9 +956,9 @@ def test_slot_move_confirm_moves_storage_asset_without_custody_or_receipt_change
     assert asset["location_type"] == "STORAGE"
     assert int(asset["current_holder_id"]) == 44
     assert int(asset["home_slot_id"]) == 811
-    assert asset["building"] == "DST"
-    assert asset["room"] == "202"
-    assert asset["building_room"] == "DST/202"
+    assert asset["building"] == "SRC"
+    assert asset["room"] == "101"
+    assert asset["building_room"] == "SRC/101"
     assert asset["case_number"] == "CASE-DST"
     assert str(asset["slot_number"]) == "2"
 
@@ -834,10 +974,106 @@ def test_slot_move_confirm_moves_storage_asset_without_custody_or_receipt_change
     }
     assert payload["to_slot"] == {
         "slot_id": 811,
-        "building_room": "DST/202",
+        "building_room": "SRC/101",
         "case_number": "CASE-DST",
         "slot_number": 2,
     }
+
+
+def test_slot_move_repeated_confirmation_does_not_append_second_slot_move(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    stale_commit_data = _slot_move_commit_data()
+
+    first = client_with_temp_db.post("/admin/slot-move", data=stale_commit_data, follow_redirects=True)
+    second = client_with_temp_db.post("/admin/slot-move", data=stale_commit_data, follow_redirects=True)
+    state = _slot_move_state()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert b"Source slot is missing or empty." in second.data
+    assert state["source_slot"]["current_asset_tag"] is None
+    assert state["destination_slot"]["current_asset_tag"] == "MOVE-100"
+    assert state["occupancy_slots"] == [811]
+    assert [event["event_type"] for event in state["events"]] == ["SLOT_MOVE"]
+    assert state["receipt_count"] == 0
+
+
+def test_slot_move_rejects_stale_source_reoccupied_by_different_asset_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    stale_commit_data = _slot_move_commit_data()
+    conn = db.get_connection()
+    try:
+        move_asset = conn.execute("SELECT id FROM assets WHERE asset_tag = 'MOVE-100';").fetchone()
+        conn.execute("DELETE FROM slot_occupancy WHERE slot_id = 810;")
+        other_cursor = conn.execute(
+            """
+            INSERT INTO assets (
+                asset_tag,
+                serial_number,
+                equipment_type,
+                manufacturer,
+                building,
+                room,
+                building_room,
+                custody_state,
+                accountability_status,
+                condition,
+                created_date,
+                updated_date,
+                location_type,
+                current_holder_id,
+                home_slot_id,
+                case_number,
+                slot_number
+            )
+            VALUES ('OTHER-SOURCE', 'SER-OTHER-SOURCE', 'router', 'Cisco', 'SRC', '101', 'SRC/101',
+                    'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z',
+                    'STORAGE', NULL, 810, 'CASE-SRC', '1');
+            """
+        )
+        conn.execute(
+            "INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at) VALUES (810, ?, '2026-01-02T00:00:00Z');",
+            (int(other_cursor.lastrowid),),
+        )
+        conn.execute("UPDATE slots SET current_asset_tag = 'OTHER-SOURCE' WHERE id = 810;")
+        conn.commit()
+        before_move = conn.execute(
+            "SELECT location_type, current_holder_id, home_slot_id, building_room, case_number, slot_number FROM assets WHERE id = ?;",
+            (int(move_asset["id"]),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post("/admin/slot-move", data=stale_commit_data, follow_redirects=True)
+
+    conn = db.get_connection()
+    try:
+        after_move = conn.execute(
+            "SELECT location_type, current_holder_id, home_slot_id, building_room, case_number, slot_number FROM assets WHERE asset_tag = 'MOVE-100';"
+        ).fetchone()
+        other_occupancy = conn.execute(
+            """
+            SELECT so.slot_id
+            FROM slot_occupancy so
+            JOIN assets a ON a.id = so.asset_id
+            WHERE a.asset_tag = 'OTHER-SOURCE';
+            """
+        ).fetchone()
+        destination = conn.execute("SELECT current_asset_tag FROM slots WHERE id = 811;").fetchone()
+        events = conn.execute("SELECT event_type FROM asset_events ORDER BY id ASC;").fetchall()
+        receipts = conn.execute("SELECT COUNT(*) AS c FROM receipt_queue;").fetchone()
+    finally:
+        conn.close()
+
+    assert response.status_code == 200
+    assert b"Source slot changed. Preview the move again." in response.data
+    assert dict(after_move) == dict(before_move)
+    assert int(other_occupancy["slot_id"]) == 810
+    assert destination["current_asset_tag"] is None
+    assert events == []
+    assert int(receipts["c"]) == 0
 
 
 def test_slot_move_commit_rejects_stale_empty_source_without_partial_change(client_with_temp_db) -> None:
@@ -856,9 +1092,7 @@ def test_slot_move_commit_rejects_stale_empty_source_without_partial_change(clie
         data={
             "action": "commit",
             "source_slot_id": "810",
-            "building_room": "DST/202",
-            "case_number": "CASE-DST",
-            "slot_number": "2",
+            "destination_slot_id": "811",
         },
         follow_redirects=True,
     )
@@ -873,6 +1107,29 @@ def test_slot_move_commit_rejects_stale_empty_source_without_partial_change(clie
     assert state["receipt_count"] == 0
 
 
+def test_slot_move_commit_rejects_marker_only_occupied_destination_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE slots SET current_asset_tag = 'MARKER-ONLY' WHERE id = 811;")
+        conn.commit()
+    finally:
+        conn.close()
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data=_slot_move_commit_data(),
+        follow_redirects=True,
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Destination slot is already occupied." in response.data
+    assert after == before
+
+
 def test_slot_move_commit_rejects_stale_occupied_destination_without_partial_change(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     _insert_slot_move_fixture(destination_occupied=True)
@@ -882,9 +1139,7 @@ def test_slot_move_commit_rejects_stale_occupied_destination_without_partial_cha
         data={
             "action": "commit",
             "source_slot_id": "810",
-            "building_room": "DST/202",
-            "case_number": "CASE-DST",
-            "slot_number": "2",
+            "destination_slot_id": "811",
         },
         follow_redirects=True,
     )
@@ -897,3 +1152,79 @@ def test_slot_move_commit_rejects_stale_occupied_destination_without_partial_cha
     assert state["occupancy_slots"] == [810]
     assert state["events"] == []
     assert state["receipt_count"] == 0
+
+
+def test_slot_move_commit_rejects_identical_source_and_destination_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture()
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data=_slot_move_commit_data(case_number="CASE-SRC", slot_number="1", destination_slot_id=810),
+        follow_redirects=True,
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Moving to the same slot is not allowed." in response.data
+    assert after == before
+
+
+def test_slot_move_commit_rejects_in_custody_asset_without_partial_change(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(location_type="IN_CUSTODY", current_holder_id=44)
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data=_slot_move_commit_data(),
+        follow_redirects=True,
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Asset must be location_type=STORAGE." in response.data
+    assert after == before
+
+
+@pytest.mark.parametrize(
+    ("location_type", "failure_type"),
+    [
+        ("RETIRED", "HARDWARE"),
+        ("DISPOSED", "HARDWARE"),
+        ("DISPOSED", "LOST"),
+        ("DISPOSED", "OTHER"),
+    ],
+)
+def test_slot_move_commit_rejects_terminal_assets_without_partial_change(
+    client_with_temp_db,
+    location_type: str,
+    failure_type: str,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot_move_fixture(location_type=location_type)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+            VALUES ('MOVE-100', 'ASSET_RETIRED', '2026-01-01T01:00:00Z', 'admin', NULL, ?, NULL);
+            """,
+            (json.dumps({"failure_type": failure_type, "to_location_type": location_type}),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    before = _slot_move_state()
+
+    response = client_with_temp_db.post(
+        "/admin/slot-move",
+        data=_slot_move_commit_data(),
+        follow_redirects=True,
+    )
+    after = _slot_move_state()
+
+    assert response.status_code == 200
+    assert b"Asset is retired/disposed and cannot be moved." in response.data
+    assert after == before

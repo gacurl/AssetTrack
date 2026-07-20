@@ -2065,6 +2065,51 @@ def _list_admin_slot_move_sources(conn) -> list[dict]:
     ]
 
 
+def _list_admin_slot_move_destinations(conn, *, source_slot_id: int, building_room: str) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT s.id AS slot_id, s.case_name, s.slot_position
+        FROM slots s
+        LEFT JOIN slot_occupancy so ON so.slot_id = s.id
+        WHERE s.id <> ?
+          AND so.asset_id IS NULL
+          AND TRIM(COALESCE(s.current_asset_tag, '')) = ''
+        ORDER BY UPPER(s.case_name), s.slot_position
+        LIMIT 200;
+        """,
+        (source_slot_id,),
+    ).fetchall()
+    return [
+        {
+            "slot_id": int(row["slot_id"]),
+            "case_name": str(row["case_name"] or ""),
+            "slot_position": int(row["slot_position"]),
+            "building_room": building_room,
+        }
+        for row in rows
+    ]
+
+
+def _build_admin_slot_move_destination_view(conn, slot_id: int, *, building_room: str) -> Optional[dict]:
+    slot_row = conn.execute(
+        """
+        SELECT id, case_name, slot_position
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (slot_id,),
+    ).fetchone()
+    if not slot_row:
+        return None
+    return {
+        "slot_id": int(slot_row["id"]),
+        "case_name": str(slot_row["case_name"] or ""),
+        "slot_position": int(slot_row["slot_position"]),
+        "building_room": building_room,
+    }
+
+
 def _split_building_room(value: object) -> dict[str, str]:
     text = str(value or "").strip()
     if "/" not in text:
@@ -2202,6 +2247,25 @@ def _build_admin_slot_move_preview(
             "room": destination_location["room"],
         },
     }
+
+
+def _validate_admin_slot_move_expected(
+    move_preview: dict,
+    *,
+    expected_asset_id_raw: str,
+    expected_destination_slot_id_raw: str,
+) -> None:
+    if not expected_asset_id_raw or not expected_destination_slot_id_raw:
+        return
+    try:
+        expected_asset_id = int(expected_asset_id_raw)
+        expected_destination_slot_id = int(expected_destination_slot_id_raw)
+    except ValueError as exc:
+        raise ValueError("Move preview is stale. Preview the move again.") from exc
+    if int(move_preview["asset"]["asset_id"]) != expected_asset_id:
+        raise ValueError("Source slot changed. Preview the move again.")
+    if int(move_preview["destination"]["slot_id"]) != expected_destination_slot_id:
+        raise ValueError("Destination slot changed. Preview the move again.")
 
 
 def _build_admin_retire_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
@@ -9401,6 +9465,7 @@ def admin_slot_move():
     notes = ""
     move_preview: Optional[dict] = None
     source_slots: list[dict] = []
+    destination_slots: list[dict] = []
 
     if source_slot_id_raw:
         try:
@@ -9418,15 +9483,24 @@ def admin_slot_move():
                 building_room = str(asset.get("building_room") or "")
                 case_number = str(source_slot.get("case_name") or "")
                 slot_number = str(source_slot.get("slot_position") or "")
+                destination_slots = _list_admin_slot_move_destinations(
+                    conn,
+                    source_slot_id=source_slot_id,
+                    building_room=building_room,
+                )
             elif request.method == "GET":
                 flash("Source slot not found.", "error")
 
         if request.method == "POST":
             action = (request.form.get("action") or "preview").strip().lower()
-            building_room = (request.form.get("building_room") or "").strip()
+            source_asset = (source_slot or {}).get("asset") or {}
+            building_room = str(source_asset.get("building_room") or "").strip()
             case_number = (request.form.get("case_number") or "").strip().upper()
             slot_number = (request.form.get("slot_number") or "").strip()
             notes = (request.form.get("notes") or "").strip()
+            destination_slot_id_raw = (request.form.get("destination_slot_id") or "").strip()
+            expected_asset_id_raw = (request.form.get("expected_asset_id") or "").strip()
+            expected_destination_slot_id_raw = (request.form.get("expected_destination_slot_id") or "").strip()
 
             if source_slot_id is None:
                 flash("Select a source slot.", "error")
@@ -9434,6 +9508,7 @@ def admin_slot_move():
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id_raw,
                     building_room=building_room,
                     case_number=case_number,
@@ -9450,6 +9525,7 @@ def admin_slot_move():
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
@@ -9459,6 +9535,23 @@ def admin_slot_move():
                 )
 
             try:
+                if action in {"preview", "commit"}:
+                    if not destination_slot_id_raw:
+                        raise ValueError("Select a destination slot.")
+                    try:
+                        destination_slot_id = int(destination_slot_id_raw)
+                    except ValueError as exc:
+                        raise ValueError("Select a valid destination slot.") from exc
+                    destination_slot = _build_admin_slot_move_destination_view(
+                        conn,
+                        destination_slot_id,
+                        building_room=building_room,
+                    )
+                    if not destination_slot:
+                        raise ValueError("Destination slot does not exist.")
+                    building_room = str(destination_slot["building_room"] or "")
+                    case_number = str(destination_slot["case_name"] or "")
+                    slot_number = str(destination_slot["slot_position"])
                 move_preview = _build_admin_slot_move_preview(
                     conn,
                     source_slot_id=source_slot_id,
@@ -9466,12 +9559,19 @@ def admin_slot_move():
                     case_number=case_number,
                     slot_number=slot_number,
                 )
+                if action == "commit":
+                    _validate_admin_slot_move_expected(
+                        move_preview,
+                        expected_asset_id_raw=expected_asset_id_raw,
+                        expected_destination_slot_id_raw=expected_destination_slot_id_raw,
+                    )
             except ValueError as e:
                 flash(str(e), "error")
                 return render_template(
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
@@ -9485,6 +9585,7 @@ def admin_slot_move():
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
@@ -9498,6 +9599,7 @@ def admin_slot_move():
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
@@ -9509,12 +9611,33 @@ def admin_slot_move():
             try:
                 conn.execute("BEGIN;")
 
+                if not destination_slot_id_raw:
+                    raise ValueError("Select a destination slot.")
+                try:
+                    destination_slot_id = int(destination_slot_id_raw)
+                except ValueError as exc:
+                    raise ValueError("Select a valid destination slot.") from exc
+                destination_slot = _build_admin_slot_move_destination_view(
+                    conn,
+                    destination_slot_id,
+                    building_room=building_room,
+                )
+                if not destination_slot:
+                    raise ValueError("Destination slot does not exist.")
+                building_room = str(destination_slot["building_room"] or "")
+                case_number = str(destination_slot["case_name"] or "")
+                slot_number = str(destination_slot["slot_position"])
                 move_preview = _build_admin_slot_move_preview(
                     conn,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
                     slot_number=slot_number,
+                )
+                _validate_admin_slot_move_expected(
+                    move_preview,
+                    expected_asset_id_raw=expected_asset_id_raw,
+                    expected_destination_slot_id_raw=expected_destination_slot_id_raw,
                 )
                 asset_id = int(move_preview["asset"]["asset_id"])
                 asset_tag = str(move_preview["asset"]["asset_tag"])
@@ -9634,6 +9757,7 @@ def admin_slot_move():
                     "admin_slot_move.html",
                     source_slot=source_slot,
                     source_slots=source_slots,
+                    destination_slots=destination_slots,
                     source_slot_id=source_slot_id,
                     building_room=building_room,
                     case_number=case_number,
@@ -9658,6 +9782,7 @@ def admin_slot_move():
         "admin_slot_move.html",
         source_slot=source_slot,
         source_slots=source_slots,
+        destination_slots=destination_slots,
         source_slot_id=source_slot_id,
         building_room=building_room,
         case_number=case_number,
