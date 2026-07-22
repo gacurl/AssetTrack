@@ -1,367 +1,444 @@
-# AssetTrack User Manual
+# AssetTrack Operator User Manual
 
-## Who this manual is for
+AssetTrack records who has each asset and where each asset is stored.
 
-This manual is written for non-technical operators and admins who need to run AssetTrack in day-to-day use.
+Use this manual for daily work with laptops, switches, and routers.
 
-## Quick Start
+## Safety Rules
 
-1. Start the system with Docker.
+Read these rules first.
+
+- AssetTrack history is append-only. New actions add new history.
+- Do not edit or delete old history.
+- Email does not create custody. Only an Issue or Return commit creates custody history.
+- Corrections are not for normal work. Use Issue and Return for normal handoffs.
+- Do not use destructive Docker volume commands.
+- Do not run `docker compose down -v`.
+- Do not run `docker volume prune`.
+- Do not run `docker system prune --volumes`.
+- Back up the database before restore.
+- Recovery mode requires review and admin acknowledgment before normal email delivery resumes.
+
+Why it matters: these rules protect the custody record.
+
+## Start And Log In
+
+1. Start AssetTrack with the approved Docker start command for your site.
 2. Open `http://localhost:8000`.
-3. Log in with your username and password.
-4. Choose the `Issue` or `Return` workflow.
-5. Always review the `Preview` page before committing.
-
-## What AssetTrack does
-
-AssetTrack helps you keep track of who has an asset, where the asset belongs, and what changed over time.
-
-In plain language, it lets your team:
-
-- log in
-- add assets to the system
-- create holders
-- issue assets to holders
-- return assets back to storage
-- manage operator and admin user accounts
-- review dashboard counts and drilldowns
-
-AssetTrack is strict on purpose. If a page blocks a commit, it is protecting the audit trail and keeping the asset state consistent.
-
-## Custody is not ownership
-
-AssetTrack records custody, not ownership.
-
-Think of it like a tool room:
-
-- Ownership answers, "Who does this tool belong to?"
-- Custody answers, "Who signed it out right now?"
-
-In AssetTrack, an asset can belong to your organization and still be in one person's custody for today's work. The system proves who had custody, when that started, and what action recorded the handoff.
-
-This matters because operators need a clear answer to a simple field question:
-
-"Who is responsible for this item right now?"
-
-That is what AssetTrack is built to show.
-
-## One-off assignment, in plain language
-
-A one-off assignment means you are giving an item to a person or group for a specific job, shift, trip, or task. It does not mean they own it. It means they are the current responsible holder until the item is returned.
-
-Example:
-
-- A laptop is issued to `Taylor` for a site visit.
-- Taylor did not buy the laptop.
-- Taylor is the current holder until it comes back into storage.
-
-The live operator flow is still the same:
-
-1. Choose the holder and any required prerequisite information.
-2. Scan the items into the queue.
-3. Review the preview.
-4. Confirm the acknowledgment boxes.
-5. Commit the handoff.
-
-## What acknowledgment means
-
-Acknowledgment is like signing a hand receipt. It shows that the handoff was reviewed and that responsibility for the handoff was confirmed. It does not mean ownership changed.
-
-In practice, the acknowledgment step means:
-
-- the operator reviewed the batch
-- the responsible handoff was confirmed
-- the commit can now be recorded in the audit trail
-
-If acknowledgment is missing, AssetTrack blocks the commit on purpose. That protects the record and prevents an incomplete handoff from being saved.
-
-## What "pending email" means
-
-If your local process includes an email or message after a handoff, treat that message as a follow-up notice, not the main record.
-
-The main record is the stored audit event inside AssetTrack.
-
-That means:
-
-- if an email is delayed, the custody record in AssetTrack still stands
-- if an email is pending, the system still works
-- if there is a question later, use the audit record first
-
-Email can help people stay informed, but email is secondary. AssetTrack is the system of record for who had custody, when, and under what action.
-
-## Before you begin
-
-1. Make sure the system is running.
-2. Open `http://localhost:8000`.
-3. Have your username and password ready.
-
-## How to log in
-
-1. Open the AssetTrack login page.
-2. Enter your username in the `NAME` field.
-3. Enter your password in the `PASSWORD` field.
-4. Select `LOGIN`.
-5. Wait for the dashboard to load.
+3. Enter your user name.
+4. Enter your password.
+5. Select `LOGIN`.
 
 Expected result:
 
-- You land on the dashboard.
-- The top navigation bar becomes available.
+- The Dashboard opens.
+- The top navigation appears.
 
-## Main navigation
+## Main Navigation
 
-The main navigation uses these labels:
+The main navigation shows:
 
 - `Dashboard`
-- `Holders`
 - `Issue`
 - `Return`
-- `Preview`
-- `Users`
+- `Assets`
+- `Holders`
+- `Reports`
+
+Admins also see the `Admin` menu.
+
+The `Admin` menu can include:
+
 - `Admin Tools`
+- `Users`
+- `Reference Data`
+- `Import Holders`
+- `Operational Report`
+- `Restore Database`
 
-If you do not see `Users` or `Admin Tools`, your account may not have admin access.
+## Dashboard
 
-## Issue workflow
+Use the Dashboard for a quick view of the system.
 
-Use this workflow when you are giving an asset to a holder.
+The Dashboard shows:
 
-### Step 1. Open the issue page
+- assets out
+- assets remaining
+- total assets
+- current custody
+- case status
+- asset search
+- custody map
+- problems
+
+Use Dashboard links to open the matching work area.
+
+## Find An Asset
+
+Use this when you need to know where an asset is now.
+
+1. Select `Assets`.
+2. Enter or scan the asset tag.
+3. Select `Search`.
+
+If AssetTrack finds the asset, it shows:
+
+- asset tag
+- asset type
+- current status
+- holder, if the asset is issued
+- building and room, if recorded
+- case and slot, if recorded
+- history link
+
+If AssetTrack does not find the asset, check the tag and search again.
+
+## Issue A Laptop
+
+Use Issue when you give a laptop to a holder.
 
 1. Select `Issue`.
-2. Click once in the scan box.
-
-### Step 2. Scan or enter the asset
-
-1. Scan the asset tag, or type it exactly.
-2. Select `Submit`.
-
-Expected result:
-
-- The asset appears in the queue on the page.
-
-### Step 3. Select the holder
-
-1. Open the holder selection link from the issue flow.
-2. Search for the correct holder.
-3. Select that holder.
+2. Select the correct holder.
+3. Enter the current building and room if the page asks for it.
+4. Scan or type the laptop asset tag.
+5. Confirm the laptop appears in the queue.
+6. Select the Issue preview button.
+7. Review the holder, asset tag, and warnings.
+8. Check the review box.
+9. Check the responsibility acknowledgment box.
+10. Select `Commit Issue`.
 
 Expected result:
 
-- The issue flow shows the selected holder.
+- The laptop moves from storage to the holder.
+- AssetTrack creates custody history.
+- AssetTrack creates a receipt record.
+- The queue clears.
 
-### Step 4. Open the preview
+Stop if the preview is blocked. Read the message and fix the problem before commit.
 
-1. Select `Open Issue Assets Preview / Confirm`.
+## Return A Laptop
 
-Expected result:
-
-- You see the selected holder.
-- You see a validation summary.
-- You see a per-asset preview of what will change.
-- You see the confirmation and acknowledgment section before commit.
-
-### Step 5. Review the preview carefully
-
-1. Confirm the asset tag is correct.
-2. Confirm the current state shows the asset in storage.
-3. Confirm the after state shows the asset moving to custody under the correct holder.
-4. Read any warning or blocked message before continuing.
-5. Confirm the holder accepted responsibility for the issue batch.
-
-### Step 6. Commit the issue
-
-1. Check the review confirmation box.
-2. Check the responsibility acknowledgment box.
-3. Select `Commit Issue`.
-
-Expected result:
-
-- The issue succeeds.
-- The asset leaves storage and moves into custody.
-- The queue clears after the commit.
-
-## Return workflow
-
-Use this workflow when an issued asset is coming back into storage.
-
-### Step 1. Open the return page
+Use Return when a holder gives a laptop back to storage.
 
 1. Select `Return`.
-2. Click once in the scan box.
-
-### Step 2. Scan or enter the asset
-
-1. Scan the returning asset tag, or type it exactly.
-2. Select `Submit`.
-
-Expected result:
-
-- The asset appears in the return queue.
-
-### Step 3. Open the return preview
-
-1. Select `Open Return Assets Preview / Confirm`.
+2. Scan or type the laptop asset tag.
+3. Confirm the laptop appears in the return queue.
+4. Select the Return preview button.
+5. Review the current holder and return destination.
+6. Check the review box.
+7. Check the responsibility acknowledgment box.
+8. Select `Commit Return`.
 
 Expected result:
 
-- You see the validation summary.
-- You see the before and after return state.
-- You see the confirmation and acknowledgment section before commit.
+- The laptop moves back to storage.
+- AssetTrack creates custody history.
+- AssetTrack creates a receipt record.
+- The queue clears.
 
-### Step 4. Review the return preview
+Stop if the preview is blocked. Read the message and fix the problem before commit.
 
-1. Confirm the asset is currently in custody.
-2. Confirm the return target slot looks correct.
-3. Read any blocked message before continuing.
-4. Confirm responsibility for the return handoff was acknowledged before commit.
+## Locate Switches And Routers
 
-### Step 5. Commit the return
+Use Asset Search to locate a switch or router.
 
-1. Check the review confirmation box.
-2. Check the responsibility acknowledgment box.
-3. Select `Commit Return`.
+1. Select `Assets`.
+2. Enter or scan the switch or router asset tag.
+3. Select `Search`.
+4. Review the case and slot.
 
-Expected result:
+Switches and routers can appear in case storage. AssetTrack shows their asset tag, type, status, case, and slot when those values are recorded.
 
-- The return succeeds.
-- The asset moves back into storage.
-- The queue clears after the commit.
+## Move A Switch Or Router To Another Slot
 
-## How to add assets
+**Admin only**
 
-This is an admin workflow. The named manual `Add Assets` launcher is not shown in normal navigation. Use the approved import workflow or a scoped admin asset-creation path when your local procedure calls for it.
+Use this only to move a stored switch or router from one slot to another.
 
-### Step 1. Open the approved asset-creation path
-
-1. Use the import workflow or the scoped admin create form provided by your local process.
-
-### Step 2. Enter the required asset details
-
-1. Enter `asset_tag`.
-2. Enter `serial_number`.
-3. Enter `manufacturer`.
-4. Choose `equipment_type` (`laptop`, `switch`, or `router`).
-5. Enter `building`.
-6. Enter `room`.
-
-Optional fields:
-
-- `model`
-- `model_code`
-- `notes`
-
-### Step 3. Decide whether to assign a slot now
-
-1. If you want to assign a slot immediately, check `Assign to slot now?`
-2. Enter `case_number`.
-3. Enter `slot_number`.
-
-### Step 4. Create the asset
-
-1. Select `Create Asset`.
+1. Select `Admin`.
+2. Select `Admin Tools`.
+3. Select `Move Slot`.
+4. Select the occupied source slot.
+5. Select an empty destination slot.
+6. Review the move preview.
+7. Confirm the source case and slot.
+8. Confirm the destination case and slot.
+9. Select `Confirm Move`.
 
 Expected result:
 
-- The asset is stored in AssetTrack.
-- If slot assignment was included, the asset is placed into that slot.
+- The asset moves to the new slot.
+- Custody does not change.
+- No custody receipt is created.
 
-## How to manage holders
+Why it matters: a slot move records storage logistics. It does not hand the asset to a person.
 
-Holders are the people or organizations that can receive assets.
+## Case Status
 
-### To create a holder
+Use Case Status when you need to inspect case storage.
+
+1. Open the Dashboard.
+2. Select the Case Status area.
+3. Choose a case.
+4. Review the slots and assets.
+
+Use this before moving a switch or router so you know the current slot.
+
+## Printable Case Inventory
+
+Use Case Inventory when you need a printable list for one case.
+
+1. Select `Reports`.
+2. Select `Case inventory`.
+3. Choose a case or enter a case number.
+4. Select `Preview Inventory`.
+5. Review the case number, generated date, and asset count.
+6. Review each asset tag, type, description or model, and slot.
+7. Select `Print` to print from the browser.
+8. Select `Download PDF` to save a PDF.
+
+If the case is empty, AssetTrack shows no assets for that case.
+
+If the case number is invalid, AssetTrack shows that the case was not found.
+
+## Holders
+
+Use Holders to find people or groups that can receive assets.
 
 1. Select `Holders`.
-2. Select `Add Holder`.
-3. Enter the holder name.
-4. Select `Create Holder`.
-
-Expected result:
-
-- The new holder is saved and available for issue workflows.
-
-### To find an existing holder
-
-1. Select `Holders`.
-2. Search by name or browse the holders list.
+2. Search by holder name or other shown details.
 3. Open the holder you need.
+4. Review the holder details before issuing an asset.
 
-Use this when you need to confirm the right holder before issuing assets.
+## Reports
 
-## How to manage operators and admin users
+Use Reports to review current system state.
 
-This is an admin-only workflow.
+Reports can show:
 
-### To create a user
+- asset counts
+- assets
+- holders
+- current custody
+- recent events
+- location and case data
+- receipt search
+- case inventory
 
-1. Select `Users`.
-2. In `Create User`, enter a username.
-3. Enter a password.
-4. Choose the role:
-   - `operator` for routine operational use
-   - `admin` for administrative control
-5. Leave `Active` checked if the user should be able to log in now.
-6. Select `Create User`.
+Reports are read-only for normal operators.
+
+## Receipts
+
+AssetTrack creates receipt records when Issue or Return commits.
+
+Use receipts to review or download handoff records.
+
+1. Select `Reports`.
+2. Select the receipt search link.
+3. Search by asset tag, holder name, building, or room.
+4. Open the receipt.
+5. Select `Download Receipt PDF` if you need a PDF copy.
+
+### Email Boundaries
+
+Email is a notice only.
+
+- Email does not create custody.
+- Email does not reverse custody.
+- Email does not change custody.
+- If email fails, the custody record still stands.
+- Retry and resend only send receipt email.
+
+### Send Or Retry Receipt Email
+
+Use this when a receipt is pending or failed.
+
+1. Open the receipt.
+2. Select `Send Initial Receipt Email` or `Retry Failed Delivery`.
+3. Review the result message.
 
 Expected result:
 
-- The user appears in the user table.
+- AssetTrack sends or retries the email.
+- Custody history does not change.
 
-### To disable or re-enable a user
+### Resend Delivered Receipt Email
 
-1. Select `Users`.
-2. Find the user in the table.
-3. Select `Disable` or `Enable`.
+**Admin only**
 
-Expected result:
+Use this when a delivered receipt must be sent again.
 
-- The `Active` status changes in the table.
-
-### To change a user role
-
-1. Select `Users`.
-2. Find the user in the table.
-3. Choose the new role in the role dropdown.
-4. Select `Set Role`.
+1. Open the delivered receipt.
+2. Select `Resend Delivered Receipt`.
+3. Review the result message.
 
 Expected result:
 
-- The new role is saved.
+- AssetTrack sends another copy of the receipt email.
+- Custody history does not change.
 
-### To reset a user password
+## Admin Tools
 
-1. Select `Users`.
-2. Find the user in the table.
-3. Enter the new password in the password field on that row.
-4. Select `Reset Password`.
+**Admin only**
+
+Use Admin Tools for setup and controlled maintenance.
+
+Admin Tools can include:
+
+- manage users
+- manage reference data
+- import holders
+- create or edit assets
+- import switch and router CSV data
+- provision, assign, or move slots
+- receipt search
+- receipt CC settings
+- database backup
+- database restore
+- corrections
+
+Do not use corrections for normal Issue, Return, or slot-move work.
+
+## Users
+
+**Admin only**
+
+Use Users to manage who can log in and what role they have.
+
+1. Select `Admin`.
+2. Select `Users`.
+3. Review the user list.
+4. Use the page controls for approved user changes.
+
+Do not share user accounts.
+
+## Reference Data
+
+**Admin only**
+
+Use Reference Data to manage local lists such as organizations and buildings.
+
+1. Select `Admin`.
+2. Select `Reference Data`.
+3. Review the current values.
+4. Add or update values only when approved by your site process.
+
+Why it matters: clean reference data helps operators select the right holder and location.
+
+## Import Holders
+
+**Admin only**
+
+Use Import Holders when you need to load holder records from an approved file.
+
+1. Select `Admin`.
+2. Select `Import Holders`.
+3. Choose the holder import file.
+4. Select `Import Holders`.
+5. Review the result.
+
+Fix the file if AssetTrack reports errors.
+
+## Import Switch And Router CSV Data
+
+**Admin only**
+
+Use this page for switch and router CSV imports.
+
+1. Select `Admin`.
+2. Select `Admin Tools`.
+3. Select `Import Switch/Router CSV`.
+4. Download the CSV template if needed.
+5. Review the page instructions.
+6. Run the approved local import command from the operational computer.
+
+This import path is for switches and routers only.
+
+## Backup The Database
+
+**Admin only**
+
+Create a backup before restore or other high-risk maintenance.
+
+1. Select `Admin`.
+2. Select `Admin Tools`.
+3. Select `Download DB Backup`.
+4. Save the backup in your approved backup location.
+5. Confirm the file was saved.
+
+Do not overwrite `data/assettrack.db` by hand.
+
+## Restore The Database
+
+**Admin only**
+
+Use restore only for recovery.
+
+Before restore:
+
+1. Stop normal work.
+2. Back up the current database.
+3. Make sure you have the correct SQLite backup file.
+4. Tell operators not to issue or return assets during restore.
+
+Restore steps:
+
+1. Select `Admin`.
+2. Select `Restore Database`.
+3. Choose the SQLite backup file.
+4. Select `Validate Backup`.
+5. Review the validation summary.
+6. Confirm the backup is the correct file.
+7. Enter your admin password.
+8. Select `Replace Live Database`.
 
 Expected result:
 
-- The user can log in with the new password.
+- AssetTrack replaces the live database with the backup.
+- AssetTrack keeps a rollback copy.
+- Recovery mode turns on.
 
-## How to use the dashboard
+Restore does not create custody events. Restore does not rebuild work that happened after the selected backup.
 
-1. Select `Dashboard`.
-2. Review the summary cards for inventory, slots, custody, and exceptions.
-3. Use the dashboard drilldowns if you need more detail.
+## Recovery Mode
 
-Use the dashboard to confirm that issue and return actions produced the expected counts.
+**Admin only**
 
-## Good operating habits
+Recovery mode tells the site to review the restored database before normal email delivery resumes.
 
-1. Review the preview before every commit.
-2. Make sure the correct holder is selected before issuing.
-3. Confirm the queue clears after a successful commit.
-4. Use the dashboard to verify that the final state looks right.
-5. If a page blocks a commit, read the message and fix the cause instead of trying to force the action.
+After restore:
 
-## If something goes wrong
+1. Select `Admin`.
+2. Select `Admin Tools`.
+3. Confirm `Recovery Mode Active` appears.
+4. Review the restore details.
+5. Check Dashboard, Reports, and Receipts.
+6. Confirm the restored data is correct.
+7. Select `Acknowledge Recovery and Resume`.
 
-If you have trouble starting the app, logging in, scanning, or confirming persistence, use:
+Expected result:
 
-- [Troubleshooting Guide](troubleshooting.md)
+- Recovery mode clears.
+- Receipt send, retry, and resend actions can resume.
 
-For deployment steps, use:
+Do not acknowledge recovery until the review is complete.
 
-- [Deployment Guide](deployment.md)
+## Log Out
+
+1. Select your account or logout control.
+2. Select `Logout`.
+3. Confirm the login page appears.
+
+After logout, protected pages should not open until you log in again.
+
+## When Something Looks Wrong
+
+1. Stop before committing.
+2. Read the warning or blocked message.
+3. Search for the asset.
+4. Check the holder.
+5. Check the case and slot.
+6. Ask an admin for help if the record still looks wrong.
+
+Do not use corrections to skip normal Issue, Return, or slot-move steps.
