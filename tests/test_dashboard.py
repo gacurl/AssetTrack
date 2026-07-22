@@ -200,22 +200,15 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Assets Out", response.data)
         self.assertIn(b"Assets Remaining", response.data)
         self.assertIn(b"Total Assets", response.data)
-        self.assertIn(b"Issue Assets", response.data)
-        self.assertIn(b"Return Assets", response.data)
-        self.assertIn(b'class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="/issue">Issue Assets</a>', response.data)
-        self.assertIn(b'class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="/return">Return Assets</a>', response.data)
+        self.assertNotIn(b"Issue Assets", response.data)
+        self.assertNotIn(b"Return Assets", response.data)
+        self.assertIn(b'href="/issue">Issue</a>', response.data)
+        self.assertIn(b'href="/return">Return</a>', response.data)
+        self.assertNotIn(b"class=\"dashboard-primary-card dashboard-action-card dashboard-action-link\"", response.data)
         self.assertNotIn(b"Open Issue Workflow", response.data)
         self.assertNotIn(b"Open Return Workflow", response.data)
         self.assertNotIn(b'class="action-secondary" href="/issue">Issue Assets</a>', response.data)
         self.assertNotIn(b'class="action-secondary" href="/return">Return Assets</a>', response.data)
-        self.assertLess(
-            response.data.index(b"Issue Assets"),
-            response.data.index(b"Current Custody"),
-        )
-        self.assertLess(
-            response.data.index(b"Return Assets"),
-            response.data.index(b"Case Status"),
-        )
         self.assertIn(b"Custody Map", response.data)
         self.assertIn(b"Custody map is read-only.", response.data)
         self.assertNotIn(b"Use this map for rough inventory orientation only.", response.data)
@@ -232,16 +225,14 @@ class DashboardTests(unittest.TestCase):
         self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertIn(b'id="problems-panel" open', response.data)
-        self.assertIn(b"Available Space by Case", response.data)
-        self.assertIn(b"Recent Activity", response.data)
+        self.assertNotIn(b"Available Space by Case", response.data)
+        self.assertNotIn(b"Recent Activity", response.data)
         self.assertIn(b"Problems", response.data)
-        self.assertIn(b"No cases have available space.", response.data)
         self.assertIn(b"1 unslotted, 1 over 30 days, 0 conflicts", response.data)
-        self.assertIn(b"0 open", response.data)
-        self.assertIn(b"FULL", response.data)
+        self.assertNotIn(b"0 open", response.data)
+        self.assertNotIn(b"FULL", response.data)
         self.assertNotIn(b"0 / 1", response.data)
         self.assertIn(b"AT-UNSLOT", response.data)
-        self.assertIn(b"Issued to", response.data)
         self.assertIn(b"AT-CUST", response.data)
         self.assertIn(b'href="/holders/1"', response.data)
         self.assertIn(b'href="/report">Current Custody</a>', response.data)
@@ -259,10 +250,10 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"At a Glance", response.data)
         self.assertIn(b"Assets Out", response.data)
-        self.assertIn(b"Issue Assets", response.data)
-        self.assertIn(b"Return Assets", response.data)
-        self.assertIn(b'href="/issue">Issue Assets</a>', response.data)
-        self.assertIn(b'href="/return">Return Assets</a>', response.data)
+        self.assertNotIn(b"Issue Assets", response.data)
+        self.assertNotIn(b"Return Assets", response.data)
+        self.assertIn(b'href="/issue">Issue</a>', response.data)
+        self.assertIn(b'href="/return">Return</a>', response.data)
         self.assertNotIn(b"Open Issue Workflow", response.data)
         self.assertNotIn(b"Open Return Workflow", response.data)
         self.assertIn(b"Custody Map", response.data)
@@ -271,8 +262,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertNotIn(b'id="problems-panel" open', response.data)
         self.assertIn(b"Asset Search", response.data)
-        self.assertIn(b"No case data available.", response.data)
-        self.assertIn(b"No recent activity.", response.data)
+        self.assertNotIn(b"No case data available.", response.data)
+        self.assertNotIn(b"No recent activity.", response.data)
         self.assertIn(b"No current problems.", response.data)
         self.assertIn(b"No unslotted assets.", response.data)
         self.assertIn(b"No overdue in-custody assets.", response.data)
@@ -318,31 +309,31 @@ class DashboardTests(unittest.TestCase):
         )
         self.conn.commit()
 
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Based on open slots. Best available case: CASE-B with 3 open", response.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-A">CASE-A</a>', response.data)
-        self.assertIn(b"0 open", response.data)
-        self.assertIn(b"FULL", response.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-B">CASE-B</a>', response.data)
-        self.assertIn(b"3 open", response.data)
-        self.assertIn(b"OPEN", response.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-C">CASE-C</a>', response.data)
-        self.assertIn(b"1 open", response.data)
-        self.assertIn(b"LOW", response.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-D">CASE-D</a>', response.data)
-        self.assertIn(b"2 open", response.data)
+        self.assertNotIn(b"Available Space by Case", response.data)
+        self.assertNotIn(b"Based on open slots. Best available case: CASE-B with 3 open", response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-A">CASE-A</a>', response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-B">CASE-B</a>', response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-C">CASE-C</a>', response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-D">CASE-D</a>', response.data)
+        rows_by_case = {row["case_name"]: row for row in data["snapshots"]["case_utilization"]}
+        self.assertEqual(rows_by_case["CASE-A"]["empty_slots"], 0)
+        self.assertEqual(rows_by_case["CASE-A"]["status_flag"], "FULL")
+        self.assertEqual(rows_by_case["CASE-B"]["empty_slots"], 3)
+        self.assertEqual(rows_by_case["CASE-B"]["status_flag"], "OPEN")
+        self.assertEqual(rows_by_case["CASE-C"]["empty_slots"], 1)
+        self.assertEqual(rows_by_case["CASE-C"]["status_flag"], "LOW")
+        self.assertEqual(rows_by_case["CASE-D"]["empty_slots"], 2)
         self.assertNotIn(b"OPEN - Use now", response.data)
         self.assertNotIn(b"LOW - Getting tight", response.data)
         self.assertNotIn(b"FULL - No space", response.data)
         self.assertNotIn(b"Stoplight Status", response.data)
         self.assertNotIn(b"0 / 2", response.data)
-        self.assertIn(b".status-dot.full { background: #c2410c; }", response.data)
-        self.assertIn(b".status-dot.low { background: #f59e0b; }", response.data)
-        self.assertIn(b".status-dot.open { background: #16a34a; }", response.data)
-        self.assertIn(b'status-dot full', response.data)
-        self.assertIn(b'status-dot low', response.data)
+        self.assertNotIn(b'status-dot full', response.data)
+        self.assertNotIn(b'status-dot low', response.data)
 
     def test_available_space_cases_sort_naturally_by_case_number(self) -> None:
         for slot_id, case_name in enumerate(
@@ -359,10 +350,10 @@ class DashboardTests(unittest.TestCase):
             [row["case_name"] for row in data["snapshots"]["case_utilization"]],
             ["CASE-1", "CASE-2", "CASE-13", "CASE-16", "CASE-111", "ALPHA"],
         )
-        self.assertLess(
-            response.data.index(b'href="/dashboard/cases/CASE-16">CASE-16</a>'),
-            response.data.index(b'href="/dashboard/cases/CASE-111">CASE-111</a>'),
-        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Available Space by Case", response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-16">CASE-16</a>', response.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-111">CASE-111</a>', response.data)
 
     def test_dashboard_case_snapshot_keeps_all_cases_and_best_available_case(self) -> None:
         slot_id = 1
@@ -400,9 +391,10 @@ class DashboardTests(unittest.TestCase):
             10,
         )
         self.assertEqual(rendered.status_code, 200)
-        self.assertIn(b"Based on open slots. Best available case: CASE-6 with 10 open", rendered.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-6">CASE-6</a>', rendered.data)
-        self.assertIn(b'href="/dashboard/cases/CASE-15">CASE-15</a>', rendered.data)
+        self.assertNotIn(b"Available Space by Case", rendered.data)
+        self.assertNotIn(b"Based on open slots. Best available case: CASE-6 with 10 open", rendered.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-6">CASE-6</a>', rendered.data)
+        self.assertNotIn(b'href="/dashboard/cases/CASE-15">CASE-15</a>', rendered.data)
 
     def test_dashboard_metrics_use_distinct_and_most_recent_issue_event(self) -> None:
         self._replace_slot_occupancy_without_unique_constraints()
@@ -533,20 +525,20 @@ class DashboardTests(unittest.TestCase):
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Recent Activity", response.data)
-        self.assertIn(b"Added", response.data)
-        self.assertIn(b"Returned to storage", response.data)
-        self.assertIn(b"Issued to", response.data)
-        self.assertIn(b"Alpha Holder", response.data)
-        self.assertIn(b"\xe2\x80\x94", response.data)
-        self.assertIn(b"2026-01-01 12:00 UTC", response.data)
-        self.assertIn(b"When (UTC)", response.data)
+        self.assertNotIn(b"Recent Activity", response.data)
+        self.assertNotIn(b"Added", response.data)
+        self.assertNotIn(b"Returned to storage", response.data)
+        self.assertNotIn(b"Issued to", response.data)
+        self.assertNotIn(b"Alpha Holder", response.data)
+        self.assertNotIn(b"2026-01-01 12:00 UTC", response.data)
+        self.assertNotIn(b"When (UTC)", response.data)
 
-        created_index = response.data.index(b"Added")
-        returned_index = response.data.index(b"Returned to storage")
-        issued_index = response.data.index(b"Issued to")
-        self.assertLess(created_index, returned_index)
-        self.assertLess(returned_index, issued_index)
+        data = build_dashboard_data(self.conn, custody_days_threshold=30)
+        self.assertEqual(
+            [row["event_label"] for row in data["snapshots"]["recent_activity"]],
+            ["Added", "Returned to storage", "Issued to"],
+        )
+        self.assertEqual(data["snapshots"]["recent_activity"][2]["holder_label"], "Alpha Holder (Ad Hoc)")
 
     def test_recent_activity_excludes_superseded_events(self) -> None:
         original_id = self._insert_event("AT-1", "ISSUE", "2026-01-01T10:00:00Z")

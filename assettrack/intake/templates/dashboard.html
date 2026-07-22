@@ -243,10 +243,6 @@
   </div>
 
   <div class="dashboard-primary-grid" aria-label="Primary dashboard cards">
-    <a class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="{{ url_for('issue') }}">Issue Assets</a>
-
-    <a class="dashboard-primary-card dashboard-action-card dashboard-action-link" href="{{ url_for('return_queue') }}">Return Assets</a>
-
     <section class="dashboard-primary-card dashboard-metric-card">
       <p class="dashboard-primary-label">Assets Out</p>
       <strong>{{ overview.issued_assets }}</strong>
@@ -411,103 +407,6 @@
                   {% endif %}
                 </td>
               </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-
-    <details class="disclosure-section">
-      <summary>
-        <span class="disclosure-title">Available Space by Case</span>
-        <span class="disclosure-hint">
-          {% if dashboard.snapshots.case_utilization %}
-            {% set ns = namespace(best_case=None, best_available=-1) %}
-            {% for row in dashboard.snapshots.case_utilization %}
-              {% set available_slots = row.total_slots - row.occupied_slots %}
-              {% if available_slots > ns.best_available %}
-                {% set ns.best_case = row %}
-                {% set ns.best_available = available_slots %}
-              {% endif %}
-            {% endfor %}
-            {% if ns.best_available > 0 %}
-              Based on open slots. Best available case: {{ ns.best_case.case_name }} with {{ ns.best_available }} open
-            {% else %}
-              No cases have available space.
-            {% endif %}
-          {% else %}
-            No case data available.
-          {% endif %}
-        </span>
-      </summary>
-      <div class="disclosure-body">
-        <div class="dashboard-section-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Case Name</th>
-                <th>Available Slots</th>
-                <th>Status Flag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in dashboard.snapshots.case_utilization %}
-                <tr>
-                  <td><a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name) }}">{{ row.case_name }}</a></td>
-                  <td>{{ row.empty_slots }} open</td>
-                  <td class="status-cell">
-                    <span class="status-badge">
-                      <span class="status-dot {{ row.status_class }}" aria-hidden="true"></span>
-                      <span>{{ row.status_flag }}</span>
-                    </span>
-                  </td>
-                </tr>
-              {% else %}
-                <tr>
-                  <td colspan="3">No case data available.</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-
-    <details class="disclosure-section">
-      <summary>
-        <span class="disclosure-title">Recent Activity</span>
-        <span class="disclosure-hint">
-          {% if dashboard.snapshots.recent_activity %}
-            {{ dashboard.snapshots.recent_activity|length }} latest event{% if dashboard.snapshots.recent_activity|length != 1 %}s{% endif %}
-          {% else %}
-            No recent activity.
-          {% endif %}
-        </span>
-      </summary>
-      <div class="disclosure-body">
-        <div class="dashboard-section-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Asset</th>
-                <th>Holder</th>
-                <th>When (UTC)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in dashboard.snapshots.recent_activity %}
-                <tr>
-                  <td>{{ row.event_label }}</td>
-                  <td><code>{{ row.asset_tag }}</code></td>
-                  <td>{{ row.holder_label or "—" }}</td>
-                  <td>{{ row.event_timestamp_display }}</td>
-                </tr>
-              {% else %}
-                <tr>
-                  <td colspan="4">No recent activity.</td>
-                </tr>
-              {% endfor %}
             </tbody>
           </table>
         </div>
