@@ -48,6 +48,7 @@ from assettrack.assets import (
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
+    get_case_inventory,
     get_case_slot_detail,
     get_holder_custody_detail,
     list_case_summaries,
@@ -249,6 +250,7 @@ def inject_auth_user():
         "case_status_summary": _case_status_summary,
         "asset_state_label": _asset_state_label,
         "asset_is_terminal": _is_terminal_location_type,
+        "equipment_type_label": equipment_type_label,
         "holder_display_name": _holder_display_name,
         "holder_display_type": _holder_display_type,
         "format_duration_label": _format_duration_label,
@@ -7897,6 +7899,85 @@ def _build_admin_human_report_pdf(report_data: dict, db_path: str) -> bytes:
     return buffer.getvalue()
 
 
+def _case_inventory_case_options(conn: sqlite3.Connection) -> list[str]:
+    return [str(row["case_name"]) for row in list_case_summaries(conn)]
+
+
+def _selected_case_inventory_name() -> str:
+    typed_case = str(request.args.get("case_name") or "").strip()
+    selected_case = str(request.args.get("case_select") or "").strip()
+    return typed_case or selected_case
+
+
+def _build_case_inventory_pdf(inventory: dict, generated_at: datetime) -> bytes:
+    styles = getSampleStyleSheet()
+    body = styles["BodyText"]
+    title = styles["Title"]
+    heading = styles["Heading2"]
+
+    def _p(value: object) -> Paragraph:
+        text = str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return Paragraph(text, body)
+
+    data = [[Paragraph(f"<b>{header}</b>", body) for header in ["Asset Tag", "Type", "Description / Model", "Slot"]]]
+    for asset in inventory["assets"]:
+        make_model = str(asset["manufacturer"] or "")
+        model = str(asset["model"] or "")
+        if model:
+            make_model = f"{make_model} / {model}" if make_model else model
+        data.append(
+            [
+                _p(asset["asset_tag"]),
+                _p(equipment_type_label(asset["equipment_type"])),
+                _p(make_model),
+                _p(f"Slot {asset['slot_position']}"),
+            ]
+        )
+    if not inventory["assets"]:
+        data.append([_p("No assets currently in this case."), _p(""), _p(""), _p("")])
+
+    table = Table(
+        data,
+        colWidths=[1.25 * inch, 1.0 * inch, 3.3 * inch, 1.0 * inch],
+        repeatRows=1,
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbe7f3")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8d2dc")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+    story: list[object] = [
+        Paragraph("Case Inventory", title),
+        Spacer(1, 0.15 * inch),
+        Paragraph(f"Case number: {inventory['case_name']}", heading),
+        Paragraph(f"Generated: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", body),
+        Paragraph(f"Asset count: {inventory['asset_count']}", body),
+        Spacer(1, 0.15 * inch),
+        table,
+    ]
+    doc.build(story)
+    return buffer.getvalue()
+
+
 @app.route("/admin/reference-data", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
@@ -8130,6 +8211,83 @@ def human_report():
         report_error=report_error,
         include_retired_assets=include_retired_assets,
         **report_data,
+    )
+
+
+@app.get("/report/case-inventory")
+@require_login
+def case_inventory():
+    conn = get_connection()
+    try:
+        case_options = _case_inventory_case_options(conn)
+    finally:
+        conn.close()
+
+    return render_template(
+        "case_inventory.html",
+        case_options=case_options,
+        selected_case="",
+        inventory=None,
+        generated_at=None,
+        not_found_case="",
+    )
+
+
+@app.get("/report/case-inventory/preview")
+@require_login
+def case_inventory_preview():
+    selected_case = _selected_case_inventory_name()
+    if not selected_case:
+        return redirect(url_for("case_inventory"))
+
+    generated_at = datetime.now(timezone.utc)
+    conn = get_connection()
+    try:
+        case_options = _case_inventory_case_options(conn)
+        inventory = get_case_inventory(conn, selected_case)
+    finally:
+        conn.close()
+
+    status_code = 200 if inventory is not None else 404
+    return (
+        render_template(
+            "case_inventory.html",
+            case_options=case_options,
+            selected_case=selected_case,
+            inventory=inventory,
+            generated_at=generated_at,
+            not_found_case="" if inventory is not None else selected_case,
+        ),
+        status_code,
+    )
+
+
+@app.get("/report/case-inventory/pdf")
+@require_login
+def case_inventory_pdf():
+    selected_case = _selected_case_inventory_name()
+    if not selected_case:
+        abort(404)
+
+    generated_at = datetime.now(timezone.utc)
+    conn = get_connection()
+    try:
+        inventory = get_case_inventory(conn, selected_case)
+    finally:
+        conn.close()
+
+    if inventory is None:
+        abort(404)
+
+    pdf_bytes = _build_case_inventory_pdf(inventory, generated_at)
+    filename_case = re.sub(r"[^A-Za-z0-9_-]+", "-", str(inventory["case_name"])).strip("-") or "case"
+    download_name = f"assettrack-case-inventory-{filename_case}-{generated_at.strftime('%Y%m%d-%H%M%S')}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+        conditional=False,
     )
 
 
