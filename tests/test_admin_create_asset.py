@@ -118,7 +118,7 @@ class AdminCreateAssetTests(unittest.TestCase):
         payload = json.loads(event["payload"])
         self.assertEqual(payload["equipment_type"], "laptop")
 
-    def test_create_asset_allows_missing_equipment_type(self) -> None:
+    def test_create_asset_rejects_missing_equipment_type(self) -> None:
         response = self.client.post(
             "/admin/assets/create",
             json={
@@ -126,28 +126,46 @@ class AdminCreateAssetTests(unittest.TestCase):
                 "actor": "admin-user",
             },
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json["ok"])
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json["ok"])
+        self.assertIn("equipment_type is required", response.json["error"])
+        self.assertIn("Supported asset types are Laptop, Switch, and Router", response.json["error"])
 
         asset_row = self.conn.execute(
             "SELECT equipment_type FROM assets WHERE asset_tag = ?;",
             ("AT-101",),
         ).fetchone()
-        self.assertIsNotNone(asset_row)
-        self.assertEqual(asset_row["equipment_type"], "")
+        self.assertIsNone(asset_row)
 
         event = self.conn.execute(
             """
-            SELECT payload
+            SELECT 1
             FROM asset_events
             WHERE asset_tag = ?
-            ORDER BY id DESC
-            LIMIT 1;
+              AND event_type = 'ASSET_CREATED';
             """,
             ("AT-101",),
         ).fetchone()
-        self.assertIsNotNone(event)
-        self.assertIsNone(event["payload"])
+        self.assertIsNone(event)
+
+    def test_create_asset_rejects_unsupported_equipment_type(self) -> None:
+        response = self.client.post(
+            "/admin/assets/create",
+            json={
+                "asset_tag": "AT-102",
+                "actor": "admin-user",
+                "equipment_type": "tablet",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json["ok"])
+        self.assertIn("Supported asset types are Laptop, Switch, and Router", response.json["error"])
+
+        asset_row = self.conn.execute(
+            "SELECT 1 FROM assets WHERE asset_tag = ?;",
+            ("AT-102",),
+        ).fetchone()
+        self.assertIsNone(asset_row)
 
     def test_create_asset_with_home_slot_success(self) -> None:
         self._insert_slot(11)
@@ -157,7 +175,7 @@ class AdminCreateAssetTests(unittest.TestCase):
             json={
                 "asset_tag": "AT-200",
                 "actor": "admin-user",
-                "equipment_type": "tablet",
+                "equipment_type": "switch",
                 "home_slot_id": 11,
             },
         )
@@ -204,7 +222,7 @@ class AdminCreateAssetTests(unittest.TestCase):
         ).fetchone()
         payload = json.loads(event["payload"])
         self.assertEqual(payload["slot_id"], 11)
-        self.assertEqual(payload["equipment_type"], "tablet")
+        self.assertEqual(payload["equipment_type"], "switch")
 
     def test_duplicate_asset_tag_rejected(self) -> None:
         self._insert_asset("AT-DUP")
@@ -214,6 +232,7 @@ class AdminCreateAssetTests(unittest.TestCase):
             json={
                 "asset_tag": "AT-DUP",
                 "actor": "admin-user",
+                "equipment_type": "laptop",
             },
         )
         self.assertEqual(response.status_code, 400)
@@ -231,6 +250,7 @@ class AdminCreateAssetTests(unittest.TestCase):
             json={
                 "asset_tag": "AT-300",
                 "actor": "admin-user",
+                "equipment_type": "router",
                 "home_slot_id": 22,
             },
         )
