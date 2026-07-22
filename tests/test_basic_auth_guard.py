@@ -705,6 +705,20 @@ def test_bootstrap_only_when_empty(client_with_temp_db) -> None:
 
     disabled_get = client_with_temp_db.get("/bootstrap/admin")
     assert disabled_get.status_code == 403
+    assert b"Lost your package?" in disabled_get.data
+    assert b"You should try AssetTrack." in disabled_get.data
+    assert b"https://assettrack.gregcurl.dev/demo" in disabled_get.data
+    assert b"img/bootstrap-disabled.png" in disabled_get.data
+    assert b"Create Admin" not in disabled_get.data
+    assert b'name="username"' not in disabled_get.data
+
+    disabled_post = client_with_temp_db.post(
+        "/bootstrap/admin",
+        data={"username": "second-admin", "password": "secret", "confirm_password": "secret"},
+    )
+    assert disabled_post.status_code == 403
+    assert b"Lost your package?" in disabled_post.data
+    assert b"Create Admin" not in disabled_post.data
 
 
 def test_invalid_session_user_id_forces_denial(client_with_temp_db) -> None:

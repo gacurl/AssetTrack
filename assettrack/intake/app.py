@@ -4875,7 +4875,7 @@ def add_assets_review():
 @app.route("/bootstrap/admin", methods=["GET", "POST"])
 def bootstrap_admin():
     if count_users() != 0:
-        return {"ok": False, "error": "Bootstrap is disabled"}, 403
+        return render_template("bootstrap_disabled.html"), 403
 
     if request.method == "GET":
         return render_template("bootstrap_admin.html", error=None)
