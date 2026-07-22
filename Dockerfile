@@ -11,7 +11,8 @@ WORKDIR /app
 # Keep base OS packages patched (pulls fixed libpng, etc.)
 RUN apk update && apk upgrade --no-cache
 
-RUN addgroup -S assettrack && adduser -S -G assettrack -h /app assettrack
+RUN addgroup -S -g 101 assettrack \
+    && adduser -S -u 100 -G assettrack -h /app assettrack
 
 # System deps for common scientific + imaging stacks
 RUN apk add --no-cache --upgrade \

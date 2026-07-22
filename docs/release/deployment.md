@@ -31,14 +31,27 @@ From the repository root, run:
 ./scripts/bootstrap_docker.sh
 ```
 
+Equivalent direct Docker Compose command:
+
+```bash
+docker compose up -d --build
+```
+
 What this does:
 
 1. Builds the AssetTrack Docker image.
 2. Ensures the host `./data` bind-mount directory exists.
-3. Applies first-run write permissions so the non-root container can create SQLite files.
+3. Runs a one-shot `assettrack-data-init` service that initializes `/app/data` for the non-root AssetTrack user.
 4. Starts the AssetTrack container in the background.
 5. Exposes the application on port `8000`.
 6. On first run, initializes the approved SQLite schema in `/app/data/assettrack.db` if the database file is missing or empty.
+
+Persistent data permissions:
+
+- Docker may create a missing host `./data` directory as `root:root`.
+- The init service sets the mounted `/app/data` directory to UID `100`, GID `101`, and mode `0750`.
+- The final AssetTrack web application process runs as the non-root `assettrack` user.
+- Do not use `chmod 777` or manual host `chown` as part of normal deployment.
 
 After startup, open:
 

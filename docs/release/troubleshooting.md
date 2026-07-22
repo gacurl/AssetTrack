@@ -31,6 +31,25 @@ What to do:
 2. Wait until Docker reports that it is ready.
 3. Re-run `./scripts/bootstrap_docker.sh`.
 
+## Fresh Docker start cannot open SQLite database
+
+Symptom:
+
+- The container restarts repeatedly on a fresh clone.
+- Logs show `sqlite3.OperationalError: unable to open database file`.
+
+What to check:
+
+1. Start with the supported command: `docker compose up -d --build`.
+2. Confirm the one-shot `assettrack-data-init` service completed successfully with `docker compose ps -a`.
+3. Confirm the `assettrack` service is running as the non-root `assettrack` user.
+
+Why this works:
+
+- Docker may create a missing bind-mounted `./data` directory as `root:root`.
+- AssetTrack initializes that mounted directory to UID `100`, GID `101`, and mode `0750` before the web app starts.
+- Manual `chmod 777` or manual `chown 100:101 data` is not part of the documented startup path.
+
 ## Login failure
 
 Symptom:

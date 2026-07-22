@@ -85,7 +85,15 @@ cd AssetTrack
 ./scripts/bootstrap_docker.sh
 ```
 
-The bootstrap script creates the host `./data` directory if it is missing, applies first-run write permissions for the non-root container user, and then runs `docker compose up -d --build`.
+The bootstrap script delegates startup and persistent data initialization to Docker Compose.
+
+Docker Compose also supports the direct startup command:
+
+```bash
+docker compose up -d --build
+```
+
+On a fresh clone with no `./data` directory, Compose may create the host bind-mount directory as root-owned. AssetTrack handles that with a one-shot `assettrack-data-init` service that runs before the web app, sets `/app/data` to UID `100` and GID `101`, and uses directory mode `0750`. The final `assettrack` web service still runs as the non-root `assettrack` user.
 
 On a first run with no database file, AssetTrack initializes the approved SQLite schema automatically in the mounted `/app/data/assettrack.db` path before the web app starts.
 

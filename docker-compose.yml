@@ -1,7 +1,21 @@
 # assettrack/docker-compose.yml
 services:
+  assettrack-data-init:
+    build: .
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - mkdir -p /app/data && chown 100:101 /app/data && chmod 0750 /app/data
+    volumes:
+      - ./data:/app/data
+    restart: "no"
+
   assettrack:
     build: .
+    depends_on:
+      assettrack-data-init:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     environment:
