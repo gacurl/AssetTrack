@@ -66,6 +66,23 @@ def test_authenticated_navigation_refreshes_last_seen(client_with_temp_db, monke
         assert sess["session_started_at"] == 50
 
 
+def test_authenticated_pages_hide_session_status_diagnostics(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client_with_temp_db, monkeypatch, last_seen=100, session_started_at=50)
+    _set_now(monkeypatch, 200)
+
+    for path in ("/dashboard", "/issue", "/return"):
+        response = client_with_temp_db.get(path)
+
+        assert response.status_code == 200
+        assert b"Session status:" not in response.data
+        assert b"Idle timeout" not in response.data
+        assert b"Absolute timeout" not in response.data
+        assert b"Time remaining" not in response.data
+        assert b"Last activity:" not in response.data
+
+
 def test_preview_load_refreshes_last_seen(client_with_temp_db, monkeypatch: pytest.MonkeyPatch) -> None:
     _login(client_with_temp_db, monkeypatch, last_seen=110, session_started_at=80)
     intake_app.SCAN_QUEUE.append(Scan.now("PREVIEW-TAG"))
