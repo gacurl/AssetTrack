@@ -68,11 +68,9 @@ def test_add_assets_and_preview_render_timeout_lock_targets(client_with_temp_db)
 
     preview = client_with_temp_db.get("/preview")
     assert preview.status_code == 200
-    assert b'id="timeout-lock-panel"' in preview.data
+    assert b'id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true"' in preview.data
     assert b'id="timeout-lock-state">Active<' in preview.data
-    assert b"20 minutes idle / 1 hour absolute" in preview.data
     assert b"0 seconds ago" in preview.data
-    assert b'class="timeout-countdown"' in preview.data
     assert b'remainingSeconds <= 10 && remainingSeconds > 0' in preview.data
     assert b'classList.add("timeout-warning")' in preview.data
     assert b"Session expired. Redirecting to login..." in preview.data
@@ -95,26 +93,25 @@ def test_issue_and_return_flows_render_timeout_lock_targets(client_with_temp_db)
 
     issue_queue = client_with_temp_db.get("/issue")
     assert issue_queue.status_code == 200
-    assert b'id="timeout-lock-panel"' in issue_queue.data
-    assert b"20 minutes idle / 1 hour absolute" in issue_queue.data
+    assert b'id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true"' in issue_queue.data
     assert b"Review Before Issue" in issue_queue.data
     assert issue_queue.data.count(b"data-timeout-lock-target") >= 4
 
     issue_preview = client_with_temp_db.get("/issue/preview")
     assert issue_preview.status_code == 200
-    assert b'id="timeout-lock-panel"' in issue_preview.data
+    assert b'id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true"' in issue_preview.data
     assert b'data-timeout-lock-target>Commit Issue<' in issue_preview.data
     assert b"Discard batch" not in issue_preview.data
     assert b'action="/preview/discard"' not in issue_preview.data
 
     return_queue = client_with_temp_db.get("/return")
     assert return_queue.status_code == 200
-    assert b'id="timeout-lock-panel"' in return_queue.data
+    assert b'id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true"' in return_queue.data
     assert b"Review Before Return" in return_queue.data
 
     return_preview = client_with_temp_db.get("/return/preview")
     assert return_preview.status_code == 200
-    assert b'id="timeout-lock-panel"' in return_preview.data
+    assert b'id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true"' in return_preview.data
     assert b'data-timeout-lock-target>Commit Return<' in return_preview.data
     assert b"Discard batch" not in return_preview.data
     assert b'action="/preview/discard"' not in return_preview.data

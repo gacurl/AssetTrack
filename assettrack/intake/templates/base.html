@@ -106,9 +106,12 @@
       {% block content %}{% endblock %}
 
       {% if timeout_seconds is defined and timeout_seconds is not none and last_seen_age_seconds is not none %}
-        <footer class="page-footer page-session-footer" aria-label="Session status">
-          {% include "_timeout_status.html" %}
-        </footer>
+        <div id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true">
+          <span id="timeout-lock-state">Active</span>
+          <span id="timeout-countdown-seconds">{{ format_duration_label([timeout_seconds - last_seen_age_seconds, 0]|max) }}</span>
+          <span id="last-activity-seconds" data-last-activity-seconds="{{ last_seen_age_seconds }}">{{ format_duration_label(last_seen_age_seconds) }} ago</span>
+          <span id="timeout-seconds">{{ timeout_seconds }}</span>
+        </div>
       {% endif %}
     </div>
     <script>
