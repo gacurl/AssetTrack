@@ -1,0 +1,66 @@
+<!-- file: assettrack/intake/templates/bootstrap_disabled.html -->
+{% extends "base.html" %}
+
+{% block title %}AssetTrack Bootstrap Disabled{% endblock %}
+{% block page_heading %}Lost your package?{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .bootstrap-disabled-card {
+      display: grid;
+      gap: 1.5rem;
+      align-items: center;
+      max-width: 880px;
+      margin: 0 auto;
+    }
+
+    .bootstrap-disabled-image {
+      display: block;
+      width: 100%;
+      max-height: 420px;
+      object-fit: contain;
+      border-radius: 0.5rem;
+      background: var(--color-surface-soft);
+    }
+
+    .bootstrap-disabled-copy {
+      display: grid;
+      gap: 0.9rem;
+    }
+
+    .bootstrap-disabled-copy p {
+      margin: 0;
+      font-size: 1.1rem;
+      line-height: 1.5;
+    }
+
+    .bootstrap-disabled-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    @media (min-width: 760px) {
+      .bootstrap-disabled-card {
+        grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="card bootstrap-disabled-card">
+    <div class="bootstrap-disabled-copy">
+      <p>You should try AssetTrack.</p>
+      <div class="bootstrap-disabled-actions">
+        <a class="preview-step chip" href="https://assettrack.gregcurl.dev/demo">Open the AssetTrack demo</a>
+      </div>
+    </div>
+    <img
+      class="bootstrap-disabled-image"
+      src="{{ url_for('static', filename='img/bootstrap-disabled.png') }}"
+      alt="AssetTrack package tracking illustration"
+    />
+  </div>
+{% endblock %}
