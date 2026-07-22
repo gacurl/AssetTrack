@@ -57,7 +57,15 @@ Use the repo-managed bootstrap from the repository root:
 ./scripts/bootstrap_docker.sh
 ```
 
-That script creates `./data` if it is missing, applies first-run write permissions, and then starts Docker Compose with the existing `./data:/app/data` bind mount.
+Or run Docker Compose directly:
+
+```bash
+docker compose up -d --build
+```
+
+On a fresh clone, Docker Compose may create the missing host `./data` bind-mount directory as `root:root`. AssetTrack corrects that during startup with the `assettrack-data-init` service. That service runs as root only long enough to initialize `/app/data` with owner UID `100`, group GID `101`, and mode `0750`; the final web application service still runs as the non-root `assettrack` user.
+
+The bootstrap script does not apply host-side permission repair. It delegates startup and persistent directory initialization to Docker Compose.
 
 ## How to verify it’s working
 

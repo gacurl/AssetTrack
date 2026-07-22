@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import os
 import shutil
-import stat
 import subprocess
 from pathlib import Path
 
 
-def test_bootstrap_docker_script_prepares_data_dir_and_starts_compose(tmp_path: Path) -> None:
+def test_bootstrap_docker_script_starts_compose_without_host_permission_repair(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     scripts_dir = repo_root / "scripts"
     scripts_dir.mkdir(parents=True)
@@ -38,6 +37,14 @@ def test_bootstrap_docker_script_prepares_data_dir_and_starts_compose(tmp_path: 
     )
 
     data_dir = repo_root / "data"
-    assert data_dir.is_dir()
-    assert stat.S_IMODE(data_dir.stat().st_mode) == 0o777
+    assert not data_dir.exists()
     assert docker_args_path.read_text(encoding="utf-8").splitlines() == ["compose", "up", "-d", "--build"]
+
+
+def test_bootstrap_docker_script_does_not_apply_world_writable_permissions() -> None:
+    source_script = Path(__file__).resolve().parents[1] / "scripts" / "bootstrap_docker.sh"
+
+    script_text = source_script.read_text(encoding="utf-8")
+
+    assert "chmod 0777" not in script_text
+    assert "chmod 777" not in script_text
