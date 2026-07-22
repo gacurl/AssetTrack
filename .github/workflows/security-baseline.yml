@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Trivy setup is supply-chain-sensitive. Keep the setup action pinned to a
       # full commit SHA and review both the action ref and CLI version before any
@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload filesystem scan artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trivy-filesystem-reports
           path: trivy-reports/
@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Trivy setup is supply-chain-sensitive. Keep the setup action pinned to a
       # full commit SHA and review both the action ref and CLI version before any
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload image scan artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trivy-image-reports
           path: trivy-reports/
