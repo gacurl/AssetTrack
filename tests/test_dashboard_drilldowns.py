@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 import assettrack.db as db
 from assettrack.drilldowns import (
@@ -120,6 +122,11 @@ def _occupy_slot(conn, slot_id: int, asset_id: int) -> None:
 
 def _count_rows(conn, table_name: str) -> int:
     return int(conn.execute(f"SELECT COUNT(*) AS c FROM {table_name};").fetchone()["c"])
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    reader = PdfReader(BytesIO(pdf_bytes))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
 def test_dashboard_holders_route_returns_200_and_is_read_only(app_client) -> None:
@@ -256,6 +263,176 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     assert b"AT-SLOTTED" in response.data
     assert b"AT-OUT" in response.data
     assert b"Empty" in response.data
+
+
+def test_case_inventory_preview_supports_mixed_case_and_is_read_only(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 101, "CASE-PRINT", 1)
+    _insert_slot(conn, 102, "CASE-PRINT", 2)
+    _insert_slot(conn, 103, "CASE-PRINT", 3)
+    laptop_id = _insert_asset(
+        conn,
+        "LAP-100",
+        location_type="STORAGE",
+        equipment_type="laptop",
+        manufacturer="Dell",
+        model="Latitude",
+    )
+    switch_id = _insert_asset(
+        conn,
+        "SW-100",
+        location_type="STORAGE",
+        equipment_type="switch",
+        manufacturer="Cisco",
+        model="Catalyst",
+    )
+    router_id = _insert_asset(
+        conn,
+        "RTR-100",
+        location_type="STORAGE",
+        equipment_type="router",
+        manufacturer="Juniper",
+        model="MX",
+    )
+    _occupy_slot(conn, 101, laptop_id)
+    _occupy_slot(conn, 102, switch_id)
+    _occupy_slot(conn, 103, router_id)
+    conn.commit()
+
+    counts_before = (
+        _count_rows(conn, "assets"),
+        _count_rows(conn, "asset_events"),
+        _count_rows(conn, "slot_occupancy"),
+    )
+
+    response = client.get("/report/case-inventory/preview?case_select=CASE-PRINT")
+
+    counts_after = (
+        _count_rows(conn, "assets"),
+        _count_rows(conn, "asset_events"),
+        _count_rows(conn, "slot_occupancy"),
+    )
+    assert response.status_code == 200
+    assert b"Case Inventory" in response.data
+    assert b"Case number:</strong><br />CASE-PRINT" in response.data
+    assert b"Asset count:</strong><br />3" in response.data
+    assert b"LAP-100" in response.data
+    assert b"SW-100" in response.data
+    assert b"RTR-100" in response.data
+    assert b"Laptop" in response.data
+    assert b"Switch" in response.data
+    assert b"Router" in response.data
+    assert b"Dell / Latitude" in response.data
+    assert b"Cisco / Catalyst" in response.data
+    assert b"Juniper / MX" in response.data
+    assert b"Slot 1" in response.data
+    assert b"Download PDF" in response.data
+    assert counts_before == counts_after
+
+
+def test_case_inventory_entry_supports_empty_and_invalid_cases(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 110, "CASE-EMPTY", 1)
+    conn.commit()
+
+    entry_response = client.get("/report/case-inventory")
+    assert entry_response.status_code == 200
+    assert b"Preview Inventory" in entry_response.data
+    assert b"CASE-EMPTY" in entry_response.data
+
+    empty_response = client.get("/report/case-inventory/preview?case_name=case-empty")
+    assert empty_response.status_code == 200
+    assert b"Case number:</strong><br />CASE-EMPTY" in empty_response.data
+    assert b"Asset count:</strong><br />0" in empty_response.data
+    assert b"No assets currently in this case." in empty_response.data
+
+    invalid_response = client.get("/report/case-inventory/preview?case_name=CASE-MISSING")
+    assert invalid_response.status_code == 404
+    assert b"Case Not Found" in invalid_response.data
+    assert b"CASE-MISSING" in invalid_response.data
+
+
+def test_case_inventory_routes_require_login(app_client) -> None:
+    _, client = app_client
+    with client.session_transaction() as sess:
+        sess.clear()
+
+    for path in [
+        "/report/case-inventory",
+        "/report/case-inventory/preview?case_name=CASE-1",
+        "/report/case-inventory/pdf?case_name=CASE-1",
+    ]:
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 403
+
+
+def test_case_inventory_pdf_uses_existing_data_and_is_read_only(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 120, "CASE-PDF", 1)
+    asset_id = _insert_asset(
+        conn,
+        "PDF-100",
+        location_type="STORAGE",
+        equipment_type="laptop",
+        manufacturer="HP",
+        model="EliteBook",
+    )
+    _occupy_slot(conn, 120, asset_id)
+    conn.commit()
+
+    counts_before = (
+        _count_rows(conn, "assets"),
+        _count_rows(conn, "asset_events"),
+        _count_rows(conn, "slot_occupancy"),
+    )
+
+    response = client.get("/report/case-inventory/pdf?case_name=CASE-PDF")
+
+    counts_after = (
+        _count_rows(conn, "assets"),
+        _count_rows(conn, "asset_events"),
+        _count_rows(conn, "slot_occupancy"),
+    )
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
+    assert "assettrack-case-inventory-CASE-PDF-" in (response.headers.get("Content-Disposition") or "")
+    pdf_text = _extract_pdf_text(response.data)
+    assert "Case Inventory" in pdf_text
+    assert "Case number: CASE-PDF" in pdf_text
+    assert "Asset count: 1" in pdf_text
+    assert "PDF-100" in pdf_text
+    assert "Laptop" in pdf_text
+    assert "HP / EliteBook" in pdf_text
+    assert "Slot 1" in pdf_text
+    assert counts_before == counts_after
+
+
+def test_case_inventory_pdf_supports_multi_page_case(app_client) -> None:
+    conn, client = app_client
+    for index in range(1, 90):
+        slot_id = 200 + index
+        _insert_slot(conn, slot_id, "CASE-LONG", index)
+        asset_id = _insert_asset(
+            conn,
+            f"LONG-{index:03d}",
+            location_type="STORAGE",
+            equipment_type="laptop",
+            manufacturer="Lenovo",
+            model=f"T{index:03d}",
+        )
+        _occupy_slot(conn, slot_id, asset_id)
+    conn.commit()
+
+    response = client.get("/report/case-inventory/pdf?case_name=CASE-LONG")
+
+    assert response.status_code == 200
+    reader = PdfReader(BytesIO(response.data))
+    assert len(reader.pages) > 1
+    pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert "LONG-001" in pdf_text
+    assert "LONG-089" in pdf_text
+    assert "Asset count: 89" in pdf_text
 
 
 def test_case_detail_start_issue_populates_queue_without_events_or_receipts(app_client) -> None:

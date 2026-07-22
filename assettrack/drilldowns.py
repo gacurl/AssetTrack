@@ -281,3 +281,59 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
             for row in return_candidate_rows
         ],
     }
+
+
+def get_case_inventory(conn: sqlite3.Connection, case_name: str) -> dict | None:
+    requested_case = str(case_name or "").strip()
+    if not requested_case:
+        return None
+
+    case_row = conn.execute(
+        """
+        SELECT case_name
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+        ORDER BY case_name COLLATE NOCASE ASC
+        LIMIT 1;
+        """,
+        (requested_case,),
+    ).fetchone()
+    if case_row is None:
+        return None
+
+    canonical_case_name = str(case_row["case_name"])
+    rows = conn.execute(
+        """
+        SELECT
+            s.slot_position,
+            a.asset_tag,
+            a.equipment_type,
+            a.manufacturer,
+            a.model
+        FROM slots s
+        JOIN slot_occupancy so
+          ON so.slot_id = s.id
+        JOIN assets a
+          ON a.id = so.asset_id
+        WHERE UPPER(s.case_name) = UPPER(?)
+        ORDER BY s.slot_position ASC, UPPER(a.asset_tag) ASC, a.id ASC;
+        """,
+        (canonical_case_name,),
+    ).fetchall()
+
+    assets = [
+        {
+            "asset_tag": str(row["asset_tag"] or ""),
+            "equipment_type": str(row["equipment_type"] or ""),
+            "manufacturer": str(row["manufacturer"] or ""),
+            "model": str(row["model"] or ""),
+            "slot_position": int(row["slot_position"]),
+        }
+        for row in rows
+    ]
+
+    return {
+        "case_name": canonical_case_name,
+        "asset_count": len(assets),
+        "assets": assets,
+    }

@@ -40,6 +40,9 @@
 
   <section class="card">
     <h2>Case Summary</h2>
+    <div class="actions" aria-label="Case report actions">
+      <a class="nav-link" href="{{ url_for('case_inventory') }}">Printable case inventory</a>
+    </div>
     <form method="get" action="{{ url_for('dashboard_cases') }}" class="row" style="margin: 0.5rem 0 1rem; gap: 0.75rem; align-items: flex-start;">
       <div>
         <label for="case-filter-query" class="sr-only">Case name filter</label>

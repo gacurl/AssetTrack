@@ -1,0 +1,133 @@
+<!-- file: assettrack/intake/templates/case_inventory.html -->
+{% extends "base.html" %}
+
+{% block title %}Case Inventory{% endblock %}
+{% block page_heading %}Case Inventory{% endblock %}
+{% block page_class %} page-wide{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .case-inventory-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    .case-inventory-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+      margin-top: 0.75rem;
+    }
+    .case-inventory-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+      gap: 0.65rem;
+      margin: 0.75rem 0 1rem;
+    }
+    .case-inventory-meta div {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-surface-muted);
+    }
+    @media print {
+      .page-tools,
+      .top-nav,
+      .case-inventory-entry,
+      .case-inventory-actions {
+        display: none !important;
+      }
+      .page,
+      .card {
+        width: auto;
+        max-width: none;
+        box-shadow: none;
+      }
+      table {
+        page-break-inside: auto;
+      }
+      tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="actions" aria-label="Contextual navigation">
+    <a class="nav-link" href="{{ url_for('human_report') }}">Back to Reports</a>
+    <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Case Status</a>
+  </nav>
+
+  <section class="card case-inventory-entry">
+    <h2>Select Case</h2>
+    <form method="get" action="{{ url_for('case_inventory_preview') }}" class="case-inventory-form">
+      <div>
+        <label for="case-select"><strong>Choose case</strong></label><br />
+        <select id="case-select" name="case_select">
+          <option value="">Select a case</option>
+          {% for case_name in case_options %}
+            <option value="{{ case_name }}" {% if selected_case and selected_case|upper == case_name|upper %}selected{% endif %}>{{ case_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="case-name"><strong>Enter case number</strong></label><br />
+        <input id="case-name" name="case_name" type="text" value="" placeholder="CASE-12" />
+      </div>
+      <div>
+        <button type="submit">Preview Inventory</button>
+      </div>
+    </form>
+  </section>
+
+  {% if not_found_case %}
+    <section class="card">
+      <h2>Case Not Found</h2>
+      <p>No case exists for <code>{{ not_found_case }}</code>.</p>
+    </section>
+  {% endif %}
+
+  {% if inventory %}
+    <section class="card">
+      <h2>Preview</h2>
+      <div class="case-inventory-meta">
+        <div><strong>Case number:</strong><br />{{ inventory.case_name }}</div>
+        <div><strong>Generated:</strong><br />{{ generated_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</div>
+        <div><strong>Asset count:</strong><br />{{ inventory.asset_count }}</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Asset Tag</th>
+            <th>Type</th>
+            <th>Description / Model</th>
+            <th>Slot</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for asset in inventory.assets %}
+            <tr>
+              <td><code>{{ asset.asset_tag }}</code></td>
+              <td>{{ equipment_type_label(asset.equipment_type) }}</td>
+              <td>{{ asset.manufacturer }}{% if asset.model %} / {{ asset.model }}{% endif %}</td>
+              <td>Slot {{ asset.slot_position }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="4">No assets currently in this case.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="case-inventory-actions" aria-label="Case inventory actions">
+        <button type="button" onclick="window.print()">Print</button>
+        <a class="nav-link" href="{{ url_for('case_inventory_pdf', case_name=inventory.case_name) }}">Download PDF</a>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

@@ -64,6 +64,7 @@
         <a class="nav-link" href="{{ return_to }}">Back to Report</a>
       {% endif %}
       <a class="nav-link" href="{{ url_for('dashboard_cases', return_to=return_to) }}">Back to Cases</a>
+      <a class="nav-link" href="{{ url_for('case_inventory_preview', case_select=case_detail.case_name) }}">Printable Inventory</a>
     </nav>
   </div>
 
