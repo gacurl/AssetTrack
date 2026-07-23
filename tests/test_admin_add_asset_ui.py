@@ -44,8 +44,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.conn.commit()
         intake_app.app.testing = True
         self.client = intake_app.app.test_client()
-        admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
-        login_session(self.client, admin_user_id)
+        self.admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+        login_session(self.client, self.admin_user_id)
 
     def tearDown(self) -> None:
         self.conn.close()
@@ -299,6 +299,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         result = self.client.get("/admin/assets/new")
         self.assertEqual(result.status_code, 200)
         self.assertIn(b"Created asset AT-500 as Unslotted.", result.data)
+        self.assertIn(b"This asset is Unslotted. Storage can be assigned later.", result.data)
 
         asset_row = self.conn.execute(
             """
@@ -367,6 +368,106 @@ class AdminAddAssetUiTests(unittest.TestCase):
         missing = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-501",)).fetchone()
         self.assertIsNone(missing)
 
+    def test_unslotted_asset_warning_shows_once_per_session(self) -> None:
+        first = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-WARN-1",
+                "serial_number": "SER-WARN-1",
+                "manufacturer": "",
+                "equipment_type": "laptop",
+                "building": "",
+                "room": "",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(first.status_code, 302)
+        first_result = self.client.get("/admin/assets/new")
+        self.assertIn(b"Created asset AT-WARN-1 as Unslotted.", first_result.data)
+        self.assertIn(b"This asset is Unslotted. Storage can be assigned later.", first_result.data)
+
+        second = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-WARN-2",
+                "serial_number": "SER-WARN-2",
+                "manufacturer": "",
+                "equipment_type": "laptop",
+                "building": "",
+                "room": "",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(second.status_code, 302)
+        second_result = self.client.get("/admin/assets/new")
+        self.assertIn(b"Created asset AT-WARN-2 as Unslotted.", second_result.data)
+        self.assertNotIn(b"This asset is Unslotted. Storage can be assigned later.", second_result.data)
+
+        events = self.conn.execute(
+            """
+            SELECT event_type
+            FROM asset_events
+            WHERE asset_tag IN ('AT-WARN-1', 'AT-WARN-2')
+            ORDER BY asset_tag, id;
+            """
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in events], ["ASSET_CREATED", "ASSET_CREATED"])
+        occupancy = self.conn.execute(
+            """
+            SELECT 1
+            FROM slot_occupancy
+            WHERE asset_id IN (
+                SELECT id
+                FROM assets
+                WHERE asset_tag IN ('AT-WARN-1', 'AT-WARN-2')
+            );
+            """
+        ).fetchone()
+        self.assertIsNone(occupancy)
+
+    def test_unslotted_asset_warning_can_show_in_new_authenticated_session(self) -> None:
+        with self.client.session_transaction() as sess:
+            sess["admin_unslotted_asset_warning_shown"] = True
+
+        current_session = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-WARN-SESSION-1",
+                "serial_number": "SER-WARN-SESSION-1",
+                "manufacturer": "",
+                "equipment_type": "laptop",
+                "building": "",
+                "room": "",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(current_session.status_code, 302)
+        current_result = self.client.get("/admin/assets/new")
+        self.assertNotIn(b"This asset is Unslotted. Storage can be assigned later.", current_result.data)
+
+        new_client = intake_app.app.test_client()
+        login_session(new_client, self.admin_user_id)
+        new_session = new_client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-WARN-SESSION-2",
+                "serial_number": "SER-WARN-SESSION-2",
+                "manufacturer": "",
+                "equipment_type": "laptop",
+                "building": "",
+                "room": "",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(new_session.status_code, 302)
+        new_result = new_client.get("/admin/assets/new")
+        self.assertIn(b"Created asset AT-WARN-SESSION-2 as Unslotted.", new_result.data)
+        self.assertIn(b"This asset is Unslotted. Storage can be assigned later.", new_result.data)
+
     def test_post_accepts_building_without_room(self) -> None:
         response = self.client.post(
             "/admin/assets/new",
@@ -411,6 +512,10 @@ class AdminAddAssetUiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
+        result = self.client.get("/admin/assets/new")
+        self.assertEqual(result.status_code, 200)
+        self.assertIn(b"Created asset AT-600.", result.data)
+        self.assertNotIn(b"This asset is Unslotted. Storage can be assigned later.", result.data)
 
         asset_row = self.conn.execute(
             "SELECT id, manufacturer, building, room, building_room, home_slot_id FROM assets WHERE asset_tag = ?;",
