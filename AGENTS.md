@@ -266,3 +266,39 @@ Use memories to reduce repeated context setup, never to override:
 
 If unsure:
 → ASK before acting
+---
+
+## 15. Business Rule Consistency
+
+When modifying an existing business rule, review the entire application for other workflows governed by that same rule.
+
+Examples include:
+
+* required vs optional fields
+* asset identity
+* holder identity
+* import validation
+* storage assignment
+* Building, Room, Case, and Slot rules
+* authorization
+* navigation
+* reports
+* command-line utilities
+* import scripts
+* validators
+* committers
+* operator documentation
+
+Requirements:
+
+* implement business-rule changes consistently across equivalent workflows
+* do not leave parallel UI, API, import, script, validator, or report paths enforcing different versions of the same rule without documented justification
+* consistency review is part of the active issue scope when locations share the same governing business rule
+* consistency review does not authorize unrelated cleanup, dependency additions, structural refactoring, or scope expansion
+
+Examples:
+
+* making Room optional requires reviewing every workflow that requires Room
+* making Slot optional requires reviewing every workflow that requires Slot
+* changing asset identity matching requires reviewing every asset import and reconciliation path
+* changing import validation requires reviewing UI imports, command-line imports, shared validators, and related documentation
