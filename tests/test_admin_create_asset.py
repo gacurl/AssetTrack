@@ -88,6 +88,9 @@ class AdminCreateAssetTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["ok"])
+        self.assertIsNone(response.json["home_slot_id"])
+        self.assertEqual(response.json["home_slot_label"], "Unslotted")
+        self.assertEqual(response.json["storage_status"], "Unslotted")
 
         asset_row = self.conn.execute(
             """
@@ -115,23 +118,22 @@ class AdminCreateAssetTests(unittest.TestCase):
             SELECT event_type, actor, notes, payload
             FROM asset_events
             WHERE asset_tag = ?
-            ORDER BY id DESC
-            LIMIT 1;
+            ORDER BY id ASC;
             """,
             ("AT-100",),
-        ).fetchone()
-        self.assertIsNotNone(event)
-        self.assertEqual(event["event_type"], "ASSET_CREATED")
-        self.assertEqual(event["actor"], "admin-user")
-        payload = json.loads(event["payload"])
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in event], ["ASSET_CREATED"])
+        self.assertEqual(event[0]["actor"], "admin-user")
+        self.assertEqual(event[0]["notes"], "initial load")
+        payload = json.loads(event[0]["payload"])
         self.assertEqual(payload["equipment_type"], "laptop")
         self.assertNotIn("manufacturer", payload)
         self.assertNotIn("building", payload)
         self.assertNotIn("room", payload)
-        self.assertNotIn("Unknown", event["payload"])
-        self.assertNotIn("N/A", event["payload"])
-        self.assertNotIn("None", event["payload"])
-        self.assertNotIn("Not Provided", event["payload"])
+        self.assertNotIn("Unknown", event[0]["payload"])
+        self.assertNotIn("N/A", event[0]["payload"])
+        self.assertNotIn("None", event[0]["payload"])
+        self.assertNotIn("Not Provided", event[0]["payload"])
 
     def test_create_asset_preserves_supplied_manufacturer(self) -> None:
         response = self.client.post(
@@ -286,6 +288,8 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["ok"])
         self.assertEqual(response.json["home_slot_id"], 11)
+        self.assertEqual(response.json["home_slot_label"], "11")
+        self.assertEqual(response.json["storage_status"], "Slotted")
 
         asset_row = self.conn.execute(
             """
@@ -368,6 +372,35 @@ class AdminCreateAssetTests(unittest.TestCase):
         event = self.conn.execute(
             "SELECT 1 FROM asset_events WHERE asset_tag = ? AND event_type = 'ASSET_CREATED';",
             ("AT-300",),
+        ).fetchone()
+        self.assertIsNone(event)
+
+    def test_operator_cannot_use_admin_create_asset_api(self) -> None:
+        operator_client = intake_app.app.test_client()
+        operator_user_id = create_test_user(username="operator", password="operator-pass", role="operator")
+        login_session(operator_client, operator_user_id)
+
+        response = operator_client.post(
+            "/admin/assets/create",
+            json={
+                "asset_tag": "AT-OPERATOR",
+                "actor": "operator-user",
+                "equipment_type": "laptop",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json["ok"])
+
+        asset_row = self.conn.execute(
+            "SELECT 1 FROM assets WHERE asset_tag = ?;",
+            ("AT-OPERATOR",),
+        ).fetchone()
+        self.assertIsNone(asset_row)
+
+        event = self.conn.execute(
+            "SELECT 1 FROM asset_events WHERE asset_tag = ?;",
+            ("AT-OPERATOR",),
         ).fetchone()
         self.assertIsNone(event)
 

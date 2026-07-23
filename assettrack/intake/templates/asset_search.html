@@ -220,12 +220,12 @@
               <td>{{ asset.holder_label or "Not assigned" }}</td>
               <td>
                 <div class="asset-location">
-                  <span>Case: {{ asset.home_case_name or "Not assigned" }}</span>
+                  <span>Case: {{ asset.home_case_name or "Unslotted" }}</span>
                   <span>
                     {% if asset.home_slot_position is not none %}
                       Slot: {{ asset.home_slot_position }}
                     {% else %}
-                      Slot: Not assigned
+                      Slot: Unslotted
                     {% endif %}
                   </span>
                 </div>

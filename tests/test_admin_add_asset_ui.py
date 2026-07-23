@@ -296,6 +296,10 @@ class AdminAddAssetUiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 302)
 
+        result = self.client.get("/admin/assets/new")
+        self.assertEqual(result.status_code, 200)
+        self.assertIn(b"Created asset AT-500 as Unslotted.", result.data)
+
         asset_row = self.conn.execute(
             """
             SELECT id, asset_tag, serial_number, manufacturer, building, room, building_room, location_type, current_holder_id, home_slot_id
@@ -336,6 +340,16 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertNotIn("Not Provided", created_payload)
         self.assertNotIn("Unassigned", created_payload)
         self.assertNotIn("manufacturer", created_payload)
+
+        search = self.client.get("/assets/search?asset_tag=AT-500")
+        self.assertEqual(search.status_code, 200)
+        self.assertIn(b"Case: Unslotted", search.data)
+        self.assertIn(b"Slot: Unslotted", search.data)
+
+        history = self.client.get("/assets/history?asset_tag=AT-500")
+        self.assertEqual(history.status_code, 200)
+        self.assertIn(b"<strong>Home slot:</strong>", history.data)
+        self.assertIn(b"Unslotted", history.data)
 
         duplicate = self.client.post(
             "/admin/assets/new",

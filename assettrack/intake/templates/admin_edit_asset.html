@@ -66,12 +66,12 @@
                 <span class="state-badge{% if asset_is_terminal(match.location_type) %} terminal{% endif %}">{{ asset_state_label(match.location_type) }}</span>
               </td>
               <td>{{ match.holder_label or "Not assigned" }}</td>
-              <td>{{ match.home_case_name or "Not assigned" }}</td>
+              <td>{{ match.home_case_name or "Unslotted" }}</td>
               <td>
                 {% if match.home_slot_position is not none %}
                   Slot {{ match.home_slot_position }}
                 {% else %}
-                  Not assigned
+                  Unslotted
                 {% endif %}
               </td>
               <td>

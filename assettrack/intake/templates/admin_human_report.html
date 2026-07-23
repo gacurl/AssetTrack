@@ -59,7 +59,7 @@
                     {{ row.holder_name }}{% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
                   {% endif %}
                 </td>
-                <td>{{ row.home_slot or "" }}</td>
+                <td>{{ row.home_slot or "Unslotted" }}</td>
               </tr>
             {% else %}
               <tr><td colspan="6">No assets found.</td></tr>
