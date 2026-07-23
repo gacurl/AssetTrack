@@ -138,7 +138,11 @@ TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 ASSET_EQUIPMENT_TYPE_OPTIONS = APPROVED_NEW_EQUIPMENT_TYPES
 ASSET_EQUIPMENT_TYPE_LABELS = EQUIPMENT_TYPE_LABELS
-ASSET_IMPORT_ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+ASSET_IMPORT_TEMPFILE_SUFFIXES = {
+    ".csv": ".csv",
+    ".xlsx": ".xlsx",
+}
+ASSET_IMPORT_ALLOWED_EXTENSIONS = set(ASSET_IMPORT_TEMPFILE_SUFFIXES)
 ASSET_IMPORT_CSV_IDENTITY_COLUMNS = {"asset_tag", "barcode", "clean_asset_tag"}
 ASSET_IMPORT_CSV_REQUIRED_COLUMNS = {"equipment_type"}
 ASSET_IMPORT_CSV_ALLOWED_COLUMNS = {
@@ -7653,13 +7657,14 @@ def admin_asset_import():
             return render_template("admin_asset_import.html", result=None)
 
         suffix = Path(filename).suffix.lower()
-        if suffix not in ASSET_IMPORT_ALLOWED_EXTENSIONS:
+        tempfile_suffix = ASSET_IMPORT_TEMPFILE_SUFFIXES.get(suffix)
+        if tempfile_suffix is None:
             flash("Unsupported file type. Upload a .csv or .xlsx file.", "error")
             return render_template("admin_asset_import.html", result=None)
 
         temp_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=tempfile_suffix) as handle:
                 upload.save(handle)
                 temp_path = Path(handle.name)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -146,6 +147,68 @@ def test_xlsx_upload_analyzes_laptop_switch_and_router_without_database_writes(c
     assert b"Laptop" in response.data
     assert b"Switch" in response.data
     assert b"Router" in response.data
+
+
+def test_traversal_style_csv_filename_uses_server_tempfile_suffix(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _login_admin(client_with_temp_db)
+    created_paths: list[Path] = []
+    original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
+
+    def recording_named_temporary_file(*args, **kwargs):
+        assert kwargs["suffix"] == ".csv"
+        handle = original_named_temporary_file(*args, **kwargs)
+        created_paths.append(Path(handle.name))
+        return handle
+
+    monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", recording_named_temporary_file)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nAT-100,SN-100,laptop\n",
+        "../../outside.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Asset import analysis complete. No database changes were made." in response.data
+    assert created_paths
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    for created_path in created_paths:
+        assert created_path.parent.resolve() == temp_root
+        assert created_path.suffix == ".csv"
+        assert "outside" not in created_path.name
+        assert not created_path.exists()
+
+
+def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _login_admin(client_with_temp_db)
+    created_paths: list[Path] = []
+    original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
+
+    def recording_named_temporary_file(*args, **kwargs):
+        assert kwargs["suffix"] == ".xlsx"
+        handle = original_named_temporary_file(*args, **kwargs)
+        created_paths.append(Path(handle.name))
+        return handle
+
+    monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", recording_named_temporary_file)
+
+    response = _post_file(client_with_temp_db, _xlsx_bytes(), "..\\..\\outside.xlsx")
+
+    assert response.status_code == 200
+    assert b"Asset import analysis complete. No database changes were made." in response.data
+    assert created_paths
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    for created_path in created_paths:
+        assert created_path.parent.resolve() == temp_root
+        assert created_path.suffix == ".xlsx"
+        assert "outside" not in created_path.name
+        assert not created_path.exists()
 
 
 def test_unsupported_asset_import_extension_is_rejected_clearly(client_with_temp_db) -> None:
