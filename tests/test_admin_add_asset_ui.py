@@ -101,6 +101,18 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertNotIn(b'<option value="voip"', response.data)
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
+        self.assertIn(b"<strong>Building</strong> (optional)", response.data)
+        self.assertIn(b"<strong>Room</strong> (optional)", response.data)
+        self.assertNotIn(b'id="building" name="building" value="" required', response.data)
+        self.assertNotIn(b'id="room" name="room" value="" required', response.data)
+
+    def test_admin_new_asset_route_rejects_non_admin(self) -> None:
+        operator_id = create_test_user(username="operator-new-asset", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.get("/admin/assets/new")
+
+        self.assertEqual(response.status_code, 403)
 
     def test_add_assets_queue_renders_scan_timestamps_from_queue_items(self) -> None:
         intake_app.SCAN_QUEUE.clear()
@@ -273,8 +285,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
                 "serial_number": "SER-500",
                 "manufacturer": "Lenovo",
                 "equipment_type": "laptop",
-                "building": "HQ",
-                "room": "120",
+                "building": "",
+                "room": "",
                 "model": "T14",
                 "model_code": "GEN5",
                 "notes": "new intake",
@@ -284,7 +296,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         asset_row = self.conn.execute(
             """
-            SELECT asset_tag, serial_number, manufacturer, location_type, current_holder_id, home_slot_id
+            SELECT id, asset_tag, serial_number, manufacturer, building, room, building_room, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE asset_tag = ?;
             """,
@@ -293,9 +305,32 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIsNotNone(asset_row)
         self.assertEqual(asset_row["serial_number"], "SER-500")
         self.assertEqual(asset_row["manufacturer"], "Lenovo")
+        self.assertEqual(asset_row["building"], "")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "")
         self.assertEqual(asset_row["location_type"], "STORAGE")
         self.assertIsNone(asset_row["current_holder_id"])
         self.assertIsNone(asset_row["home_slot_id"])
+
+        occ = self.conn.execute("SELECT 1 FROM slot_occupancy WHERE asset_id = ?;", (asset_row["id"],)).fetchone()
+        self.assertIsNone(occ)
+
+        events = self.conn.execute(
+            """
+            SELECT event_type, payload
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id ASC;
+            """,
+            ("AT-500",),
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in events], ["ASSET_CREATED"])
+        self.assertNotIn("SLOT_ASSIGN", [row["event_type"] for row in events])
+        created_payload = events[0]["payload"]
+        self.assertIsNotNone(created_payload)
+        self.assertNotIn("Unknown", created_payload)
+        self.assertNotIn("N/A", created_payload)
+        self.assertNotIn("Unassigned", created_payload)
 
         duplicate = self.client.post(
             "/admin/assets/new",
@@ -312,6 +347,33 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Serial number already exists.", duplicate.data)
         missing = self.conn.execute("SELECT 1 FROM assets WHERE asset_tag = ?;", ("AT-501",)).fetchone()
         self.assertIsNone(missing)
+
+    def test_post_accepts_building_without_room(self) -> None:
+        response = self.client.post(
+            "/admin/assets/new",
+            data={
+                "asset_tag": "AT-510",
+                "serial_number": "SER-510",
+                "manufacturer": "Lenovo",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            """
+            SELECT building, room, building_room
+            FROM assets
+            WHERE asset_tag = ?;
+            """,
+            ("AT-510",),
+        ).fetchone()
+        self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["building"], "HQ")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "HQ")
 
     def test_post_creates_slotted_asset_by_case_and_slot_and_writes_both_events(self) -> None:
         self._insert_slot(101, "CASE-A", 7)
@@ -332,10 +394,13 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
 
         asset_row = self.conn.execute(
-            "SELECT id, home_slot_id FROM assets WHERE asset_tag = ?;",
+            "SELECT id, building, room, building_room, home_slot_id FROM assets WHERE asset_tag = ?;",
             ("AT-600",),
         ).fetchone()
         self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["building"], "HQ")
+        self.assertEqual(asset_row["room"], "220")
+        self.assertEqual(asset_row["building_room"], "HQ/220")
         self.assertEqual(asset_row["home_slot_id"], 101)
 
         occ = self.conn.execute(
@@ -405,8 +470,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Enter a serial number.", response.data)
         self.assertIn(b"Enter a manufacturer.", response.data)
         self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
-        self.assertIn(b"Enter the building.", response.data)
-        self.assertIn(b"Enter the room.", response.data)
+        self.assertNotIn(b"Enter the building.", response.data)
+        self.assertNotIn(b"Enter the room.", response.data)
         self.assertIn(b"Choose both a case and a slot, or leave both blank.", response.data)
         self.assertNotIn(b"asset_tag is required", response.data)
         self.assertNotIn(b"serial_number is required", response.data)

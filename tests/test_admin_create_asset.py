@@ -21,6 +21,9 @@ class AdminCreateAssetTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 asset_tag TEXT NOT NULL UNIQUE,
                 equipment_type TEXT NOT NULL,
+                building TEXT NULL,
+                room TEXT NULL,
+                building_room TEXT NULL,
                 custody_state TEXT NOT NULL,
                 accountability_status TEXT NOT NULL,
                 condition TEXT NOT NULL,
@@ -87,7 +90,7 @@ class AdminCreateAssetTests(unittest.TestCase):
 
         asset_row = self.conn.execute(
             """
-            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id, equipment_type
+            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id, equipment_type, building, room, building_room
             FROM assets
             WHERE asset_tag = ?;
             """,
@@ -98,6 +101,9 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertIsNone(asset_row["current_holder_id"])
         self.assertIsNone(asset_row["home_slot_id"])
         self.assertEqual(asset_row["equipment_type"], "laptop")
+        self.assertEqual(asset_row["building"], "")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "")
 
         occ = self.conn.execute("SELECT 1 FROM slot_occupancy WHERE asset_id = ?;", (asset_row["id"],)).fetchone()
         self.assertIsNone(occ)
@@ -117,6 +123,64 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertEqual(event["actor"], "admin-user")
         payload = json.loads(event["payload"])
         self.assertEqual(payload["equipment_type"], "laptop")
+        self.assertNotIn("building", payload)
+        self.assertNotIn("room", payload)
+
+    def test_create_asset_accepts_building_without_room(self) -> None:
+        response = self.client.post(
+            "/admin/assets/create",
+            json={
+                "asset_tag": "AT-110",
+                "actor": "admin-user",
+                "equipment_type": "router",
+                "building": "HQ",
+                "room": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["ok"])
+
+        asset_row = self.conn.execute(
+            """
+            SELECT building, room, building_room
+            FROM assets
+            WHERE asset_tag = ?;
+            """,
+            ("AT-110",),
+        ).fetchone()
+        self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["building"], "HQ")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "HQ")
+
+        event = self.conn.execute(
+            """
+            SELECT payload
+            FROM asset_events
+            WHERE asset_tag = ?
+              AND event_type = 'ASSET_CREATED'
+            LIMIT 1;
+            """,
+            ("AT-110",),
+        ).fetchone()
+        payload = json.loads(event["payload"])
+        self.assertEqual(payload["building"], "HQ")
+        self.assertNotIn("room", payload)
+
+    def test_create_asset_api_rejects_non_admin(self) -> None:
+        operator_id = create_test_user(username="operator-create-asset", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.post(
+            "/admin/assets/create",
+            json={
+                "asset_tag": "AT-120",
+                "actor": "operator-user",
+                "equipment_type": "laptop",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_create_asset_rejects_missing_equipment_type(self) -> None:
         response = self.client.post(

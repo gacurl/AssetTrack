@@ -11,7 +11,7 @@ Why it matters: asset creation and import depend on reference data, storage capa
 | Asset types | `assettrack/assets.py:APPROVED_NEW_EQUIPMENT_TYPES`, `validate_new_equipment_type`; UI defaults in `assettrack/intake/app.py` | Yes. New assets must be `laptop`, `switch`, or `router`. | System-provided enum in code. No admin UI for new types. | Trim/lowercase; unsupported new types rejected. Legacy labels can display but cannot be used for new asset creation. | Asset creation events include equipment type when the creating path records it. |
 | Organizations | `assettrack/db.py` schema and Ad Hoc bootstrap; `assettrack/reference_data.py:create_organization`; `assettrack/holder_import.py:_ensure_organization` | No for asset creation. Yes for holder creation/import. | Bootstrap/migration creates `Ad Hoc`; admin UI creates named organizations; holder CSV import creates missing organizations. | Trimmed name; case-insensitive unique table constraint and helper checks. | No asset event. Tests confirm reference changes do not rewrite asset events or receipt snapshots. |
 | Buildings | `assettrack/reference_data.py:create_building`, `update_building_name`, `set_building_active` | No for current asset creation; needed for operator issue-location choices and org-building mapping. | Admin reference-data UI only. | Trimmed name; case-insensitive unique table constraint and helper checks; active/inactive flag. | No asset event. Tests confirm corrections/deactivation do not rewrite asset events or receipt snapshots. |
-| Rooms | Asset fields and workflow form values; no `rooms` table found. | Current admin asset creation requires room text. No repository-level room seed table exists. | Entered as form/import text; unsupported as independent direct seed data. | Trimmed text in UI; not globally unique or centrally validated. | Room appears in asset creation, slot assignment, issue events, and receipt snapshots when those paths include it. |
+| Rooms | Asset fields and workflow form values; no `rooms` table found. | No for current individual asset creation. No repository-level room seed table exists. | Entered as form/import text; unsupported as independent direct seed data. | Trimmed text in UI; not globally unique or centrally validated. | Room appears in asset creation, slot assignment, issue events, and receipt snapshots when those paths include it. |
 | Cases | `slots.case_name`; dashboard/report code derives cases from slots. | Required only for slotted asset creation/import. | Admin slot provisioning creates slots for a case; XLSX importer can create case slots from workbook rows; network import requires existing slots when assignment is requested. | UI uppercases case numbers; slot table enforces unique `(case_name, slot_position)`. | Empty case/slot provisioning has no asset event. Slot assignment with an asset appends events in current asset/import paths. |
 | Slots | `assettrack/intake/app.py:admin_slot_provision`, `_resolve_slot_selection`; `assettrack/slots.py`; `scripts/import_inventory.py` | Required before slotted asset creation except the current documented XLSX import currently creates slots itself. Not required for unslotted asset creation. | Admin UI provisions empty slots; XLSX importer creates slots; network import and admin new asset select existing slots. | Case uppercased in UI/imports; slot count/position parsed as integer; occupied slots rejected by current create/import paths. | Empty slot provisioning has no audit event; asset-slot assignment appends `SLOT_ASSIGN` in admin new asset and current documented XLSX import, and via generic committer for ingest paths. |
 | Holders | `assettrack/holders.py:create_holder`, `update_holder`; `assettrack/holder_import.py:import_holders_csv` | No for first asset. Yes before Issue custody workflows. | Admin holder UI and holder CSV import. | Name trimmed; email normalized lowercase and unique by helper/import logic; organization required by current holder helpers. | Holder create/import/update does not append asset events. Custody events reference holder when assets are issued/returned. |
@@ -27,7 +27,7 @@ Before the first asset can be created or imported, AssetTrack must have:
 - An authenticated admin for UI creation paths, or a documented local CLI/import operating path where the relevant issue has defined support status.
 - A system-provided equipment type: Laptop, Switch, or Router.
 - A unique asset tag.
-- For UI single-asset creation: serial number, manufacturer, building text, room text, and optional model/model code/notes.
+- For UI single-asset creation: serial number, manufacturer, and optional building text, room text, model/model code/notes.
 - For slotted creation/import: an empty storage slot, unless the relevant import issue explicitly defines that path as the owner of slot creation.
 
 Not required before the first asset:
@@ -45,8 +45,8 @@ Not required before the first asset:
 | Asset tag | Required per asset | UI or import path whose support status is defined by its owning issue | Unsupported |
 | Serial number | Required by current admin new asset; optional in some imports | UI or import path whose support status is defined by its owning issue | Unsupported |
 | Manufacturer | Required by current admin new asset; optional in some imports | UI or import path whose support status is defined by its owning issue | Unsupported |
-| Building text | Required by current admin new asset; optional in some imports | UI/import field; reference building UI for controlled lists | Unsupported |
-| Room text | Required by current admin new asset; optional in some imports | UI/import field only; no room seed table | Unsupported |
+| Building text | Optional in current individual asset creation and some imports | UI/import field; reference building UI for controlled lists | Unsupported |
+| Room text | Optional in current individual asset creation and some imports | UI/import field only; no room seed table | Unsupported |
 | Organizations | Required for holders | Bootstrap creates `Ad Hoc`; admin UI; holder import may create missing organizations | Unsupported |
 | Buildings | Required for building mappings and controlled Issue location choices | Admin reference-data UI | Unsupported |
 | Organization-building mappings | Optional until Issue location needs them | Admin reference-data UI | Unsupported |
@@ -129,13 +129,13 @@ Minimum useful path for an unslotted first asset:
 2. Bootstrap the first admin user.
 3. Confirm system defaults are present, including the system-provided asset types and the `Ad Hoc` organization.
 4. Create or import an unslotted asset through a path whose owning issue allows unslotted asset creation/import.
-5. Provide the current required free-text asset fields for that path, such as asset tag, equipment type, serial number, manufacturer, building text, and room text where the current UI requires them.
+5. Provide the current required free-text asset fields for that path, such as asset tag, equipment type, serial number, and manufacturer. Building text and room text are optional for individual asset creation and should be supplied only when they are known.
 
 Reference-data setup is conditional, not mandatory before the first asset:
 
 - Prepare cases and slots only when creating or importing slotted assets.
 - Prepare organizations, buildings, organization-building mappings, and holders only when preparing Issue custody, holder import, or controlled location choices.
-- Keep free-text asset fields distinct from reference-data prerequisites. A current form may require building or room text even when no building reference row, room table, holder, case, or slot is required.
+- Keep free-text asset fields distinct from reference-data prerequisites. Individual asset creation may record building or room text when supplied, but it must not require a building reference row, room table, holder, case, or slot.
 - Use Issue/Return workflows only after the relevant holder, location context, and asset records exist.
 
 ## Constraints On Milestone 30 Issues

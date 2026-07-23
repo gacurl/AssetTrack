@@ -126,6 +126,49 @@ def test_inventory_xlsx_import_appends_events_and_reconciles_current_state(
         persisted.close()
 
 
+def test_inventory_xlsx_import_keeps_blank_building_room_blank(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path, excel_path = _configure_import(monkeypatch, tmp_path)
+    _write_inventory(excel_path, [_inventory_row(clean_asset_tag="IMPORT-BLANK-LOCATION", building_room="")])
+
+    rows = import_inventory.load_rows()
+    result = import_inventory.run_import(rows)
+
+    assert result == (1, 1, 1)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        asset = conn.execute(
+            """
+            SELECT building_room
+            FROM assets
+            WHERE asset_tag = 'IMPORT-BLANK-LOCATION';
+            """
+        ).fetchone()
+        assert asset is not None
+        assert asset["building_room"] is None
+
+        events = conn.execute(
+            """
+            SELECT event_type, payload
+            FROM asset_events
+            WHERE asset_tag = 'IMPORT-BLANK-LOCATION'
+            ORDER BY id;
+            """
+        ).fetchall()
+        created_payload = json.loads(events[0]["payload"])
+        assert "building_room" not in created_payload
+        slot_payload = json.loads(events[1]["payload"])
+        assert slot_payload["building_room"] == ""
+        assert "Unknown" not in events[0]["payload"]
+        assert "N/A" not in events[0]["payload"]
+        assert "Unassigned" not in events[0]["payload"]
+    finally:
+        conn.close()
+
+
 def test_inventory_xlsx_import_accepts_laptop_switch_and_router(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

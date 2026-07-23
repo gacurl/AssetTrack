@@ -75,14 +75,23 @@ class NetworkAssetImportTests(unittest.TestCase):
     def test_barcode_fills_blank_asset_tag(self) -> None:
         report = self._import(
             "asset_tag,barcode,serial_number,equipment_type,manufacturer,model,location_building,case_identifier,slot_identifier,notes_comments\n"
-            ",RTR-200,SER-200,router,Juniper,MX204,HQ,,,\n"
+            ",RTR-200,SER-200,router,Juniper,MX204,,,,\n"
         )
 
         self.assertEqual(report.summary(), {"processed": 1, "imported": 1, "errors": 0})
         conn = self._connection()
         try:
-            asset = conn.execute("SELECT asset_tag FROM assets WHERE asset_tag = 'RTR-200';").fetchone()
+            asset = conn.execute(
+                """
+                SELECT asset_tag, building, room, building_room
+                FROM assets
+                WHERE asset_tag = 'RTR-200';
+                """
+            ).fetchone()
             self.assertIsNotNone(asset)
+            self.assertEqual(asset["building"], "")
+            self.assertIsNone(asset["room"])
+            self.assertIsNone(asset["building_room"])
         finally:
             conn.close()
 

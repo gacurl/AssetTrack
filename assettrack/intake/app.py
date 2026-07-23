@@ -1312,11 +1312,6 @@ def _validate_admin_new_asset_form(
             form_state["equipment_type"] = validate_new_equipment_type(form_state["equipment_type"])
         except ValueError as exc:
             errors.append(str(exc))
-    if not form_state["building"]:
-        errors.append("Enter the building.")
-    if not form_state["room"]:
-        errors.append("Enter the room.")
-
     selected_slot, slot_errors = _resolve_slot_selection(
         conn,
         case_name=form_state["case_name"],
@@ -2698,6 +2693,14 @@ def _is_truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _combine_building_room(building: object, room: object) -> str:
+    building_text = str(building or "").strip()
+    room_text = str(room or "").strip()
+    if building_text and room_text:
+        return f"{building_text}/{room_text}"
+    return building_text or room_text
+
+
 def _require_admin_for_route():
     user = current_user()
     role = str((user or {}).get("role") or "").strip().lower()
@@ -2784,7 +2787,7 @@ def _create_admin_asset_in_tx(
 
     now_iso = datetime.now(timezone.utc).isoformat()
     created_date = now_iso.split("T", 1)[0]
-    building_room = f"{building}/{room}"
+    building_room = _combine_building_room(building, room)
 
     home_slot_id = int(slot_row["id"]) if slot_row else None
     asset_columns = get_asset_table_columns(conn)
@@ -3014,7 +3017,7 @@ def _update_admin_asset_in_tx(
             raise ValueError("Selected slot is already occupied.")
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    building_room = f"{building}/{room}"
+    building_room = _combine_building_room(building, room)
     asset_columns = get_asset_table_columns(conn)
 
     changed_fields: dict[str, object] = {}
@@ -8704,11 +8707,6 @@ def admin_edit_asset():
                     allow_current=asset_view["equipment_type"],
                 ):
                     errors.append(SUPPORTED_EQUIPMENT_TYPE_MESSAGE)
-                if not form_state["building"]:
-                    errors.append("building is required.")
-                if not form_state["room"]:
-                    errors.append("room is required.")
-
                 selected_slot, slot_errors = _resolve_slot_selection(
                     conn,
                     case_name=form_state["case_name"],
