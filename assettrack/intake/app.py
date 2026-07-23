@@ -11,6 +11,7 @@ Feynman-brief:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
@@ -119,6 +120,7 @@ from assettrack.users import (
     set_user_role,
     verify_password,
 )
+from scripts import import_inventory
 
 
 app = Flask(__name__)
@@ -136,6 +138,28 @@ TERMINAL_LOCATION_TYPES = {"DISPOSED", "RETIRED"}
 RETIRE_FAILURE_TYPES = {"HARDWARE", "LOST", "STOLEN", "DESTROYED", "OTHER"}
 ASSET_EQUIPMENT_TYPE_OPTIONS = APPROVED_NEW_EQUIPMENT_TYPES
 ASSET_EQUIPMENT_TYPE_LABELS = EQUIPMENT_TYPE_LABELS
+ASSET_IMPORT_ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+ASSET_IMPORT_CSV_IDENTITY_COLUMNS = {"asset_tag", "barcode", "clean_asset_tag"}
+ASSET_IMPORT_CSV_REQUIRED_COLUMNS = {"equipment_type"}
+ASSET_IMPORT_CSV_ALLOWED_COLUMNS = {
+    "asset_tag",
+    "barcode",
+    "clean_asset_tag",
+    "case_number",
+    "slot_helper",
+    "slot_number",
+    "serial_number",
+    "equipment_type",
+    "manufacturer",
+    "model",
+    "model_code",
+    "building_room",
+    "location_building",
+    "case_identifier",
+    "slot_identifier",
+    "mac_address",
+    "notes_comments",
+}
 DEMO_SUMMARY = {
     "assets_in_custody": 18,
     "pending_receipts": 2,
@@ -7503,6 +7527,151 @@ def admin_holder_import():
                 temp_path.unlink(missing_ok=True)
 
     return render_template("admin_holder_import.html", report=report)
+
+
+def _asset_import_header(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _asset_import_result(*, filename: str, file_type: str, equipment_types: set[str]) -> dict:
+    return {
+        "filename": filename,
+        "file_type": file_type,
+        "equipment_types": [equipment_type_label(value) for value in sorted(equipment_types)],
+    }
+
+
+def _first_line(value: object) -> str:
+    return str(value or "").strip().splitlines()[0] if str(value or "").strip() else ""
+
+
+def _analyze_asset_import_csv(temp_path: Path, *, filename: str) -> dict:
+    equipment_types: set[str] = set()
+
+    try:
+        with temp_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames is None:
+                raise ValueError("Malformed CSV file. Include a header row.")
+
+            headers = [_asset_import_header(header) for header in reader.fieldnames]
+            if any(not header for header in headers):
+                raise ValueError("Malformed CSV file. Column headers cannot be blank.")
+            if len(headers) != len(set(headers)):
+                raise ValueError("Malformed CSV file. Column headers must be unique.")
+
+            unsupported_columns = sorted(set(headers) - ASSET_IMPORT_CSV_ALLOWED_COLUMNS)
+            if unsupported_columns:
+                raise ValueError(
+                    "Unsupported CSV column"
+                    f"{'' if len(unsupported_columns) == 1 else 's'}: {', '.join(unsupported_columns)}."
+                )
+
+            missing_columns = sorted(ASSET_IMPORT_CSV_REQUIRED_COLUMNS - set(headers))
+            if missing_columns:
+                raise ValueError(
+                    "Missing required CSV column"
+                    f"{'' if len(missing_columns) == 1 else 's'}: {', '.join(missing_columns)}."
+                )
+            if not ASSET_IMPORT_CSV_IDENTITY_COLUMNS.intersection(headers):
+                raise ValueError("Missing required CSV column: asset_tag or barcode.")
+
+            for row_number, raw_row in enumerate(reader, start=2):
+                if None in raw_row:
+                    raise ValueError(f"Malformed CSV file. Row {row_number} has extra columns.")
+
+                row = {
+                    _asset_import_header(key): str(value or "").strip()
+                    for key, value in raw_row.items()
+                    if key is not None
+                }
+                if not any(row.values()):
+                    continue
+
+                if not any(row.get(column, "") for column in ASSET_IMPORT_CSV_IDENTITY_COLUMNS):
+                    raise ValueError(f"Row {row_number}: asset_tag or barcode is required.")
+
+                try:
+                    equipment_types.add(validate_new_equipment_type(row.get("equipment_type", "")))
+                except ValueError as exc:
+                    message = _first_line(exc) or SUPPORTED_EQUIPMENT_TYPE_MESSAGE
+                    raise ValueError(f"Row {row_number}: {message}") from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError("Malformed CSV file. Upload a UTF-8 CSV file.") from exc
+    except csv.Error as exc:
+        raise ValueError(f"Malformed CSV file. {exc}") from exc
+
+    return _asset_import_result(filename=filename, file_type="CSV", equipment_types=equipment_types)
+
+
+def _analyze_asset_import_xlsx(temp_path: Path, *, filename: str) -> dict:
+    try:
+        with temp_path.open("rb") as handle:
+            if handle.read(2) != b"PK":
+                raise ValueError("Malformed XLSX file. Upload a valid .xlsx workbook.")
+
+        original_excel_path = import_inventory.EXCEL_PATH
+        original_db_path = import_inventory.DB_PATH
+        try:
+            import_inventory.EXCEL_PATH = temp_path
+            import_inventory.DB_PATH = _resolved_runtime_db_path()
+            rows = import_inventory.load_rows()
+        finally:
+            import_inventory.EXCEL_PATH = original_excel_path
+            import_inventory.DB_PATH = original_db_path
+    except import_inventory.ImportStopError as exc:
+        message = _first_line(exc) or "Could not analyze XLSX file."
+        raise ValueError(f"Malformed XLSX file. {message}") from exc
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("Malformed XLSX file. Upload a valid .xlsx workbook.") from exc
+
+    equipment_types = {row.equipment_type for row in rows}
+    return _asset_import_result(filename=filename, file_type="XLSX", equipment_types=equipment_types)
+
+
+def _analyze_asset_import_upload(temp_path: Path, *, filename: str, suffix: str) -> dict:
+    if suffix == ".csv":
+        return _analyze_asset_import_csv(temp_path, filename=filename)
+    if suffix == ".xlsx":
+        return _analyze_asset_import_xlsx(temp_path, filename=filename)
+    raise ValueError("Unsupported file type. Upload a .csv or .xlsx file.")
+
+
+@app.route("/admin/assets/import", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_asset_import():
+    result: dict | None = None
+
+    if request.method == "POST":
+        upload = request.files.get("asset_file")
+        filename = str((upload.filename if upload is not None else "") or "").strip()
+        if upload is None or not filename:
+            flash("Choose a .csv or .xlsx file to analyze.", "error")
+            return render_template("admin_asset_import.html", result=None)
+
+        suffix = Path(filename).suffix.lower()
+        if suffix not in ASSET_IMPORT_ALLOWED_EXTENSIONS:
+            flash("Unsupported file type. Upload a .csv or .xlsx file.", "error")
+            return render_template("admin_asset_import.html", result=None)
+
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                upload.save(handle)
+                temp_path = Path(handle.name)
+
+            result = _analyze_asset_import_upload(temp_path, filename=filename, suffix=suffix)
+            flash("Asset import analysis complete. No database changes were made.", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
+    return render_template("admin_asset_import.html", result=result)
 
 
 @app.get("/admin/network-assets/import")
