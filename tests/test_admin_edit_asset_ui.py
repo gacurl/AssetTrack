@@ -44,6 +44,9 @@ class AdminEditAssetUiTests(unittest.TestCase):
         home_slot_id: int | None,
         case_number: str | None = None,
         slot_number: str | None = None,
+        building: str = "HQ",
+        room: str = "110",
+        building_room: str = "HQ/110",
     ) -> int:
         cursor = self.conn.execute(
             """
@@ -69,9 +72,20 @@ class AdminEditAssetUiTests(unittest.TestCase):
                 case_number,
                 slot_number
             )
-            VALUES (?, ?, 'Dell', 'laptop', 'HQ', '110', 'Latitude', '5400', 'seed', 'HQ/110', 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, ?, ?);
+            VALUES (?, ?, 'Dell', 'laptop', ?, ?, 'Latitude', '5400', 'seed', ?, 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, ?, ?);
             """,
-            (asset_tag, serial_number, location_type, current_holder_id, home_slot_id, case_number, slot_number),
+            (
+                asset_tag,
+                serial_number,
+                building,
+                room,
+                building_room,
+                location_type,
+                current_holder_id,
+                home_slot_id,
+                case_number,
+                slot_number,
+            ),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
@@ -103,6 +117,14 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertIn(b"Admin: Edit Asset", response.data)
         self.assertNotIn(b'<option value="tablet"', response.data)
 
+    def test_admin_edit_asset_route_rejects_non_admin(self) -> None:
+        operator_id = create_test_user(username="operator-edit-asset", password="op-pass", role="operator")
+        login_session(self.client, operator_id)
+
+        response = self.client.get("/admin/assets/edit")
+
+        self.assertEqual(response.status_code, 403)
+
     def test_exact_lookup_loads_edit_form_directly(self) -> None:
         self._insert_asset(
             "AT-EXACT-EDIT-1",
@@ -124,6 +146,10 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertIn(b"Edit Asset", response.data)
         self.assertIn(b"AT-EXACT-EDIT-1", response.data)
         self.assertIn(b"Save Asset", response.data)
+        self.assertIn(b"<strong>building</strong> (optional)", response.data)
+        self.assertIn(b"<strong>room</strong> (optional)", response.data)
+        self.assertNotIn(b'id="building" name="building" value="HQ" required', response.data)
+        self.assertNotIn(b'id="room" name="room" value="110" required', response.data)
         self.assertNotIn(b"Select Asset", response.data)
 
     def test_partial_lookup_requires_explicit_selection_before_edit(self) -> None:
@@ -277,6 +303,106 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertTrue(any(row["event_type"] == "ASSET_UPDATED" for row in events))
         payloads = [json.loads(row["payload"]) for row in events if row["payload"]]
         self.assertTrue(any(payload.get("home_slot_id") == 202 for payload in payloads))
+
+    def test_edit_allows_blank_building_and_room(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-EDIT-BLANK-LOCATION",
+            serial_number="SER-EDIT-BLANK-LOCATION",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "update",
+                "lookup_asset_tag": "AT-EDIT-BLANK-LOCATION",
+                "asset_tag": "AT-EDIT-BLANK-LOCATION",
+                "serial_number": "SER-EDIT-BLANK-LOCATION-A",
+                "manufacturer": "Dell",
+                "equipment_type": "laptop",
+                "building": "",
+                "room": "",
+                "model": "Latitude",
+                "model_code": "5400",
+                "notes": "clear location text",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            "SELECT building, room, building_room, home_slot_id FROM assets WHERE id = ?;",
+            (asset_id,),
+        ).fetchone()
+        self.assertEqual(asset_row["building"], "")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "")
+        self.assertIsNone(asset_row["home_slot_id"])
+
+        occupancy = self.conn.execute("SELECT 1 FROM slot_occupancy WHERE asset_id = ?;", (asset_id,)).fetchone()
+        self.assertIsNone(occupancy)
+
+        event = self.conn.execute(
+            """
+            SELECT event_type, payload
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id DESC
+            LIMIT 1;
+            """,
+            ("AT-EDIT-BLANK-LOCATION",),
+        ).fetchone()
+        self.assertEqual(event["event_type"], "ASSET_UPDATED")
+        payload = json.loads(event["payload"])
+        self.assertEqual(payload["building"], "")
+        self.assertEqual(payload["room"], "")
+        self.assertEqual(payload["building_room"], "")
+        self.assertNotIn("Unknown", event["payload"])
+        self.assertNotIn("N/A", event["payload"])
+        self.assertNotIn("Unassigned", event["payload"])
+
+    def test_edit_allows_building_without_room(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-EDIT-BUILDING-ONLY",
+            serial_number="SER-EDIT-BUILDING-ONLY",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+            building="",
+            room="",
+            building_room="",
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "update",
+                "lookup_asset_tag": "AT-EDIT-BUILDING-ONLY",
+                "asset_tag": "AT-EDIT-BUILDING-ONLY",
+                "serial_number": "SER-EDIT-BUILDING-ONLY-A",
+                "manufacturer": "Dell",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "",
+                "model": "Latitude",
+                "model_code": "5400",
+                "notes": "building only",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            "SELECT building, room, building_room FROM assets WHERE id = ?;",
+            (asset_id,),
+        ).fetchone()
+        self.assertEqual(asset_row["building"], "HQ")
+        self.assertEqual(asset_row["room"], "")
+        self.assertEqual(asset_row["building_room"], "HQ")
 
     def test_edit_form_preserves_existing_legacy_equipment_type(self) -> None:
         asset_id = self._insert_asset(

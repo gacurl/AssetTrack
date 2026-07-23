@@ -57,12 +57,12 @@
           </select>
         </div>
         <div class="row">
-          <label for="building"><strong>Building</strong> (required)</label><br />
-          <input type="text" id="building" name="building" value="{{ form.building or '' }}" required />
+          <label for="building"><strong>Building</strong> (optional)</label><br />
+          <input type="text" id="building" name="building" value="{{ form.building or '' }}" />
         </div>
         <div class="row">
-          <label for="room"><strong>Room</strong> (required)</label><br />
-          <input type="text" id="room" name="room" value="{{ form.room or '' }}" required />
+          <label for="room"><strong>Room</strong> (optional)</label><br />
+          <input type="text" id="room" name="room" value="{{ form.room or '' }}" />
         </div>
         <div class="row">
           <label for="model"><strong>Model</strong> (optional)</label><br />

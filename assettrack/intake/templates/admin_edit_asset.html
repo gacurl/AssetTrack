@@ -125,12 +125,12 @@
             </select>
           </div>
           <div class="row form-group">
-            <label class="form-label" for="building"><strong>building</strong> (required)</label>
-            <input class="form-input" type="text" id="building" name="building" value="{{ form.building or '' }}" required />
+            <label class="form-label" for="building"><strong>building</strong> (optional)</label>
+            <input class="form-input" type="text" id="building" name="building" value="{{ form.building or '' }}" />
           </div>
           <div class="row form-group">
-            <label class="form-label" for="room"><strong>room</strong> (required)</label>
-            <input class="form-input" type="text" id="room" name="room" value="{{ form.room or '' }}" required />
+            <label class="form-label" for="room"><strong>room</strong> (optional)</label>
+            <input class="form-input" type="text" id="room" name="room" value="{{ form.room or '' }}" />
           </div>
           <div class="row form-group">
             <label class="form-label" for="model"><strong>model</strong> (optional)</label>
