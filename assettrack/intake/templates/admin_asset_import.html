@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Import Assets{% endblock %}
+{% block page_heading %}Admin: Import Assets{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
+    .import-summary { margin: 0; }
+    .compact-list { margin: 0.5rem 0 0 1.25rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Asset Import</h2>
+    <form method="post" enctype="multipart/form-data">
+      <div class="row">
+        <label for="asset_file"><strong>Asset file</strong></label><br />
+        <input
+          id="asset_file"
+          type="file"
+          name="asset_file"
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          required
+        />
+      </div>
+      <button type="submit">Analyze Import</button>
+    </form>
+  </div>
+
+  <details class="disclosure-section" open>
+    <summary>
+      <span class="disclosure-title">File requirements</span>
+      <span class="disclosure-hint">CSV and XLSX analysis only</span>
+    </summary>
+    <div class="disclosure-body">
+      <p class="import-help">Supported file types: <code>.csv</code> and <code>.xlsx</code>.</p>
+      <p class="import-help">Supported asset types: <code>laptop</code>, <code>switch</code>, and <code>router</code>.</p>
+      <p class="import-help">CSV files require <code>equipment_type</code> and one asset identifier: <code>asset_tag</code>, <code>barcode</code>, or <code>clean_asset_tag</code>.</p>
+      <p class="import-help">XLSX files use the current inventory workbook format.</p>
+      <p class="import-help">Analyze Import validates file structure only. It does not create assets, events, slots, or occupancy.</p>
+    </div>
+  </details>
+
+  {% if result is not none %}
+    <div class="card">
+      <h2>Analysis Result</h2>
+      <p class="import-summary">
+        <strong>File:</strong> {{ result.filename }}
+        &nbsp;|&nbsp;
+        <strong>Type:</strong> {{ result.file_type }}
+      </p>
+      <p class="import-help">File analyzed successfully. No database changes were made.</p>
+      {% if result.equipment_types %}
+        <p class="import-help">
+          <strong>Recognized asset types:</strong> {{ result.equipment_types|join(", ") }}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
