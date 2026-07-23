@@ -8550,6 +8550,9 @@ def admin_new_asset():
 
             if selected_slot is None:
                 flash(f"Created asset {form_state['asset_tag']} as Unslotted.", "success")
+                if not session.get("admin_unslotted_asset_warning_shown"):
+                    flash("This asset is Unslotted. Storage can be assigned later.", "warning")
+                    session["admin_unslotted_asset_warning_shown"] = True
             else:
                 flash(f"Created asset {form_state['asset_tag']}.", "success")
             return redirect(url_for("admin_new_asset"))
