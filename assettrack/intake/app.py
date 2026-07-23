@@ -1303,8 +1303,6 @@ def _validate_admin_new_asset_form(
         errors.append("Enter an asset tag.")
     if not form_state["serial_number"]:
         errors.append("Enter a serial number.")
-    if not form_state["manufacturer"]:
-        errors.append("Enter a manufacturer.")
     if not form_state["equipment_type"]:
         errors.append("Choose an asset type.")
     else:
@@ -8698,8 +8696,6 @@ def admin_edit_asset():
                 errors: list[str] = []
                 if not form_state["serial_number"]:
                     errors.append("serial_number is required.")
-                if not form_state["manufacturer"]:
-                    errors.append("manufacturer is required.")
                 if not form_state["equipment_type"]:
                     errors.append("equipment_type is required.")
                 elif not _equipment_type_is_allowed(
@@ -9061,8 +9057,6 @@ def admin_replace_asset():
                     errors.append("replacement asset_tag is required.")
                 if not form_state["replacement_serial_number"]:
                     errors.append("replacement serial_number is required.")
-                if not form_state["replacement_manufacturer"]:
-                    errors.append("replacement manufacturer is required.")
                 if not form_state["replacement_equipment_type"]:
                     errors.append("replacement equipment_type is required.")
                 elif not is_approved_new_equipment_type(form_state["replacement_equipment_type"]):

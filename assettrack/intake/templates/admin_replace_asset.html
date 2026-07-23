@@ -95,8 +95,8 @@
             <input type="text" id="replacement_serial_number" name="replacement_serial_number" value="{{ form.replacement_serial_number or '' }}" required />
           </div>
           <div class="row">
-            <label for="replacement_manufacturer"><strong>manufacturer</strong> (required)</label><br />
-            <input type="text" id="replacement_manufacturer" name="replacement_manufacturer" value="{{ form.replacement_manufacturer or '' }}" required />
+            <label for="replacement_manufacturer"><strong>manufacturer</strong> (optional)</label><br />
+            <input type="text" id="replacement_manufacturer" name="replacement_manufacturer" value="{{ form.replacement_manufacturer or '' }}" />
           </div>
           <div class="row">
             <label for="replacement_equipment_type"><strong>equipment_type</strong> (required)</label><br />

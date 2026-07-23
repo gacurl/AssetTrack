@@ -111,8 +111,8 @@
             <input class="form-input" type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
           </div>
           <div class="row form-group">
-            <label class="form-label" for="manufacturer"><strong>manufacturer</strong> (required)</label>
-            <input class="form-input" type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
+            <label class="form-label" for="manufacturer"><strong>manufacturer</strong> (optional)</label>
+            <input class="form-input" type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" />
           </div>
           <div class="row form-group">
             <label class="form-label" for="equipment_type"><strong>equipment_type</strong> (required)</label>

@@ -21,6 +21,7 @@ class AdminCreateAssetTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 asset_tag TEXT NOT NULL UNIQUE,
                 equipment_type TEXT NOT NULL,
+                manufacturer TEXT NULL,
                 building TEXT NULL,
                 room TEXT NULL,
                 building_room TEXT NULL,
@@ -90,7 +91,7 @@ class AdminCreateAssetTests(unittest.TestCase):
 
         asset_row = self.conn.execute(
             """
-            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id, equipment_type, building, room, building_room
+            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id, equipment_type, manufacturer, building, room, building_room
             FROM assets
             WHERE asset_tag = ?;
             """,
@@ -101,6 +102,7 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertIsNone(asset_row["current_holder_id"])
         self.assertIsNone(asset_row["home_slot_id"])
         self.assertEqual(asset_row["equipment_type"], "laptop")
+        self.assertEqual(asset_row["manufacturer"], "")
         self.assertEqual(asset_row["building"], "")
         self.assertEqual(asset_row["room"], "")
         self.assertEqual(asset_row["building_room"], "")
@@ -123,8 +125,46 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertEqual(event["actor"], "admin-user")
         payload = json.loads(event["payload"])
         self.assertEqual(payload["equipment_type"], "laptop")
+        self.assertNotIn("manufacturer", payload)
         self.assertNotIn("building", payload)
         self.assertNotIn("room", payload)
+        self.assertNotIn("Unknown", event["payload"])
+        self.assertNotIn("N/A", event["payload"])
+        self.assertNotIn("None", event["payload"])
+        self.assertNotIn("Not Provided", event["payload"])
+
+    def test_create_asset_preserves_supplied_manufacturer(self) -> None:
+        response = self.client.post(
+            "/admin/assets/create",
+            json={
+                "asset_tag": "AT-105",
+                "actor": "admin-user",
+                "equipment_type": "switch",
+                "manufacturer": "Cisco",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["ok"])
+
+        asset_row = self.conn.execute(
+            "SELECT manufacturer FROM assets WHERE asset_tag = ?;",
+            ("AT-105",),
+        ).fetchone()
+        self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["manufacturer"], "Cisco")
+
+        event = self.conn.execute(
+            """
+            SELECT payload
+            FROM asset_events
+            WHERE asset_tag = ?
+              AND event_type = 'ASSET_CREATED'
+            LIMIT 1;
+            """,
+            ("AT-105",),
+        ).fetchone()
+        payload = json.loads(event["payload"])
+        self.assertEqual(payload["manufacturer"], "Cisco")
 
     def test_create_asset_accepts_building_without_room(self) -> None:
         response = self.client.post(

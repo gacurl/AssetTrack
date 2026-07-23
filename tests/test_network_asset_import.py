@@ -61,6 +61,7 @@ class NetworkAssetImportTests(unittest.TestCase):
                 """
             ).fetchone()
             self.assertIsNotNone(asset)
+            self.assertEqual(asset["manufacturer"], "Cisco")
             self.assertEqual(asset["building"], "HQ")
             self.assertIsNone(asset["room"])
             self.assertEqual(asset["location_type"], "STORAGE")
@@ -75,7 +76,7 @@ class NetworkAssetImportTests(unittest.TestCase):
     def test_barcode_fills_blank_asset_tag(self) -> None:
         report = self._import(
             "asset_tag,barcode,serial_number,equipment_type,manufacturer,model,location_building,case_identifier,slot_identifier,notes_comments\n"
-            ",RTR-200,SER-200,router,Juniper,MX204,,,,\n"
+            ",RTR-200,SER-200,router,,MX204,,,,\n"
         )
 
         self.assertEqual(report.summary(), {"processed": 1, "imported": 1, "errors": 0})
@@ -83,15 +84,30 @@ class NetworkAssetImportTests(unittest.TestCase):
         try:
             asset = conn.execute(
                 """
-                SELECT asset_tag, building, room, building_room
+                SELECT asset_tag, manufacturer, building, room, building_room
                 FROM assets
                 WHERE asset_tag = 'RTR-200';
                 """
             ).fetchone()
             self.assertIsNotNone(asset)
+            self.assertEqual(asset["manufacturer"], "")
             self.assertEqual(asset["building"], "")
             self.assertIsNone(asset["room"])
             self.assertIsNone(asset["building_room"])
+            event = conn.execute(
+                """
+                SELECT payload
+                FROM asset_events
+                WHERE asset_tag = 'RTR-200'
+                  AND event_type = 'SCAN'
+                LIMIT 1;
+                """
+            ).fetchone()
+            self.assertIsNotNone(event)
+            self.assertNotIn("Unknown", event["payload"])
+            self.assertNotIn("N/A", event["payload"])
+            self.assertNotIn("None", event["payload"])
+            self.assertNotIn("Not Provided", event["payload"])
         finally:
             conn.close()
 
