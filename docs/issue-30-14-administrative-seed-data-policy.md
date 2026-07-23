@@ -27,7 +27,7 @@ Before the first asset can be created or imported, AssetTrack must have:
 - An authenticated admin for UI creation paths, or a documented local CLI/import operating path where the relevant issue has defined support status.
 - A system-provided equipment type: Laptop, Switch, or Router.
 - A unique asset tag.
-- For UI single-asset creation: serial number, manufacturer, and optional building text, room text, model/model code/notes.
+- For UI single-asset creation: serial number, and optional manufacturer, building text, room text, model/model code/notes.
 - For slotted creation/import: an empty storage slot, unless the relevant import issue explicitly defines that path as the owner of slot creation.
 
 Not required before the first asset:
@@ -44,7 +44,7 @@ Not required before the first asset:
 | Asset types | Required for new assets; system-provided | Code-defined allowlist only | Unsupported |
 | Asset tag | Required per asset | UI or import path whose support status is defined by its owning issue | Unsupported |
 | Serial number | Required by current admin new asset; optional in some imports | UI or import path whose support status is defined by its owning issue | Unsupported |
-| Manufacturer | Required by current admin new asset; optional in some imports | UI or import path whose support status is defined by its owning issue | Unsupported |
+| Manufacturer | Optional in current individual asset creation and supported imports | UI or import path whose support status is defined by its owning issue | Unsupported |
 | Building text | Optional in current individual asset creation and some imports | UI/import field; reference building UI for controlled lists | Unsupported |
 | Room text | Optional in current individual asset creation and some imports | UI/import field only; no room seed table | Unsupported |
 | Organizations | Required for holders | Bootstrap creates `Ad Hoc`; admin UI; holder import may create missing organizations | Unsupported |
@@ -129,7 +129,7 @@ Minimum useful path for an unslotted first asset:
 2. Bootstrap the first admin user.
 3. Confirm system defaults are present, including the system-provided asset types and the `Ad Hoc` organization.
 4. Create or import an unslotted asset through a path whose owning issue allows unslotted asset creation/import.
-5. Provide the current required free-text asset fields for that path, such as asset tag, equipment type, serial number, and manufacturer. Building text and room text are optional for individual asset creation and should be supplied only when they are known.
+5. Provide the current required free-text asset fields for that path, such as asset tag, equipment type, and serial number. Manufacturer, building text, and room text are optional for individual asset creation and should be supplied only when they are known.
 
 Reference-data setup is conditional, not mandatory before the first asset:
 

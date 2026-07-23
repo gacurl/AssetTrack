@@ -43,8 +43,8 @@
           <input type="text" id="serial_number" name="serial_number" value="{{ form.serial_number or '' }}" required />
         </div>
         <div class="row">
-          <label for="manufacturer"><strong>Manufacturer</strong> (required)</label><br />
-          <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" required />
+          <label for="manufacturer"><strong>Manufacturer</strong> (optional)</label><br />
+          <input type="text" id="manufacturer" name="manufacturer" value="{{ form.manufacturer or '' }}" />
         </div>
         <div class="row">
           <label for="equipment_type"><strong>Asset type</strong> (required)</label><br />

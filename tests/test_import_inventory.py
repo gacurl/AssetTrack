@@ -126,12 +126,12 @@ def test_inventory_xlsx_import_appends_events_and_reconciles_current_state(
         persisted.close()
 
 
-def test_inventory_xlsx_import_keeps_blank_building_room_blank(
+def test_inventory_xlsx_import_keeps_blank_manufacturer_and_building_room_blank(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     db_path, excel_path = _configure_import(monkeypatch, tmp_path)
-    _write_inventory(excel_path, [_inventory_row(clean_asset_tag="IMPORT-BLANK-LOCATION", building_room="")])
+    _write_inventory(excel_path, [_inventory_row(clean_asset_tag="IMPORT-BLANK-LOCATION", manufacturer="", building_room="")])
 
     rows = import_inventory.load_rows()
     result = import_inventory.run_import(rows)
@@ -142,12 +142,13 @@ def test_inventory_xlsx_import_keeps_blank_building_room_blank(
     try:
         asset = conn.execute(
             """
-            SELECT building_room
+            SELECT manufacturer, building_room
             FROM assets
             WHERE asset_tag = 'IMPORT-BLANK-LOCATION';
             """
         ).fetchone()
         assert asset is not None
+        assert asset["manufacturer"] is None
         assert asset["building_room"] is None
 
         events = conn.execute(
@@ -159,11 +160,14 @@ def test_inventory_xlsx_import_keeps_blank_building_room_blank(
             """
         ).fetchall()
         created_payload = json.loads(events[0]["payload"])
+        assert "manufacturer" not in created_payload
         assert "building_room" not in created_payload
         slot_payload = json.loads(events[1]["payload"])
         assert slot_payload["building_room"] == ""
         assert "Unknown" not in events[0]["payload"]
         assert "N/A" not in events[0]["payload"]
+        assert "None" not in events[0]["payload"]
+        assert "Not Provided" not in events[0]["payload"]
         assert "Unassigned" not in events[0]["payload"]
     finally:
         conn.close()

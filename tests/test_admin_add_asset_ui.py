@@ -101,6 +101,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertNotIn(b'<option value="voip"', response.data)
         self.assertIn(b'name="case_name"', response.data)
         self.assertIn(b'name="slot_id"', response.data)
+        self.assertIn(b"<strong>Manufacturer</strong> (optional)", response.data)
+        self.assertNotIn(b'id="manufacturer" name="manufacturer" value="" required', response.data)
         self.assertIn(b"<strong>Building</strong> (optional)", response.data)
         self.assertIn(b"<strong>Room</strong> (optional)", response.data)
         self.assertNotIn(b'id="building" name="building" value="" required', response.data)
@@ -283,7 +285,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
             data={
                 "asset_tag": "AT-500",
                 "serial_number": "SER-500",
-                "manufacturer": "Lenovo",
+                "manufacturer": "",
                 "equipment_type": "laptop",
                 "building": "",
                 "room": "",
@@ -304,7 +306,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(asset_row)
         self.assertEqual(asset_row["serial_number"], "SER-500")
-        self.assertEqual(asset_row["manufacturer"], "Lenovo")
+        self.assertEqual(asset_row["manufacturer"], "")
         self.assertEqual(asset_row["building"], "")
         self.assertEqual(asset_row["room"], "")
         self.assertEqual(asset_row["building_room"], "")
@@ -330,7 +332,10 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIsNotNone(created_payload)
         self.assertNotIn("Unknown", created_payload)
         self.assertNotIn("N/A", created_payload)
+        self.assertNotIn("None", created_payload)
+        self.assertNotIn("Not Provided", created_payload)
         self.assertNotIn("Unassigned", created_payload)
+        self.assertNotIn("manufacturer", created_payload)
 
         duplicate = self.client.post(
             "/admin/assets/new",
@@ -394,10 +399,11 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
 
         asset_row = self.conn.execute(
-            "SELECT id, building, room, building_room, home_slot_id FROM assets WHERE asset_tag = ?;",
+            "SELECT id, manufacturer, building, room, building_room, home_slot_id FROM assets WHERE asset_tag = ?;",
             ("AT-600",),
         ).fetchone()
         self.assertIsNotNone(asset_row)
+        self.assertEqual(asset_row["manufacturer"], "HP")
         self.assertEqual(asset_row["building"], "HQ")
         self.assertEqual(asset_row["room"], "220")
         self.assertEqual(asset_row["building_room"], "HQ/220")
@@ -468,7 +474,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Enter an asset tag.", response.data)
         self.assertIn(b"Enter a serial number.", response.data)
-        self.assertIn(b"Enter a manufacturer.", response.data)
+        self.assertNotIn(b"Enter a manufacturer.", response.data)
         self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
         self.assertNotIn(b"Enter the building.", response.data)
         self.assertNotIn(b"Enter the room.", response.data)

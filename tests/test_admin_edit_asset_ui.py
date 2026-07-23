@@ -44,6 +44,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         home_slot_id: int | None,
         case_number: str | None = None,
         slot_number: str | None = None,
+        manufacturer: str = "Dell",
         building: str = "HQ",
         room: str = "110",
         building_room: str = "HQ/110",
@@ -72,11 +73,12 @@ class AdminEditAssetUiTests(unittest.TestCase):
                 case_number,
                 slot_number
             )
-            VALUES (?, ?, 'Dell', 'laptop', ?, ?, 'Latitude', '5400', 'seed', ?, 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, 'laptop', ?, ?, 'Latitude', '5400', 'seed', ?, 'in_stock', 'accountable', 'serviceable', '2026-01-01', '2026-01-01T00:00:00Z', ?, ?, ?, ?, ?);
             """,
             (
                 asset_tag,
                 serial_number,
+                manufacturer,
                 building,
                 room,
                 building_room,
@@ -146,6 +148,8 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertIn(b"Edit Asset", response.data)
         self.assertIn(b"AT-EXACT-EDIT-1", response.data)
         self.assertIn(b"Save Asset", response.data)
+        self.assertIn(b"<strong>manufacturer</strong> (optional)", response.data)
+        self.assertNotIn(b'id="manufacturer" name="manufacturer" value="Dell" required', response.data)
         self.assertIn(b"<strong>building</strong> (optional)", response.data)
         self.assertIn(b"<strong>room</strong> (optional)", response.data)
         self.assertNotIn(b'id="building" name="building" value="HQ" required', response.data)
@@ -303,6 +307,60 @@ class AdminEditAssetUiTests(unittest.TestCase):
         self.assertTrue(any(row["event_type"] == "ASSET_UPDATED" for row in events))
         payloads = [json.loads(row["payload"]) for row in events if row["payload"]]
         self.assertTrue(any(payload.get("home_slot_id") == 202 for payload in payloads))
+
+    def test_edit_allows_blank_manufacturer(self) -> None:
+        asset_id = self._insert_asset(
+            "AT-EDIT-BLANK-MANUFACTURER",
+            serial_number="SER-EDIT-BLANK-MANUFACTURER",
+            location_type="STORAGE",
+            current_holder_id=None,
+            home_slot_id=None,
+            manufacturer="Dell",
+        )
+
+        response = self.client.post(
+            "/admin/assets/edit",
+            data={
+                "action": "update",
+                "lookup_asset_tag": "AT-EDIT-BLANK-MANUFACTURER",
+                "asset_tag": "AT-EDIT-BLANK-MANUFACTURER",
+                "serial_number": "SER-EDIT-BLANK-MANUFACTURER-A",
+                "manufacturer": "",
+                "equipment_type": "laptop",
+                "building": "HQ",
+                "room": "110",
+                "model": "Latitude",
+                "model_code": "5400",
+                "notes": "clear manufacturer",
+                "case_name": "",
+                "slot_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        asset_row = self.conn.execute(
+            "SELECT manufacturer, home_slot_id FROM assets WHERE id = ?;",
+            (asset_id,),
+        ).fetchone()
+        self.assertEqual(asset_row["manufacturer"], "")
+        self.assertIsNone(asset_row["home_slot_id"])
+
+        event = self.conn.execute(
+            """
+            SELECT payload
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id DESC
+            LIMIT 1;
+            """,
+            ("AT-EDIT-BLANK-MANUFACTURER",),
+        ).fetchone()
+        payload = json.loads(event["payload"])
+        self.assertEqual(payload["manufacturer"], "")
+        self.assertNotIn("Unknown", event["payload"])
+        self.assertNotIn("N/A", event["payload"])
+        self.assertNotIn("None", event["payload"])
+        self.assertNotIn("Not Provided", event["payload"])
 
     def test_edit_allows_blank_building_and_room(self) -> None:
         asset_id = self._insert_asset(

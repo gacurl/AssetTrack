@@ -135,6 +135,8 @@ class AdminReplaceAssetTests(unittest.TestCase):
         self.assertIn(b'<option value="switch"', response.data)
         self.assertIn(b'<option value="router"', response.data)
         self.assertNotIn(b'<option value="monitor"', response.data)
+        self.assertIn(b"<strong>manufacturer</strong> (optional)", response.data)
+        self.assertNotIn(b'id="replacement_manufacturer" name="replacement_manufacturer" value="" required', response.data)
 
     def test_swap_from_storage_success(self) -> None:
         self._insert_slot(10, "CASE-A", 1, None)
@@ -179,13 +181,14 @@ class AdminReplaceAssetTests(unittest.TestCase):
 
         replacement = self.conn.execute(
             """
-            SELECT id, location_type, current_holder_id, home_slot_id
+            SELECT id, manufacturer, location_type, current_holder_id, home_slot_id
             FROM assets
             WHERE asset_tag = ?;
             """,
             ("NEW-100",),
         ).fetchone()
         self.assertIsNotNone(replacement)
+        self.assertEqual(replacement["manufacturer"], "Lenovo")
         self.assertEqual(replacement["location_type"], "STORAGE")
         self.assertIsNone(replacement["current_holder_id"])
         self.assertEqual(replacement["home_slot_id"], 10)
@@ -219,6 +222,66 @@ class AdminReplaceAssetTests(unittest.TestCase):
             ("NEW-100",),
         ).fetchall()
         self.assertEqual([row["event_type"] for row in replacement_events], ["ASSET_CREATED", "SLOT_ASSIGN"])
+
+    def test_swap_allows_blank_replacement_manufacturer(self) -> None:
+        self._insert_slot(15, "CASE-F", 6, None)
+        failed_id = self._insert_asset(
+            "FAIL-BLANK-MFR",
+            serial_number="SER-FAIL-BLANK-MFR",
+            location_type="STORAGE",
+            holder_id=None,
+            home_slot_id=15,
+        )
+        self._assign_slot(15, failed_id, "FAIL-BLANK-MFR")
+
+        response = self.client.post(
+            "/admin/assets/replace",
+            data={
+                "action": "replace",
+                "failed_asset_tag": "FAIL-BLANK-MFR",
+                "failure_type": "HARDWARE",
+                "failure_notes": "Power rail damage.",
+                "replacement_asset_tag": "NEW-BLANK-MFR",
+                "replacement_serial_number": "SER-NEW-BLANK-MFR",
+                "replacement_manufacturer": "",
+                "replacement_equipment_type": "laptop",
+                "confirm_retire": "yes",
+                "confirm_slot": "yes",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Replaced FAIL-BLANK-MFR with NEW-BLANK-MFR", response.data)
+
+        replacement = self.conn.execute(
+            """
+            SELECT id, manufacturer, location_type, home_slot_id
+            FROM assets
+            WHERE asset_tag = ?;
+            """,
+            ("NEW-BLANK-MFR",),
+        ).fetchone()
+        self.assertIsNotNone(replacement)
+        self.assertEqual(replacement["manufacturer"], "")
+        self.assertEqual(replacement["location_type"], "STORAGE")
+        self.assertEqual(replacement["home_slot_id"], 15)
+
+        replacement_events = self.conn.execute(
+            """
+            SELECT event_type, payload
+            FROM asset_events
+            WHERE asset_tag = ?
+            ORDER BY id ASC;
+            """,
+            ("NEW-BLANK-MFR",),
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in replacement_events], ["ASSET_CREATED", "SLOT_ASSIGN"])
+        created_payload = replacement_events[0]["payload"]
+        self.assertNotIn("manufacturer", created_payload)
+        self.assertNotIn("Unknown", created_payload)
+        self.assertNotIn("N/A", created_payload)
+        self.assertNotIn("None", created_payload)
+        self.assertNotIn("Not Provided", created_payload)
 
     def test_swap_from_in_custody_success(self) -> None:
         self._insert_slot(11, "CASE-B", 2, None)

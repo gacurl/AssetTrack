@@ -13,7 +13,7 @@ Use sample values like these so the test is easy to repeat:
 - Holder name: `Smoke Holder`
 - Asset tag: `SMOKE-0001`
 - Serial number: `SER-SMOKE-0001`
-- Manufacturer: `SmokeTech`
+- Manufacturer (optional): `SmokeTech`
 - Equipment type: `laptop`
 - Building: `HQ`
 - Room: `101`
