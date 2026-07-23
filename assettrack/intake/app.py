@@ -8548,7 +8548,10 @@ def admin_new_asset():
                 conn.rollback()
                 raise
 
-            flash(f"Created asset {form_state['asset_tag']}.", "success")
+            if selected_slot is None:
+                flash(f"Created asset {form_state['asset_tag']} as Unslotted.", "success")
+            else:
+                flash(f"Created asset {form_state['asset_tag']}.", "success")
             return redirect(url_for("admin_new_asset"))
     finally:
         conn.close()
@@ -9409,6 +9412,8 @@ def admin_create_asset():
         "location_type": str(created["location_type"]),
         "current_holder_id": created["current_holder_id"],
         "home_slot_id": created["home_slot_id"],
+        "home_slot_label": "Unslotted" if created["home_slot_id"] is None else str(created["home_slot_id"]),
+        "storage_status": "Unslotted" if created["home_slot_id"] is None else "Slotted",
         "event_type": "ASSET_CREATED",
     }
 

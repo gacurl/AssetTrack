@@ -142,7 +142,7 @@
                 {% if row.home_case_name %}
                   <a class="nav-link report-drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.home_case_name, return_to=report_return_to) }}">{{ row.home_slot }}</a>
                 {% else %}
-                  {{ row.home_slot or "" }}
+                  {{ row.home_slot or "Unslotted" }}
                 {% endif %}
               </td>
             </tr>
