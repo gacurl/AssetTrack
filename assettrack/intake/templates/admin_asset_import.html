@@ -8,6 +8,17 @@
     .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
     .import-summary { margin: 0; }
     .compact-list { margin: 0.5rem 0 0 1.25rem; }
+    .import-row-section { margin-top: 1rem; border-top: 1px solid var(--color-surface); padding-top: 0.75rem; }
+    .import-row-section summary { cursor: pointer; font-weight: 700; }
+    .import-row-count { color: var(--color-text-muted); font-weight: 400; margin-left: 0.5rem; }
+    .import-row-table-wrap { max-height: 28rem; overflow: auto; margin-top: 0.75rem; border: 1px solid var(--color-surface); }
+    .import-row-table-wrap table { margin: 0; }
+    .import-row-table-wrap thead th {
+      position: sticky;
+      top: 0;
+      background: var(--color-surface-bg);
+      z-index: 1;
+    }
   </style>
 {% endblock %}
 
@@ -33,6 +44,10 @@
           required
         />
       </div>
+      <label class="row">
+        <input type="checkbox" name="acknowledge_unslotted" value="1" />
+        Acknowledge rows with missing or unavailable storage may continue as Unslotted.
+      </label>
       <button type="submit">Analyze Import</button>
     </form>
   </div>
@@ -60,12 +75,7 @@
         &nbsp;|&nbsp;
         <strong>Type:</strong> {{ result.file_type }}
       </p>
-      <p class="import-help">File analyzed successfully. No database changes were made.</p>
-      {% if result.equipment_types %}
-        <p class="import-help">
-          <strong>Recognized asset types:</strong> {{ result.equipment_types|join(", ") }}
-        </p>
-      {% endif %}
+      <p class="import-help">Preview generated successfully. No database changes were made.</p>
       {% if result.warnings %}
         <p class="import-help"><strong>Warnings:</strong></p>
         <ul class="compact-list">
@@ -74,6 +84,82 @@
           {% endfor %}
         </ul>
       {% endif %}
+      {% if result.requires_unslotted_acknowledgment %}
+        {% if result.unslotted_acknowledged %}
+          <p class="flash success">Unslotted import acknowledged for rows with missing or unavailable storage.</p>
+        {% else %}
+          <p class="flash error">Unslotted acknowledgment is required before these rows can continue.</p>
+        {% endif %}
+      {% endif %}
+      <h3>Category Totals</h3>
+      <ul class="compact-list">
+        {% for category in result.category_order %}
+          <li>{{ result.category_labels[category] }}: {{ result.totals[category] }}</li>
+        {% endfor %}
+      </ul>
+      <h3>System Defaults Before Commit</h3>
+      <ul class="compact-list">
+        {% for default in result.defaults %}
+          <li><code>{{ default.field }}</code>: {{ default.value }}</li>
+        {% endfor %}
+      </ul>
+      <h3>Rows</h3>
+      {% for category in result.category_order %}
+        {% set category_rows = result.rows_by_category[category] %}
+        <details
+          id="asset-import-{{ category|replace('_', '-') }}"
+          class="import-row-section"
+          {% if category in result.attention_categories %}open{% endif %}
+        >
+          <summary>
+            {{ result.category_labels[category] }}
+            <span class="import-row-count">{{ category_rows|length }} row{% if category_rows|length != 1 %}s{% endif %}</span>
+          </summary>
+          <div class="import-row-table-wrap" tabindex="0" aria-label="{{ result.category_labels[category] }} rows">
+            <table>
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Asset</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in category_rows %}
+                  <tr>
+                    <td>{{ row.row_number }}</td>
+                    <td><code>{{ row.asset_tag or "n/a" }}</code></td>
+                    <td>
+                      <p class="import-summary">{{ row.message }}</p>
+                      {% if row.fields %}
+                        <p class="import-help"><strong>Fields:</strong> {{ row.fields|join(", ") }}</p>
+                      {% endif %}
+                      {% if row.warnings %}
+                        <ul class="compact-list">
+                          {% for warning in row.warnings %}
+                            <li>{{ warning }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if row.changed_fields %}
+                        <ul class="compact-list">
+                          {% for change in row.changed_fields %}
+                            <li><code>{{ change.field }}</code>: {{ change.current or "blank" }} -> {{ change.proposed or "blank" }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="3">No rows in this category.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {% endfor %}
     </div>
   {% endif %}
 {% endblock %}

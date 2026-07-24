@@ -70,6 +70,7 @@ from assettrack.auth import (
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, set_holder_active, update_holder
 from assettrack.holder_import import HolderImportReport, import_holders_csv
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
+from assettrack.import_reconciliation import build_asset_import_preview
 from assettrack.reference_data import (
     create_building,
     create_organization,
@@ -7511,19 +7512,39 @@ def admin_holder_import():
 
 
 def _analyze_asset_import_csv(temp_path: Path, *, filename: str) -> dict:
-    return analyze_asset_import_csv(temp_path, filename=filename).to_template_result()
+    return analyze_asset_import_csv(temp_path, filename=filename, collect_row_errors=True).to_template_result()
 
 
 def _analyze_asset_import_xlsx(temp_path: Path, *, filename: str) -> dict:
-    return analyze_asset_import_xlsx(temp_path, filename=filename).to_template_result()
+    return analyze_asset_import_xlsx(temp_path, filename=filename, collect_row_errors=True).to_template_result()
 
 
-def _analyze_asset_import_upload(temp_path: Path, *, filename: str, suffix: str) -> dict:
+def _analyze_asset_import_upload(
+    temp_path: Path,
+    *,
+    filename: str,
+    suffix: str,
+    unslotted_acknowledged: bool = False,
+) -> dict:
     if suffix == ".csv":
-        return _analyze_asset_import_csv(temp_path, filename=filename)
-    if suffix == ".xlsx":
-        return _analyze_asset_import_xlsx(temp_path, filename=filename)
-    raise ValueError("Unsupported file type. Upload a .csv or .xlsx file.")
+        analysis = analyze_asset_import_csv(temp_path, filename=filename, collect_row_errors=True)
+    elif suffix == ".xlsx":
+        analysis = analyze_asset_import_xlsx(temp_path, filename=filename, collect_row_errors=True)
+    else:
+        raise ValueError("Unsupported file type. Upload a .csv or .xlsx file.")
+
+    resolved_db_path = _resolved_runtime_db_path()
+    conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview = build_asset_import_preview(
+            conn,
+            analysis,
+            unslotted_acknowledged=unslotted_acknowledged,
+        )
+    finally:
+        conn.close()
+    return preview.to_template_result()
 
 
 @app.route("/admin/assets/import", methods=["GET", "POST"])
@@ -7551,8 +7572,14 @@ def admin_asset_import():
                 upload.save(handle)
                 temp_path = Path(handle.name)
 
-            result = _analyze_asset_import_upload(temp_path, filename=filename, suffix=suffix)
-            flash("Asset import analysis complete. No database changes were made.", "success")
+            unslotted_acknowledged = (request.form.get("acknowledge_unslotted") or "").strip() == "1"
+            result = _analyze_asset_import_upload(
+                temp_path,
+                filename=filename,
+                suffix=suffix,
+                unslotted_acknowledged=unslotted_acknowledged,
+            )
+            flash("Asset import preview complete. No database changes were made.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
         finally:
