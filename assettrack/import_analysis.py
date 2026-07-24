@@ -58,10 +58,22 @@ class AssetImportAnalysisRow:
     case_identifier: str
     slot_identifier: str
     notes: str
+    source_fields: frozenset[str] = frozenset()
 
     @property
     def storage_intent(self) -> str:
         return "slotted" if self.case_identifier and self.slot_identifier else "unslotted"
+
+    def has_source_field(self, field: str) -> bool:
+        return field in self.source_fields
+
+
+@dataclass(frozen=True)
+class AssetImportAnalysisIssue:
+    row_number: int
+    category: str
+    message: str
+    fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,7 @@ class AssetImportAnalysis:
     file_type: str
     rows: tuple[AssetImportAnalysisRow, ...]
     warnings: tuple[str, ...] = ()
+    issues: tuple[AssetImportAnalysisIssue, ...] = ()
 
     @property
     def equipment_types(self) -> list[str]:
@@ -82,6 +95,7 @@ class AssetImportAnalysis:
             "file_type": self.file_type,
             "equipment_types": self.equipment_types,
             "warnings": list(self.warnings),
+            "issues": [issue.__dict__ for issue in self.issues],
         }
 
 
@@ -172,29 +186,52 @@ def _canonical_row(raw_row: dict[str, object], *, row_number: int) -> AssetImpor
         case_identifier=case_identifier,
         slot_identifier=slot_identifier,
         notes=_normalize_text(row.get("notes_comments")),
+        source_fields=frozenset(row),
     )
 
 
-def _validate_duplicates(rows: list[AssetImportAnalysisRow]) -> None:
+def _duplicate_issues(rows: list[AssetImportAnalysisRow]) -> tuple[AssetImportAnalysisIssue, ...]:
+    issues: list[AssetImportAnalysisIssue] = []
     seen_asset_tags: dict[str, int] = {}
     seen_serial_numbers: dict[str, int] = {}
     for row in rows:
         previous_asset_row = seen_asset_tags.get(row.asset_tag)
         if previous_asset_row is not None:
-            raise ValueError(
-                f"Row {row.row_number}: duplicate asset_tag matches row {previous_asset_row}: {row.asset_tag}."
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=row.row_number,
+                    category="duplicate_upload_row",
+                    message=f"duplicate asset_tag matches row {previous_asset_row}: {row.asset_tag}.",
+                    fields=("asset_tag",),
+                )
             )
-        seen_asset_tags[row.asset_tag] = row.row_number
+        else:
+            seen_asset_tags[row.asset_tag] = row.row_number
 
         normalized_serial = row.serial_number.upper()
         if not normalized_serial:
             continue
         previous_serial_row = seen_serial_numbers.get(normalized_serial)
         if previous_serial_row is not None:
-            raise ValueError(
-                f"Row {row.row_number}: duplicate serial_number matches row {previous_serial_row}: {row.serial_number}."
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=row.row_number,
+                    category="duplicate_upload_row",
+                    message=f"duplicate serial_number matches row {previous_serial_row}: {row.serial_number}.",
+                    fields=("serial_number",),
+                )
             )
-        seen_serial_numbers[normalized_serial] = row.row_number
+        else:
+            seen_serial_numbers[normalized_serial] = row.row_number
+    return tuple(issues)
+
+
+def _validate_duplicates(rows: list[AssetImportAnalysisRow]) -> None:
+    issues = _duplicate_issues(rows)
+    if not issues:
+        return
+    first = issues[0]
+    raise ValueError(f"Row {first.row_number}: {first.message}")
 
 
 def _analyze_rows(
@@ -203,20 +240,55 @@ def _analyze_rows(
     headers: list[str],
     filename: str,
     file_type: str,
+    collect_row_errors: bool = False,
 ) -> AssetImportAnalysis:
     warnings = _validate_headers(headers, file_type=file_type)
 
     rows: list[AssetImportAnalysisRow] = []
+    issues: list[AssetImportAnalysisIssue] = []
     for offset, raw_row in enumerate(raw_rows, start=2):
-        row = _canonical_row(raw_row, row_number=offset)
+        try:
+            row = _canonical_row(raw_row, row_number=offset)
+        except ValueError as exc:
+            if not collect_row_errors:
+                raise
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=offset,
+                    category="invalid_upload_row",
+                    message=str(exc).removeprefix(f"Row {offset}: "),
+                )
+            )
+            continue
         if row is not None:
             rows.append(row)
 
-    _validate_duplicates(rows)
-    return AssetImportAnalysis(filename=filename, file_type=file_type.upper(), rows=tuple(rows), warnings=warnings)
+    duplicate_issues = _duplicate_issues(rows)
+    if duplicate_issues:
+        if not collect_row_errors:
+            first = duplicate_issues[0]
+            raise ValueError(f"Row {first.row_number}: {first.message}")
+        issues.extend(duplicate_issues)
+
+    duplicate_row_numbers = {issue.row_number for issue in duplicate_issues}
+    if duplicate_row_numbers:
+        rows = [row for row in rows if row.row_number not in duplicate_row_numbers]
+
+    return AssetImportAnalysis(
+        filename=filename,
+        file_type=file_type.upper(),
+        rows=tuple(rows),
+        warnings=warnings,
+        issues=tuple(issues),
+    )
 
 
-def analyze_asset_import_csv(csv_path: str | Path, *, filename: str) -> AssetImportAnalysis:
+def analyze_asset_import_csv(
+    csv_path: str | Path,
+    *,
+    filename: str,
+    collect_row_errors: bool = False,
+) -> AssetImportAnalysis:
     path = Path(csv_path)
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -237,10 +309,21 @@ def analyze_asset_import_csv(csv_path: str | Path, *, filename: str) -> AssetImp
     except csv.Error as exc:
         raise ValueError(f"Malformed CSV file. {exc}") from exc
 
-    return _analyze_rows(raw_rows, headers=headers, filename=filename, file_type="CSV")
+    return _analyze_rows(
+        raw_rows,
+        headers=headers,
+        filename=filename,
+        file_type="CSV",
+        collect_row_errors=collect_row_errors,
+    )
 
 
-def analyze_asset_import_xlsx(xlsx_path: str | Path, *, filename: str) -> AssetImportAnalysis:
+def analyze_asset_import_xlsx(
+    xlsx_path: str | Path,
+    *,
+    filename: str,
+    collect_row_errors: bool = False,
+) -> AssetImportAnalysis:
     path = Path(xlsx_path)
     try:
         with path.open("rb") as handle:
@@ -257,4 +340,10 @@ def analyze_asset_import_xlsx(xlsx_path: str | Path, *, filename: str) -> AssetI
         {str(column): row[column] for column in dataframe.columns}
         for _, row in dataframe.iterrows()
     ]
-    return _analyze_rows(raw_rows, headers=headers, filename=filename, file_type="XLSX")
+    return _analyze_rows(
+        raw_rows,
+        headers=headers,
+        filename=filename,
+        file_type="XLSX",
+        collect_row_errors=collect_row_errors,
+    )
