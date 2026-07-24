@@ -44,9 +44,10 @@
     </summary>
     <div class="disclosure-body">
       <p class="import-help">Supported file types: <code>.csv</code> and <code>.xlsx</code>.</p>
-      <p class="import-help">Supported asset types: <code>laptop</code>, <code>switch</code>, and <code>router</code>.</p>
-      <p class="import-help">CSV files require <code>equipment_type</code> and one asset identifier: <code>asset_tag</code>, <code>barcode</code>, or <code>clean_asset_tag</code>.</p>
-      <p class="import-help">XLSX files use the current inventory workbook format.</p>
+      <p class="import-help">Required column: <code>equipment_type</code>.</p>
+      <p class="import-help">Required identity: <code>asset_tag</code> or <code>barcode</code>.</p>
+      <p class="import-help">Supported equipment types: Laptop, Switch, Router.</p>
+      <p class="import-help">Extra columns are ignored and reported.</p>
       <p class="import-help">Analyze Import validates file structure only. It does not create assets, events, slots, or occupancy.</p>
     </div>
   </details>
@@ -64,6 +65,14 @@
         <p class="import-help">
           <strong>Recognized asset types:</strong> {{ result.equipment_types|join(", ") }}
         </p>
+      {% endif %}
+      {% if result.warnings %}
+        <p class="import-help"><strong>Warnings:</strong></p>
+        <ul class="compact-list">
+          {% for warning in result.warnings %}
+            <li>{{ warning }}</li>
+          {% endfor %}
+        </ul>
       {% endif %}
     </div>
   {% endif %}
