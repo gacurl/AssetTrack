@@ -9,7 +9,7 @@ import pytest
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from scripts import import_inventory
+from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from tests.auth_test_utils import create_test_user, login_session
 
 
@@ -51,56 +51,98 @@ def _post_file(client, content: bytes, filename: str):
     return response
 
 
-def _xlsx_bytes() -> bytes:
-    rows = [
-        {
-            "clean_asset_tag": "LAP-100",
-            "case_number": "LAPTOP",
-            "slot_helper": 1,
-            "serial_number": "SN-LAP-100",
-            "equipment_type": "laptop",
-            "manufacturer": "",
-            "model": "Latitude",
-            "model_code": "7420",
-            "building_room": "",
-            "slot_number": "1",
-            "mac_address": "",
-        },
-        {
-            "clean_asset_tag": "SW-100",
-            "case_number": "SWITCH",
-            "slot_helper": 1,
-            "serial_number": "SN-SW-100",
-            "equipment_type": "switch",
-            "manufacturer": "Cisco",
-            "model": "Catalyst",
-            "model_code": "9300",
-            "building_room": "",
-            "slot_number": "1",
-            "mac_address": "",
-        },
-        {
-            "clean_asset_tag": "RTR-100",
-            "case_number": "ROUTER",
-            "slot_helper": 1,
-            "serial_number": "SN-RTR-100",
-            "equipment_type": "router",
-            "manufacturer": "Juniper",
-            "model": "MX",
-            "model_code": "204",
-            "building_room": "",
-            "slot_number": "1",
-            "mac_address": "",
-        },
+def _xlsx_bytes(rows: list[dict[str, object]] | None = None) -> bytes:
+    if rows is None:
+        rows = [
+            {
+                "clean_asset_tag": "LAP-100",
+                "serial_number": "SN-LAP-100",
+                "equipment_type": "laptop",
+                "manufacturer": "",
+                "model": "Latitude",
+            },
+            {
+                "clean_asset_tag": "SW-100",
+                "serial_number": "SN-SW-100",
+                "equipment_type": "switch",
+                "manufacturer": "Cisco",
+                "model": "Catalyst",
+            },
+            {
+                "clean_asset_tag": "RTR-100",
+                "serial_number": "SN-RTR-100",
+                "equipment_type": "router",
+                "manufacturer": "Juniper",
+                "model": "MX",
+            },
+        ]
+    columns = [
+        "clean_asset_tag",
+        "serial_number",
+        "equipment_type",
+        "manufacturer",
+        "model",
+        "model_code",
+        "building_room",
+        "location_building",
+        "case_identifier",
+        "slot_identifier",
+        "notes_comments",
     ]
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        pd.DataFrame(rows, columns=sorted(import_inventory.REQUIRED_COLUMNS)).to_excel(
+        pd.DataFrame(rows, columns=columns).to_excel(
             writer,
-            sheet_name=import_inventory.SHEET_NAME,
             index=False,
         )
     return buffer.getvalue()
+
+
+def test_csv_and_xlsx_use_equivalent_canonical_analysis_rows(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        " Asset Tag ,Serial Number,Equipment Type,Manufacturer,Model,Location Building,Case Identifier,Slot Identifier,Notes Comments\n"
+        " lap-100 , SN-LAP-100 , Laptop , , Latitude , , , ,\n"
+        " sw-100 , SN-SW-100 , Switch , Cisco , Catalyst , HQ , Case-Net , 2 , Reviewed\n",
+        encoding="utf-8",
+    )
+    xlsx_path = tmp_path / "assets.xlsx"
+    rows = [
+        {
+            "clean_asset_tag": " lap-100 ",
+            "serial_number": "SN-LAP-100",
+            "equipment_type": " Laptop ",
+            "manufacturer": "",
+            "model": "Latitude",
+        },
+        {
+            "clean_asset_tag": "SW-100",
+            "serial_number": "SN-SW-100",
+            "equipment_type": "Switch",
+            "manufacturer": "Cisco",
+            "model": "Catalyst",
+            "location_building": "HQ",
+            "case_identifier": "Case-Net",
+            "slot_identifier": "2",
+            "notes_comments": "Reviewed",
+        },
+    ]
+    xlsx_path.write_bytes(_xlsx_bytes(rows))
+
+    csv_analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+    xlsx_analysis = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx")
+
+    csv_rows = csv_analysis.rows
+    xlsx_rows = xlsx_analysis.rows
+    assert [row.asset_tag for row in csv_rows] == [row.asset_tag for row in xlsx_rows] == ["LAP-100", "SW-100"]
+    assert [row.equipment_type for row in csv_rows] == [row.equipment_type for row in xlsx_rows] == ["laptop", "switch"]
+    assert [row.storage_intent for row in csv_rows] == [row.storage_intent for row in xlsx_rows] == [
+        "unslotted",
+        "slotted",
+    ]
+    assert csv_rows[0].manufacturer == xlsx_rows[0].manufacturer == ""
+    assert csv_rows[0].building_room == xlsx_rows[0].building_room == ""
+    assert csv_analysis.equipment_types == xlsx_analysis.equipment_types == ["Laptop", "Switch"]
 
 
 def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
@@ -113,6 +155,11 @@ def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
     assert b"Analyze Import" in response.data
     assert b".csv" in response.data
     assert b".xlsx" in response.data
+    assert b"Required column: <code>equipment_type</code>" in response.data
+    assert b"Required identity: <code>asset_tag</code> or <code>barcode</code>" in response.data
+    assert b"Supported equipment types: Laptop, Switch, Router." in response.data
+    assert b"Extra columns are ignored and reported." in response.data
+    assert b"clean_asset_tag" not in response.data
     assert b"python scripts/" not in response.data
 
 
@@ -240,6 +287,183 @@ def test_malformed_xlsx_returns_useful_error_without_database_writes(client_with
 
     assert response.status_code == 200
     assert b"Malformed XLSX file. Upload a valid .xlsx workbook." in response.data
+
+
+def test_missing_identity_is_rejected_without_database_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,barcode,clean_asset_tag,equipment_type\n,,,laptop\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Row 2: asset_tag or barcode is required." in response.data
+
+
+def test_unsupported_equipment_type_is_rejected_without_database_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,equipment_type\nMON-100,monitor\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Supported asset types are Laptop, Switch, and Router." in response.data
+
+
+def test_csv_upload_ignores_unknown_and_cmdb_style_columns_with_warning_without_database_writes(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,equipment_type,mac_address,owner\nSW-MAC,switch,00:11:22:33:44:55,Alice\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Asset import analysis complete. No database changes were made." in response.data
+    assert b"File analyzed successfully. No database changes were made." in response.data
+    assert b"Warnings:" in response.data
+    assert b"Ignored unsupported CSV columns: mac_address, owner." in response.data
+
+
+def test_xlsx_upload_ignores_unknown_and_cmdb_style_columns_with_warning_without_database_writes(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pd.DataFrame(
+            [
+                {
+                    "clean_asset_tag": "SW-MAC",
+                    "equipment_type": "switch",
+                    "mac_address": "00:11:22:33:44:55",
+                    "owner": "Alice",
+                }
+            ]
+        ).to_excel(writer, index=False)
+
+    response = _post_file(client_with_temp_db, buffer.getvalue(), "assets.xlsx")
+
+    assert response.status_code == 200
+    assert b"Asset import analysis complete. No database changes were made." in response.data
+    assert b"Warnings:" in response.data
+    assert b"Ignored unsupported XLSX columns: mac_address, owner." in response.data
+
+
+def test_ignored_columns_do_not_enter_canonical_analysis_rows(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,equipment_type,mac_address,owner\n"
+        "SW-MAC,switch,00:11:22:33:44:55,Alice\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+
+    assert analysis.warnings == ("Ignored unsupported CSV columns: mac_address, owner.",)
+    assert len(analysis.rows) == 1
+    row = analysis.rows[0]
+    assert row.asset_tag == "SW-MAC"
+    assert row.equipment_type == "switch"
+    assert "mac_address" not in row.__dataclass_fields__
+    assert "owner" not in row.__dataclass_fields__
+    assert "00:11:22:33:44:55" not in str(row)
+    assert "Alice" not in str(row)
+
+
+def test_supported_optional_columns_are_mapped_to_canonical_analysis_row(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,barcode,clean_asset_tag,serial_number,equipment_type,manufacturer,model,model_code,"
+        "building_room,location_building,case_number,slot_number,notes_comments\n"
+        ",BAR-100,CLEAN-100,SN-100,laptop,Dell,Latitude,7420,HQ/101,HQ,alpha,7,Ready\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+
+    assert analysis.warnings == ()
+    assert len(analysis.rows) == 1
+    row = analysis.rows[0]
+    assert row.asset_tag == "BAR-100"
+    assert row.serial_number == "SN-100"
+    assert row.equipment_type == "laptop"
+    assert row.manufacturer == "Dell"
+    assert row.model == "Latitude"
+    assert row.model_code == "7420"
+    assert row.building_room == "HQ/101"
+    assert row.location_building == "HQ"
+    assert row.case_identifier == "CASE-ALPHA"
+    assert row.slot_identifier == "7"
+    assert row.notes == "Ready"
+    assert row.storage_intent == "slotted"
+
+
+def test_direct_storage_columns_override_legacy_storage_aliases(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,equipment_type,case_identifier,slot_identifier,case_number,slot_number\n"
+        "SW-100,switch,CASE-DIRECT,3,legacy,8\n",
+        encoding="utf-8",
+    )
+
+    row = analyze_asset_import_csv(csv_path, filename="assets.csv").rows[0]
+
+    assert row.case_identifier == "CASE-DIRECT"
+    assert row.slot_identifier == "3"
+
+
+def test_slot_helper_is_ignored_with_visible_warning(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,equipment_type,slot_helper\n"
+        "SW-HELPER,switch,4\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+
+    assert analysis.warnings == ("Ignored unsupported CSV column: slot_helper.",)
+    assert len(analysis.rows) == 1
+    row = analysis.rows[0]
+    assert row.asset_tag == "SW-HELPER"
+    assert row.storage_intent == "unslotted"
+    assert "slot_helper" not in row.__dataclass_fields__
+    assert "4" not in str(row)
+
+
+def test_duplicate_asset_rows_are_rejected_without_database_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,barcode,equipment_type\nDUP-100,,laptop\n,dup-100,switch\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Row 3: duplicate asset_tag matches row 2: DUP-100." in response.data
+
+
+def test_duplicate_serial_rows_are_rejected_without_database_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nLAP-100,SN-DUP,laptop\nSW-100,sn-dup,switch\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Row 3: duplicate serial_number matches row 2: sn-dup." in response.data
 
 
 def test_operator_is_forbidden_from_asset_import_upload_page(client_with_temp_db) -> None:
