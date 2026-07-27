@@ -21,8 +21,8 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 | --- | --- | --- |
 | Generic Add Assets UI workflow | Supported operational workflow | Admin-gated staged UI with queue, validation preview, confirmed commit, shared committer, append-only asset events, and queue clearing. |
 | Generic `assettrack.ingest` CLI | Internal utility | Approved internal commit adapter, but no Flask role gate, no enforced parser/validator, no preview command, free-text actor, and no direct CLI tests. |
-| Network Switch/Router CSV CLI | Supported operational workflow | Domain-specific CSV validation and shared committer for physical Switch/Router asset records. CLI bypasses Flask roles, so the canonical operator interface remains open for Issue 30-12. |
-| Network import admin template page | Supported operational support page | Admin-gated guidance/template download only; it performs no upload, validation, preview, transaction, or DB write. Final upload/interface ownership remains open for Issue 30-12. |
+| Network Switch/Router CSV CLI | Internal legacy utility | Domain-specific CSV validation and shared committer for physical Switch/Router asset records. It bypasses Flask roles and has no admin upload, preview, confirmation, or results workflow, so it is not the normal operator procedure. |
+| Network import admin template page | Deprecated operator guidance page | Admin-gated guidance/template download only; it performs no upload, validation, preview, transaction, or DB write. Import Assets is the canonical operator workflow. |
 | Holder CSV import UI | Supported operational workflow | Admin-gated UI with import report and transaction boundary. It writes holder/org reference state and lacks separate administrative audit, but does not bypass event-derived asset custody state. |
 | Holder CSV import CLI | Internal utility | Same holder importer as UI but no Flask role boundary. Useful for local/admin support only unless Issue 30-13 approves more. |
 | Admin reference-data UI | Supported operational workflow | Admin-gated creation/update of organizations, buildings, and mappings with helper validation. No asset events, because this is reference data. |
@@ -83,14 +83,14 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Authentication or role boundary: bypasses Flask roles because it is a CLI; actor is required.
 - Actor attribution: free-form `--actor` string stored as ingest operator.
 - Direct derived-state writes: yes, through the committer; can create storage assets and slot occupancy when an existing empty slot is specified.
-- Tests and operator documentation: `tests/test_network_asset_import.py`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`, admin template page tests, and release user manual guidance.
-- Relationship to current workflows: supported current path, but Issue 30-12 owns the canonical Switch/Router interface and whether CLI, admin page, or another UI owns operator interaction.
+- Tests and maintainer documentation: `tests/test_network_asset_import.py`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`, and admin template page tests.
+- Relationship to current workflows: internal legacy utility. Normal operators should use Admin Tools -> Import Assets for bulk Switch/Router import.
 
 ### Network Import Admin Template Page
 
 - Name and location: `assettrack/intake/app.py:admin_network_asset_import`, `admin_network_asset_import_template`, `assettrack/intake/templates/admin_network_asset_import.html`.
 - Invocation method: admin browser page at `/admin/network-assets/import`; template download at `/admin/network-assets/import/template.csv`.
-- Purpose: guidance and template download for the current network CSV import process.
+- Purpose: deprecated guidance and template download for the legacy network CSV import process.
 - Input format: none uploaded to the app; template CSV download only.
 - Validation and preview: static guidance only; no upload, uploaded-data validation, or preview.
 - Transaction behavior: none; no transaction or DB write.
@@ -98,8 +98,8 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Authentication or role boundary: Flask login and admin role required.
 - Actor attribution: none.
 - Direct derived-state writes: no.
-- Tests and operator documentation: `tests/test_admin_system_health.py` coverage plus release user manual instructions.
-- Relationship to current workflows: supported operational support page. It does not decide Issue 30-12's canonical import interface.
+- Tests and maintainer documentation: `tests/test_admin_system_health.py` coverage plus legacy fixture documentation.
+- Relationship to current workflows: deprecated operator guidance page. Normal operators should use Admin Tools -> Import Assets.
 
 ### Holder CSV Import UI And CLI
 

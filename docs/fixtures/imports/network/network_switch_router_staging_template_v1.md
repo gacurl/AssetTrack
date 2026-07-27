@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Use `network_switch_router_staging_template_v1.csv` to prepare switch and router custody records for administrator review and import.
+Use `network_switch_router_staging_template_v1.csv` only as a legacy network CSV reference for switch and router custody records.
 
-This template feeds the existing command-line importer. It does not create an admin upload page or add network-management behavior.
+Normal operators should use Admin Tools -> Import Assets for bulk imports. Import Assets supports CSV and XLSX files for Laptop, Switch, and Router records, with analysis, preview, explicit confirmation, atomic commit, and results.
+
+This template feeds the legacy command-line importer for internal or maintainer use. It does not create an admin upload page or add network-management behavior.
 
 AssetTrack tracks equipment custody and storage. It is not a CMDB or network configuration system.
 
@@ -70,6 +72,8 @@ Do not add or record CMDB-like or network configuration fields, including:
 - device configuration
 
 ## Import Command
+
+This command is not a normal operator workflow. It is retained as legacy internal guidance for maintainers who explicitly need the old Switch/Router-only CSV importer.
 
 Run from the AssetTrack project after reviewing the CSV:
 
