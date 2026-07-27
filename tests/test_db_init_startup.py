@@ -770,3 +770,63 @@ def test_initialize_if_missing_or_empty_does_not_mask_invalid_nonempty_db(tmp_pa
 
     if isinstance(exc_info.value, RuntimeError):
         assert "AssetTrack DB schema missing." in str(exc_info.value)
+
+
+def test_initialize_schema_backfills_exact_slot_occupancy_on_reopen(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO assets (
+                id, asset_tag, equipment_type, custody_state, accountability_status,
+                condition, created_date, location_type, home_slot_id
+            )
+            VALUES (1, 'AT-100', 'laptop', 'in_stock', 'accountable', 'serviceable', '2026-01-01', 'STORAGE', 10);
+            """
+        )
+        conn.execute("INSERT INTO slots (id, case_name, slot_position, current_asset_tag) VALUES (10, 'CASE-A', 1, 'AT-100');")
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        occupancy = conn.execute("SELECT slot_id, asset_id FROM slot_occupancy;").fetchall()
+    finally:
+        conn.close()
+
+    assert occupancy == [(10, 1)]
+
+
+def test_initialize_schema_preserves_legacy_compact_slot_marker_backfill(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO assets (
+                id, asset_tag, equipment_type, custody_state, accountability_status,
+                condition, created_date, location_type, home_slot_id
+            )
+            VALUES (1, 'AT-200', 'laptop', 'in_stock', 'accountable', 'serviceable', '2026-01-01', 'STORAGE', 20);
+            """
+        )
+        conn.execute("INSERT INTO slots (id, case_name, slot_position, current_asset_tag) VALUES (20, 'CASE-B', 1, 'AT200');")
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        occupancy = conn.execute("SELECT slot_id, asset_id FROM slot_occupancy;").fetchall()
+    finally:
+        conn.close()
+
+    assert occupancy == [(20, 1)]

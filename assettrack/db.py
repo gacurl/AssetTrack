@@ -232,6 +232,60 @@ def get_connection():
     return conn
 
 
+def _backfill_slot_occupancy(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        SELECT s.id, a.id, '1970-01-01T00:00:00Z'
+        FROM slots s
+        JOIN assets a
+          ON a.asset_tag = s.current_asset_tag
+        WHERE s.current_asset_tag IS NOT NULL
+          AND TRIM(s.current_asset_tag) <> ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM slot_occupancy so
+              WHERE so.slot_id = s.id
+          );
+        """
+    )
+
+    unresolved_slots = conn.execute(
+        """
+        SELECT s.id, s.current_asset_tag
+        FROM slots s
+        WHERE s.current_asset_tag IS NOT NULL
+          AND TRIM(s.current_asset_tag) <> ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM slot_occupancy so
+              WHERE so.slot_id = s.id
+          );
+        """
+    ).fetchall()
+    if not unresolved_slots:
+        return
+
+    compact_asset_ids = {
+        str(row["asset_tag"] or "").strip().upper().replace("-", ""): int(row["id"])
+        for row in conn.execute("SELECT id, asset_tag FROM assets;").fetchall()
+    }
+    backfill_rows = []
+    for slot in unresolved_slots:
+        compact_tag = str(slot["current_asset_tag"] or "").strip().upper()
+        asset_id = compact_asset_ids.get(compact_tag)
+        if asset_id is not None:
+            backfill_rows.append((int(slot["id"]), asset_id, "1970-01-01T00:00:00Z"))
+    if backfill_rows:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (?, ?, ?);
+            """,
+            backfill_rows,
+        )
+
+
 def _create_schema(conn: sqlite3.Connection):
     """
     Create core tables if they do not already exist.
@@ -690,18 +744,7 @@ def _create_schema(conn: sqlite3.Connection):
         )
 
     if _table_exists(conn, "assets"):
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO slot_occupancy (slot_id, asset_id, assigned_at)
-            SELECT s.id, a.id, '1970-01-01T00:00:00Z'
-            FROM slots s
-            JOIN assets a
-              ON UPPER(a.asset_tag) = UPPER(s.current_asset_tag)
-              OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(s.current_asset_tag)
-            WHERE s.current_asset_tag IS NOT NULL
-              AND TRIM(s.current_asset_tag) <> '';
-            """
-        )
+        _backfill_slot_occupancy(conn)
 
     conn.commit()
 
