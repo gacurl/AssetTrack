@@ -11,6 +11,7 @@ Feynman-brief:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
@@ -21,7 +22,7 @@ import tempfile
 import time
 from email.message import EmailMessage
 from email.utils import getaddresses
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone, date, timedelta
@@ -81,6 +82,7 @@ from assettrack.reference_data import (
     set_building_active,
     update_building_name,
 )
+from assettrack.slots import move_asset_between_slots_in_tx
 from assettrack.settings import (
     active_receipt_cc_setting,
     read_receipt_cc_setting,
@@ -7547,26 +7549,507 @@ def _analyze_asset_import_upload(
     return preview.to_template_result()
 
 
+
+ASSET_IMPORT_PENDING_SESSION_KEY = "pending_asset_import"
+
+
+def _clear_pending_asset_import() -> None:
+    pending = session.pop(ASSET_IMPORT_PENDING_SESSION_KEY, None)
+    if not isinstance(pending, dict):
+        return
+    temp_path_value = str(pending.get("temp_path") or "").strip()
+    if temp_path_value:
+        Path(temp_path_value).unlink(missing_ok=True)
+
+
+def _asset_import_file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _asset_import_preview_token(*, result: dict, file_sha256: str, suffix: str, filename: str, unslotted_acknowledged: bool) -> str:
+    payload = {
+        "result": result,
+        "file_sha256": file_sha256,
+        "suffix": suffix,
+        "filename": filename,
+        "unslotted_acknowledged": unslotted_acknowledged,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_pending_asset_import() -> dict[str, object] | None:
+    pending = session.get(ASSET_IMPORT_PENDING_SESSION_KEY)
+    if not isinstance(pending, dict):
+        return None
+    temp_path_value = str(pending.get("temp_path") or "").strip()
+    if not temp_path_value:
+        _clear_pending_asset_import()
+        return None
+    temp_path = Path(temp_path_value)
+    if not temp_path.exists() or not temp_path.is_file():
+        _clear_pending_asset_import()
+        return None
+    return pending
+
+
+def _analyze_asset_import_to_preview(conn: sqlite3.Connection, temp_path: Path, *, filename: str, suffix: str, unslotted_acknowledged: bool):
+    if suffix == ".csv":
+        analysis = analyze_asset_import_csv(temp_path, filename=filename, collect_row_errors=True)
+    elif suffix == ".xlsx":
+        analysis = analyze_asset_import_xlsx(temp_path, filename=filename, collect_row_errors=True)
+    else:
+        raise ValueError("Unsupported file type. Upload a .csv or .xlsx file.")
+    return build_asset_import_preview(conn, analysis, unslotted_acknowledged=unslotted_acknowledged), analysis
+
+
+def _store_pending_asset_import(*, temp_path: Path, filename: str, suffix: str, result: dict, unslotted_acknowledged: bool) -> str:
+    _clear_pending_asset_import()
+    file_sha256 = _asset_import_file_sha256(temp_path)
+    token = _asset_import_preview_token(
+        result=result,
+        file_sha256=file_sha256,
+        suffix=suffix,
+        filename=filename,
+        unslotted_acknowledged=unslotted_acknowledged,
+    )
+    session[ASSET_IMPORT_PENDING_SESSION_KEY] = {
+        "temp_path": str(temp_path),
+        "filename": filename,
+        "suffix": suffix,
+        "file_sha256": file_sha256,
+        "preview_token": token,
+        "unslotted_acknowledged": unslotted_acknowledged,
+    }
+    return token
+
+
+def _asset_import_row_by_number(analysis) -> dict[int, object]:
+    return {int(row.row_number): row for row in analysis.rows}
+
+
+def _asset_import_existing_asset(conn: sqlite3.Connection, asset_tag: str) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT *
+        FROM assets
+        WHERE UPPER(asset_tag) = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_tag,),
+    ).fetchone()
+
+
+def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | None:
+    if row.storage_intent != "slotted":
+        return None
+    return conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+          AND slot_position = ?
+        LIMIT 1;
+        """,
+        (row.case_identifier, int(row.slot_identifier)),
+    ).fetchone()
+
+
+def _asset_import_slot_is_available_for(conn: sqlite3.Connection, *, slot_id: int, asset_tag: str) -> bool:
+    occupant = conn.execute(
+        """
+        SELECT a.asset_tag
+        FROM slot_occupancy so
+        JOIN assets a ON a.id = so.asset_id
+        WHERE so.slot_id = ?
+        LIMIT 1;
+        """,
+        (slot_id,),
+    ).fetchone()
+    if occupant is not None and str(occupant["asset_tag"] or "").strip().upper() != asset_tag.upper():
+        return False
+    slot = conn.execute("SELECT current_asset_tag FROM slots WHERE id = ? LIMIT 1;", (slot_id,)).fetchone()
+    current_tag = str(slot["current_asset_tag"] or "").strip() if slot else ""
+    return not current_tag or current_tag.upper() == asset_tag.upper()
+
+
+def _asset_import_new_asset_values(conn: sqlite3.Connection, row, *, now_iso: str, slot: sqlite3.Row | None) -> dict[str, object]:
+    values: dict[str, object] = {
+        "asset_tag": row.asset_tag,
+        "equipment_type": row.equipment_type,
+        "custody_state": "in_stock",
+        "accountability_status": "accountable",
+        "condition": "serviceable",
+        "created_date": now_iso,
+        "location_type": "STORAGE",
+        "current_holder_id": None,
+    }
+    optional_fields = {
+        "serial_number": row.serial_number,
+        "manufacturer": row.manufacturer,
+        "model": row.model,
+        "model_code": row.model_code,
+        "building_room": row.building_room,
+        "building": row.location_building,
+        "notes": row.notes,
+    }
+    values.update({field: value for field, value in optional_fields.items() if value})
+    if slot is not None:
+        values.update(
+            {
+                "home_slot_id": int(slot["id"]),
+                "case_number": str(slot["case_name"]),
+                "slot_number": str(slot["slot_position"]),
+            }
+        )
+    return {field: value for field, value in values.items() if field in get_asset_table_columns(conn)}
+
+
+def _asset_import_insert_asset(conn: sqlite3.Connection, values: dict[str, object]) -> int:
+    column_names = list(values)
+    cursor = conn.execute(
+        f"INSERT INTO assets ({', '.join(column_names)}) VALUES ({', '.join('?' for _ in column_names)});",
+        [values[column] for column in column_names],
+    )
+    return int(cursor.lastrowid)
+
+
+def _asset_import_append_event(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    event_type: str,
+    event_date: str,
+    actor: str,
+    payload: dict,
+    notes: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (asset_tag, event_type, event_date, actor, notes, json.dumps(payload), None),
+    )
+
+
+def _asset_import_create_new_asset(conn: sqlite3.Connection, row, *, now_iso: str, actor: str, slot: sqlite3.Row | None) -> None:
+    values = _asset_import_new_asset_values(conn, row, now_iso=now_iso, slot=slot)
+    asset_id = _asset_import_insert_asset(conn, values)
+    _asset_import_append_event(
+        conn,
+        asset_tag=row.asset_tag,
+        event_type="ASSET_CREATED",
+        event_date=now_iso,
+        actor=actor,
+        payload={"asset": values, "row_number": row.row_number},
+    )
+    if slot is None:
+        return
+    slot_id = int(slot["id"])
+    if not _asset_import_slot_is_available_for(conn, slot_id=slot_id, asset_tag=row.asset_tag):
+        raise ValueError(f"Row {row.row_number}: requested slot is no longer available.")
+    conn.execute("INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at) VALUES (?, ?, ?);", (slot_id, asset_id, now_iso))
+    conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", (row.asset_tag, slot_id))
+    _asset_import_append_event(
+        conn,
+        asset_tag=row.asset_tag,
+        event_type="SLOT_ASSIGN",
+        event_date=now_iso,
+        actor=actor,
+        payload={
+            "slot": {
+                "slot_id": slot_id,
+                "case_number": str(slot["case_name"]),
+                "slot_number": int(slot["slot_position"]),
+            },
+            "row_number": row.row_number,
+        },
+    )
+
+
+def _asset_import_metadata_updates(row) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for row_field, asset_field, source_field in (
+        ("serial_number", "serial_number", "serial_number"),
+        ("equipment_type", "equipment_type", "equipment_type"),
+        ("manufacturer", "manufacturer", "manufacturer"),
+        ("model", "model", "model"),
+        ("model_code", "model_code", "model_code"),
+        ("building_room", "building_room", "building_room"),
+        ("location_building", "building", "location_building"),
+        ("notes", "notes", "notes_comments"),
+    ):
+        if row.has_source_field(source_field):
+            value = str(getattr(row, row_field) or "").strip()
+            if value:
+                values[asset_field] = value
+    return values
+
+
+def _asset_import_apply_metadata_update(
+    conn: sqlite3.Connection,
+    *,
+    asset: sqlite3.Row,
+    row,
+    values: dict[str, object],
+    now_iso: str,
+    actor: str,
+) -> bool:
+    asset_columns = get_asset_table_columns(conn)
+    changed = {
+        field: value
+        for field, value in values.items()
+        if field in asset_columns and str((asset[field] if field in asset.keys() else "") or "").strip() != str(value).strip()
+    }
+    if not changed:
+        return False
+    if "updated_date" in asset_columns:
+        changed["updated_date"] = now_iso
+    conn.execute(
+        f"UPDATE assets SET {', '.join(f'{field} = ?' for field in changed)} WHERE id = ?;",
+        [changed[field] for field in changed] + [int(asset["id"])],
+    )
+    _asset_import_append_event(
+        conn,
+        asset_tag=str(asset["asset_tag"]),
+        event_type="ASSET_UPDATED",
+        event_date=now_iso,
+        actor=actor,
+        payload={"fields": changed, "row_number": row.row_number},
+    )
+    return True
+
+
+def _asset_import_apply_existing_update(conn: sqlite3.Connection, row, preview_row, *, now_iso: str, actor: str) -> tuple[bool, bool]:
+    asset = _asset_import_existing_asset(conn, row.asset_tag)
+    if asset is None:
+        raise ValueError(f"Row {row.row_number}: asset changed since preview.")
+    movement_change = any(change.field == "home_slot" for change in preview_row.changed_fields)
+    metadata_values = _asset_import_metadata_updates(row)
+    moved = False
+    if movement_change:
+        slot = _asset_import_slot_for_row(conn, row)
+        if slot is None:
+            raise ValueError(f"Row {row.row_number}: destination slot is unavailable.")
+        if not _asset_import_slot_is_available_for(conn, slot_id=int(slot["id"]), asset_tag=row.asset_tag):
+            raise ValueError(f"Row {row.row_number}: requested slot is no longer available.")
+        source_slot_id = asset["home_slot_id"]
+        if source_slot_id is None:
+            raise ValueError(f"Row {row.row_number}: asset is not currently slotted.")
+        building_room = row.building_room or str(asset["building_room"] or "")
+        move_preview = _build_admin_slot_move_preview(
+            conn,
+            source_slot_id=int(source_slot_id),
+            building_room=building_room,
+            case_number=str(slot["case_name"]),
+            slot_number=str(slot["slot_position"]),
+        )
+        move_asset_between_slots_in_tx(conn, move_preview=move_preview, notes="Asset import slot move", actor=actor, event_date=now_iso)
+        moved = True
+        asset = _asset_import_existing_asset(conn, row.asset_tag)
+        if asset is None:
+            raise ValueError(f"Row {row.row_number}: asset changed during update.")
+        metadata_values.pop("building_room", None)
+    metadata_updated = _asset_import_apply_metadata_update(
+        conn,
+        asset=asset,
+        row=row,
+        values=metadata_values,
+        now_iso=now_iso,
+        actor=actor,
+    )
+    return moved, metadata_updated
+
+
+def _commit_asset_import_pending(*, submitted_token: str) -> tuple[dict, dict]:
+    pending = _load_pending_asset_import()
+    if pending is None:
+        raise ValueError("Import preview expired. Upload and preview the file again.")
+    expected_token = str(pending.get("preview_token") or "")
+    if not submitted_token or submitted_token != expected_token:
+        _clear_pending_asset_import()
+        raise ValueError("Import confirmation is stale or tampered. Preview the file again.")
+
+    temp_path = Path(str(pending["temp_path"]))
+    filename = str(pending["filename"])
+    suffix = str(pending["suffix"])
+    unslotted_acknowledged = bool(pending.get("unslotted_acknowledged"))
+    file_sha256 = _asset_import_file_sha256(temp_path)
+    if file_sha256 != str(pending.get("file_sha256") or ""):
+        _clear_pending_asset_import()
+        raise ValueError("Uploaded file changed after preview. Upload and preview the file again.")
+
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE;")
+        preview, analysis = _analyze_asset_import_to_preview(
+            conn,
+            temp_path,
+            filename=filename,
+            suffix=suffix,
+            unslotted_acknowledged=unslotted_acknowledged,
+        )
+        result = preview.to_template_result()
+        current_token = _asset_import_preview_token(
+            result=result,
+            file_sha256=file_sha256,
+            suffix=suffix,
+            filename=filename,
+            unslotted_acknowledged=unslotted_acknowledged,
+        )
+        if current_token != expected_token:
+            _clear_pending_asset_import()
+            raise ValueError("Import preview is stale. Upload and preview the file again.")
+        if preview.blocks_without_unslotted_acknowledgment:
+            _clear_pending_asset_import()
+            raise ValueError("Unslotted acknowledgment is required before commit.")
+
+        rows_by_number = _asset_import_row_by_number(analysis)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        actor = "admin"
+        summary = {
+            "created": 0,
+            "updated": 0,
+            "slot_assigned": 0,
+            "slot_moved": 0,
+            "unchanged": 0,
+            "blocked": 0,
+            "committed_rows": 0,
+        }
+        safe_unslotted_categories = {"unslotted_import", "slot_conflict_unslotted"}
+        for preview_row in preview.rows:
+            row = rows_by_number.get(int(preview_row.row_number))
+            if row is None:
+                summary["blocked"] += 1
+                continue
+            if preview_row.category == "unchanged_exact_match":
+                summary["unchanged"] += 1
+                continue
+            if preview_row.category == "new_asset":
+                slot = _asset_import_slot_for_row(conn, row)
+                if slot is None:
+                    raise ValueError(f"Row {row.row_number}: requested slot is unavailable.")
+                _asset_import_create_new_asset(conn, row, now_iso=now_iso, actor=actor, slot=slot)
+                summary["created"] += 1
+                summary["slot_assigned"] += 1
+                summary["committed_rows"] += 1
+                continue
+            if preview_row.category in safe_unslotted_categories and preview.unslotted_acknowledged:
+                if _asset_import_existing_asset(conn, row.asset_tag) is None:
+                    _asset_import_create_new_asset(conn, row, now_iso=now_iso, actor=actor, slot=None)
+                    summary["created"] += 1
+                    summary["committed_rows"] += 1
+                else:
+                    summary["blocked"] += 1
+                continue
+            if preview_row.category == "proposed_update":
+                moved, metadata_updated = _asset_import_apply_existing_update(conn, row, preview_row, now_iso=now_iso, actor=actor)
+                if moved:
+                    summary["slot_moved"] += 1
+                if metadata_updated:
+                    summary["updated"] += 1
+                if moved or metadata_updated:
+                    summary["committed_rows"] += 1
+                continue
+            summary["blocked"] += 1
+
+        conn.commit()
+        _clear_pending_asset_import()
+        return result, summary
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _asset_import_reconciliation_csv_response() -> object:
+    pending = _load_pending_asset_import()
+    if pending is None:
+        flash("Import preview expired. Upload and preview the file again.", "error")
+        return redirect(url_for("admin_asset_import"))
+    temp_path = Path(str(pending["temp_path"]))
+    resolved_db_path = _resolved_runtime_db_path()
+    conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview, _analysis = _analyze_asset_import_to_preview(
+            conn,
+            temp_path,
+            filename=str(pending["filename"]),
+            suffix=str(pending["suffix"]),
+            unslotted_acknowledged=bool(pending.get("unslotted_acknowledged")),
+        )
+    finally:
+        conn.close()
+
+    output = BytesIO()
+    wrapper = TextIOWrapper(output, encoding="utf-8", newline="")
+    writer = csv.writer(wrapper)
+    writer.writerow(["row_number", "asset_tag", "category", "message", "changed_fields", "warnings"])
+    for row in preview.rows:
+        writer.writerow(
+            [
+                row.row_number,
+                row.asset_tag,
+                row.category,
+                row.message,
+                "; ".join(f"{change.field}: {change.current} -> {change.proposed}" for change in row.changed_fields),
+                "; ".join(row.warnings),
+            ]
+        )
+    wrapper.flush()
+    response = make_response(output.getvalue())
+    response.headers["Content-Type"] = "text/csv; charset=utf-8"
+    response.headers["Content-Disposition"] = "attachment; filename=asset-import-reconciliation.csv"
+    return response
+
+
 @app.route("/admin/assets/import", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
 def admin_asset_import():
     result: dict | None = None
+    commit_summary: dict | None = None
 
     if request.method == "POST":
+        action = (request.form.get("action") or "analyze").strip().lower()
+        if action == "commit":
+            if (request.form.get("confirm_import") or "").strip() != "1":
+                _clear_pending_asset_import()
+                flash("Confirm the preview before committing approved rows.", "error")
+                return render_template("admin_asset_import.html", result=None, commit_summary=None)
+            try:
+                result, commit_summary = _commit_asset_import_pending(
+                    submitted_token=(request.form.get("preview_token") or "").strip()
+                )
+                flash(
+                    "Asset import committed. Safe rows were written atomically; blocked rows were left unchanged.",
+                    "success",
+                )
+            except ValueError as exc:
+                flash(str(exc), "error")
+            return render_template("admin_asset_import.html", result=result, commit_summary=commit_summary)
+
         upload = request.files.get("asset_file")
         filename = str((upload.filename if upload is not None else "") or "").strip()
         if upload is None or not filename:
             flash("Choose a .csv or .xlsx file to analyze.", "error")
-            return render_template("admin_asset_import.html", result=None)
+            return render_template("admin_asset_import.html", result=None, commit_summary=None)
 
         suffix = Path(filename).suffix.lower()
         tempfile_suffix = ASSET_IMPORT_TEMPFILE_SUFFIXES.get(suffix)
         if tempfile_suffix is None:
             flash("Unsupported file type. Upload a .csv or .xlsx file.", "error")
-            return render_template("admin_asset_import.html", result=None)
+            return render_template("admin_asset_import.html", result=None, commit_summary=None)
 
         temp_path: Path | None = None
+        keep_temp_path = False
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=tempfile_suffix) as handle:
                 upload.save(handle)
@@ -7579,15 +8062,30 @@ def admin_asset_import():
                 suffix=suffix,
                 unslotted_acknowledged=unslotted_acknowledged,
             )
+            preview_token = _store_pending_asset_import(
+                temp_path=temp_path,
+                filename=filename,
+                suffix=suffix,
+                result=result,
+                unslotted_acknowledged=unslotted_acknowledged,
+            )
+            result["preview_token"] = preview_token
+            keep_temp_path = True
             flash("Asset import preview complete. No database changes were made.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
         finally:
-            if temp_path is not None:
+            if temp_path is not None and not keep_temp_path:
                 temp_path.unlink(missing_ok=True)
 
-    return render_template("admin_asset_import.html", result=result)
+    return render_template("admin_asset_import.html", result=result, commit_summary=commit_summary)
 
+
+@app.get("/admin/assets/import/reconciliation.csv")
+@require_login
+@require_role("admin")
+def admin_asset_import_reconciliation_csv():
+    return _asset_import_reconciliation_csv_response()
 
 @app.get("/admin/network-assets/import")
 @require_login
@@ -10071,113 +10569,13 @@ def admin_slot_move():
                     expected_asset_id_raw=expected_asset_id_raw,
                     expected_destination_slot_id_raw=expected_destination_slot_id_raw,
                 )
-                asset_id = int(move_preview["asset"]["asset_id"])
                 asset_tag = str(move_preview["asset"]["asset_tag"])
                 destination_slot_id = int(move_preview["destination"]["slot_id"])
-
-                delete_source = conn.execute(
-                    """
-                    DELETE FROM slot_occupancy
-                    WHERE slot_id = ? AND asset_id = ?;
-                    """,
-                    (source_slot_id, asset_id),
-                )
-                if delete_source.rowcount != 1:
-                    raise ValueError("Source slot is missing or empty.")
-
-                now_iso = datetime.now(timezone.utc).isoformat()
-                conn.execute(
-                    """
-                    INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
-                    VALUES (?, ?, ?);
-                    """,
-                    (destination_slot_id, asset_id, now_iso),
-                )
-
-                conn.execute(
-                    """
-                    UPDATE slots
-                    SET current_asset_tag = NULL
-                    WHERE id = ?;
-                    """,
-                    (source_slot_id,),
-                )
-                conn.execute(
-                    """
-                    UPDATE slots
-                    SET current_asset_tag = ?
-                    WHERE id = ?;
-                    """,
-                    (asset_tag, destination_slot_id),
-                )
-
-                asset_columns = get_asset_table_columns(conn)
-                update_clauses: list[str] = []
-                update_values: list[object] = []
-                if "home_slot_id" in asset_columns:
-                    update_clauses.append("home_slot_id = ?")
-                    update_values.append(destination_slot_id)
-                if "building" in asset_columns:
-                    update_clauses.append("building = ?")
-                    update_values.append(str(move_preview["destination"]["building"]))
-                if "room" in asset_columns:
-                    update_clauses.append("room = ?")
-                    update_values.append(str(move_preview["destination"]["room"]))
-                if "building_room" in asset_columns:
-                    update_clauses.append("building_room = ?")
-                    update_values.append(building_room)
-                if "case_number" in asset_columns:
-                    update_clauses.append("case_number = ?")
-                    update_values.append(str(move_preview["destination"]["case_number"]))
-                if "slot_number" in asset_columns:
-                    update_clauses.append("slot_number = ?")
-                    update_values.append(str(move_preview["destination"]["slot_number"]))
-                if "updated_date" in asset_columns:
-                    update_clauses.append("updated_date = ?")
-                    update_values.append(now_iso)
-                if update_clauses:
-                    update_values.append(asset_id)
-                    conn.execute(
-                        f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
-                        tuple(update_values),
-                    )
-
-                payload = {
-                    "from_slot": {
-                        "slot_id": int(move_preview["source"]["slot_id"]),
-                        "building_room": str(move_preview["source"]["building_room"]),
-                        "case_number": str(move_preview["source"]["case_number"]),
-                        "slot_number": int(move_preview["source"]["slot_number"]),
-                    },
-                    "to_slot": {
-                        "slot_id": destination_slot_id,
-                        "building_room": building_room,
-                        "case_number": str(move_preview["destination"]["case_number"]),
-                        "slot_number": int(move_preview["destination"]["slot_number"]),
-                    },
-                }
-                conn.execute(
-                    """
-                    INSERT INTO asset_events (
-                        asset_tag,
-                        event_type,
-                        event_date,
-                        actor,
-                        notes,
-                        payload,
-                        holder_id
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
-                    """,
-                    (
-                        asset_tag,
-                        "SLOT_MOVE",
-                        now_iso,
-                        "admin",
-                        notes or None,
-                        json.dumps(payload),
-                        None,
-                    ),
+                move_asset_between_slots_in_tx(
+                    conn,
+                    move_preview=move_preview,
+                    notes=notes,
+                    actor="admin",
                 )
 
                 conn.commit()

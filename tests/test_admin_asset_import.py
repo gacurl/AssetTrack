@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import io
 import re
 import sqlite3
@@ -42,11 +44,13 @@ def _table_counts() -> dict[str, int]:
         conn.close()
 
 
-def _post_file(client, content: bytes, filename: str):
+def _post_file(client, content: bytes, filename: str, *, form: dict[str, str] | None = None):
     before = _table_counts()
+    data = dict(form or {})
+    data["asset_file"] = (io.BytesIO(content), filename)
     response = client.post(
         "/admin/assets/import",
-        data={"asset_file": (io.BytesIO(content), filename)},
+        data=data,
         content_type="multipart/form-data",
     )
     after = _table_counts()
@@ -244,6 +248,112 @@ def test_csv_and_xlsx_use_equivalent_canonical_analysis_rows(tmp_path: Path) -> 
     assert csv_rows[0].manufacturer == xlsx_rows[0].manufacturer == ""
     assert csv_rows[0].building_room == xlsx_rows[0].building_room == ""
     assert csv_analysis.equipment_types == xlsx_analysis.equipment_types == ["Laptop", "Switch"]
+
+
+def test_slot_identifiers_normalize_integer_like_csv_and_xlsx_values(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,equipment_type,case_identifier,slot_identifier\n"
+        "CSV-INT,laptop,CASE-CSV,4\n"
+        "CSV-DECIMAL,switch,CASE-CSV,4.0\n",
+        encoding="utf-8",
+    )
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-FOUR",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-2912-SMOKE",
+                    "slot_identifier": 4.0,
+                },
+                {
+                    "clean_asset_tag": "XLSX-NINES",
+                    "equipment_type": "router",
+                    "case_identifier": "CASE-999",
+                    "slot_identifier": 999.0,
+                },
+                {
+                    "clean_asset_tag": "XLSX-FRACTION",
+                    "equipment_type": "switch",
+                    "case_identifier": "CASE-FRACTION",
+                    "slot_identifier": 4.5,
+                },
+            ]
+        )
+    )
+
+    csv_rows = analyze_asset_import_csv(csv_path, filename="assets.csv").rows
+    xlsx_rows = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx").rows
+
+    assert [row.slot_identifier for row in csv_rows] == ["4", "4"]
+    assert [row.slot_identifier for row in xlsx_rows] == ["4", "999", "4.5"]
+    assert xlsx_rows[0].case_identifier == "CASE-2912-SMOKE"
+
+
+def test_fractional_slot_identifier_is_rejected_without_rounding(
+    client_with_temp_db,
+    tmp_path: Path,
+) -> None:
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-FRACTION",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-FRACTION",
+                    "slot_identifier": 4.5,
+                }
+            ]
+        )
+    )
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx", collect_row_errors=True)
+    assert analysis.rows[0].slot_identifier == "4.5"
+
+    conn = sqlite3.connect(f"file:{db.DB_PATH.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview = build_asset_import_preview(conn, analysis)
+    finally:
+        conn.close()
+
+    assert preview.rows[0].category == "slot_conflict_unslotted"
+    assert preview.rows[0].message == "slot_identifier must be numeric; row can continue as Unslotted after acknowledgment."
+
+
+def test_xlsx_numeric_slot_identifier_reaches_available_slot_classification(
+    client_with_temp_db,
+    tmp_path: Path,
+) -> None:
+    _insert_slot(slot_id=560, case_name="CASE-2912-SMOKE", slot_position=4)
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-SLOT-4",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-2912-SMOKE",
+                    "slot_identifier": 4.0,
+                }
+            ]
+        )
+    )
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx", collect_row_errors=True)
+    conn = sqlite3.connect(f"file:{db.DB_PATH.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview = build_asset_import_preview(conn, analysis)
+    finally:
+        conn.close()
+
+    assert analysis.rows[0].case_identifier == "CASE-2912-SMOKE"
+    assert analysis.rows[0].slot_identifier == "4"
+    assert preview.rows[0].category == "new_asset"
 
 
 def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
@@ -840,6 +950,13 @@ def test_traversal_style_csv_filename_uses_server_tempfile_suffix(
         assert created_path.parent.resolve() == temp_root
         assert created_path.suffix == ".csv"
         assert "outside" not in created_path.name
+        assert created_path.exists()
+    assert _pending_temp_path(client_with_temp_db) == created_paths[-1]
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    for created_path in created_paths:
         assert not created_path.exists()
 
 
@@ -848,10 +965,13 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _login_admin(client_with_temp_db)
+    xlsx_content = _xlsx_bytes()
     created_paths: list[Path] = []
     original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
 
     def recording_named_temporary_file(*args, **kwargs):
+        if kwargs.get("prefix") == "openpyxl.":
+            return original_named_temporary_file(*args, **kwargs)
         assert kwargs["suffix"] == ".xlsx"
         handle = original_named_temporary_file(*args, **kwargs)
         created_paths.append(Path(handle.name))
@@ -859,7 +979,7 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
 
     monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", recording_named_temporary_file)
 
-    response = _post_file(client_with_temp_db, _xlsx_bytes(), "..\\..\\outside.xlsx")
+    response = _post_file(client_with_temp_db, xlsx_content, "..\\..\\outside.xlsx")
 
     assert response.status_code == 200
     assert b"Asset import preview complete. No database changes were made." in response.data
@@ -869,6 +989,13 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
         assert created_path.parent.resolve() == temp_root
         assert created_path.suffix == ".xlsx"
         assert "outside" not in created_path.name
+        assert created_path.exists()
+    assert _pending_temp_path(client_with_temp_db) == created_paths[-1]
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    for created_path in created_paths:
         assert not created_path.exists()
 
 
@@ -1093,3 +1220,389 @@ def test_operator_is_forbidden_from_asset_import_upload_page(client_with_temp_db
 
     assert get_response.status_code == 403
     assert post_response.status_code == 403
+
+
+def _preview_token(response) -> str:
+    match = re.search(rb'name="preview_token" value="([a-f0-9]{64})"', response.data)
+    assert match is not None
+    return match.group(1).decode("ascii")
+
+
+def _post_commit(client, token: str):
+    return client.post(
+        "/admin/assets/import",
+        data={"action": "commit", "preview_token": token, "confirm_import": "1"},
+    )
+
+
+
+
+def _pending_asset_import(client) -> dict:
+    with client.session_transaction() as sess:
+        pending = sess.get("pending_asset_import")
+        return dict(pending) if isinstance(pending, dict) else {}
+
+
+def _pending_temp_path(client) -> Path:
+    pending = _pending_asset_import(client)
+    temp_path = str(pending.get("temp_path") or "").strip()
+    assert temp_path
+    return Path(temp_path)
+
+
+def _asset_events(asset_tag: str) -> list[sqlite3.Row]:
+    conn = db.get_connection()
+    try:
+        return list(
+            conn.execute(
+                """
+                SELECT event_type, payload
+                FROM asset_events
+                WHERE asset_tag = ?
+                ORDER BY id;
+                """,
+                (asset_tag,),
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+
+def _asset_record(asset_tag: str) -> sqlite3.Row | None:
+    conn = db.get_connection()
+    try:
+        return conn.execute("SELECT * FROM assets WHERE asset_tag = ? LIMIT 1;", (asset_tag,)).fetchone()
+    finally:
+        conn.close()
+
+
+def _slot_record(slot_id: int) -> sqlite3.Row:
+    conn = db.get_connection()
+    try:
+        row = conn.execute("SELECT * FROM slots WHERE id = ?;", (slot_id,)).fetchone()
+        assert row is not None
+        return row
+    finally:
+        conn.close()
+
+
+def _occupancy_asset_tags() -> dict[int, str]:
+    conn = db.get_connection()
+    try:
+        return {
+            int(row["slot_id"]): str(row["asset_tag"])
+            for row in conn.execute(
+                """
+                SELECT so.slot_id, a.asset_tag
+                FROM slot_occupancy so
+                JOIN assets a ON a.id = so.asset_id;
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+
+def test_asset_import_commit_writes_approved_safe_rows_atomically_and_leaves_blocked_rows(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=901, case_name="CASE-NEW", slot_position=1)
+    _insert_slot(slot_id=902, case_name="CASE-BUSY", slot_position=2, current_asset_tag="BUSY-OTHER")
+    _insert_slot(slot_id=903, case_name="CASE-EXACT", slot_position=3, current_asset_tag="EXACT-300")
+    _insert_slot(slot_id=904, case_name="CASE-UPD", slot_position=4, current_asset_tag="UPD-300")
+    _insert_slot(slot_id=905, case_name="CASE-MOVE-OLD", slot_position=5, current_asset_tag="MOVE-ONLY")
+    _insert_slot(slot_id=906, case_name="CASE-MOVE-NEW", slot_position=6)
+    _insert_slot(slot_id=907, case_name="CASE-METAMOVE-OLD", slot_position=7, current_asset_tag="MOVE-META")
+    _insert_slot(slot_id=908, case_name="CASE-METAMOVE-NEW", slot_position=8)
+    _insert_asset(asset_tag="BUSY-OTHER", home_slot_id=902, case_number="CASE-BUSY", slot_number="2", slotted=True)
+    _insert_asset(
+        asset_tag="EXACT-300",
+        serial_number="SER-EXACT-300",
+        equipment_type="switch",
+        manufacturer="Cisco",
+        model="Catalyst",
+        case_number="CASE-EXACT",
+        slot_number="3",
+        home_slot_id=903,
+        slotted=True,
+    )
+    _insert_asset(
+        asset_tag="UPD-300",
+        serial_number="SER-UPD-300",
+        equipment_type="router",
+        manufacturer="Old Maker",
+        model="Old Model",
+        case_number="CASE-UPD",
+        slot_number="4",
+        home_slot_id=904,
+        slotted=True,
+    )
+    _insert_asset(
+        asset_tag="MOVE-ONLY",
+        serial_number="SER-MOVE-ONLY",
+        equipment_type="laptop",
+        manufacturer="Dell",
+        model="Latitude",
+        building_room="HQ/105",
+        case_number="CASE-MOVE-OLD",
+        slot_number="5",
+        home_slot_id=905,
+        slotted=True,
+    )
+    _insert_asset(
+        asset_tag="MOVE-META",
+        serial_number="SER-MOVE-META",
+        equipment_type="laptop",
+        manufacturer="Old Maker",
+        model="Latitude",
+        building_room="HQ/107",
+        case_number="CASE-METAMOVE-OLD",
+        slot_number="7",
+        home_slot_id=907,
+        slotted=True,
+    )
+    _insert_asset(asset_tag="SERIAL-OWNER", serial_number="SER-CONFLICT")
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,manufacturer,model,case_identifier,slot_identifier\n"
+        b"NEW-SLOT,SER-NEW-SLOT,laptop,Dell,Latitude,CASE-NEW,1\n"
+        b"NEW-UNSLOT,SER-NEW-UNSLOT,router,Juniper,MX,,\n"
+        b"BUSY-NEW,SER-BUSY-NEW,switch,Cisco,Catalyst,CASE-BUSY,2\n"
+        b"EXACT-300,SER-EXACT-300,switch,Cisco,Catalyst,CASE-EXACT,3\n"
+        b"UPD-300,SER-UPD-300,router,New Maker,New Model,CASE-UPD,4\n"
+        b"MOVE-ONLY,SER-MOVE-ONLY,laptop,Dell,Latitude,CASE-MOVE-NEW,6\n"
+        b"MOVE-META,SER-MOVE-META,laptop,New Maker,Latitude,CASE-METAMOVE-NEW,8\n"
+        b"CONFLICT-TAG,SER-CONFLICT,laptop,Dell,Latitude,,\n"
+        b",SER-MISSING,laptop,Dell,Latitude,,\n",
+        "assets.csv",
+        form={"acknowledge_unslotted": "1"},
+    )
+    assert response.status_code == 200
+    token = _preview_token(response)
+
+    pending_path = _pending_temp_path(client_with_temp_db)
+    assert pending_path.exists()
+    csv_response = client_with_temp_db.get("/admin/assets/import/reconciliation.csv")
+    assert csv_response.status_code == 200
+    assert csv_response.headers["Content-Type"].startswith("text/csv")
+    assert b"row_number,asset_tag,category,message" in csv_response.data
+    assert b"CONFLICT-TAG" in csv_response.data
+
+    commit_response = _post_commit(client_with_temp_db, token)
+
+    assert commit_response.status_code == 200
+    assert b"Asset import committed." in commit_response.data
+    assert b"Committed rows: 6" in commit_response.data
+    assert b"Blocked rows: 2" in commit_response.data
+    assert _asset_record("CONFLICT-TAG") is None
+    assert _asset_record("SER-MISSING") is None
+
+    assert [row["event_type"] for row in _asset_events("NEW-SLOT")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+    assert [row["event_type"] for row in _asset_events("NEW-UNSLOT")] == ["ASSET_CREATED"]
+    assert [row["event_type"] for row in _asset_events("BUSY-NEW")] == ["ASSET_CREATED"]
+    assert _asset_record("BUSY-NEW")["home_slot_id"] is None
+    assert _slot_record(902)["current_asset_tag"] == "BUSY-OTHER"
+
+    assert _asset_events("EXACT-300") == []
+    assert [row["event_type"] for row in _asset_events("UPD-300")] == ["ASSET_UPDATED"]
+    assert _asset_record("UPD-300")["manufacturer"] == "New Maker"
+    assert _asset_record("UPD-300")["model"] == "New Model"
+
+    move_only_events = _asset_events("MOVE-ONLY")
+    assert [row["event_type"] for row in move_only_events] == ["SLOT_MOVE"]
+    move_payload = json.loads(move_only_events[0]["payload"])
+    assert move_payload["from_slot"]["slot_id"] == 905
+    assert move_payload["to_slot"]["slot_id"] == 906
+
+    move_meta_events = _asset_events("MOVE-META")
+    assert [row["event_type"] for row in move_meta_events] == ["SLOT_MOVE", "ASSET_UPDATED"]
+    assert _asset_record("MOVE-META")["manufacturer"] == "New Maker"
+    assert _occupancy_asset_tags()[901] == "NEW-SLOT"
+    assert _occupancy_asset_tags()[906] == "MOVE-ONLY"
+    assert _occupancy_asset_tags()[908] == "MOVE-META"
+    assert not pending_path.exists()
+    assert _pending_asset_import(client_with_temp_db) == {}
+
+
+
+
+def test_asset_import_commit_rejected_without_confirmation_removes_pending_file_and_state(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nNO-CONFIRM,SER-NO-CONFIRM,laptop\n",
+        "no-confirm.csv",
+    )
+    assert response.status_code == 200
+    token = _preview_token(response)
+    pending_path = _pending_temp_path(client_with_temp_db)
+    assert pending_path.exists()
+
+    commit_response = client_with_temp_db.post(
+        "/admin/assets/import",
+        data={"action": "commit", "preview_token": token},
+    )
+
+    assert commit_response.status_code == 200
+    assert b"Confirm the preview" in commit_response.data
+    assert not pending_path.exists()
+    assert _pending_asset_import(client_with_temp_db) == {}
+    assert _asset_record("NO-CONFIRM") is None
+
+
+def test_asset_import_commit_rejects_tampered_confirmation_before_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=921, case_name="CASE-TAMPER", slot_position=1)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"TAMPER-100,SER-TAMPER-100,laptop,CASE-TAMPER,1\n",
+        "assets.csv",
+    )
+
+    pending_path = _pending_temp_path(client_with_temp_db)
+    assert pending_path.exists()
+
+    commit_response = _post_commit(client_with_temp_db, "0" * 64)
+
+    assert commit_response.status_code == 200
+    assert b"stale or tampered" in commit_response.data
+    assert not pending_path.exists()
+    assert _pending_asset_import(client_with_temp_db) == {}
+    assert _asset_record("TAMPER-100") is None
+    assert _asset_events("TAMPER-100") == []
+
+
+def test_asset_import_commit_rejects_stale_preview_before_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=931, case_name="CASE-STALE", slot_position=1)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"STALE-100,SER-STALE-100,laptop,CASE-STALE,1\n",
+        "assets.csv",
+    )
+    token = _preview_token(response)
+    pending_path = _pending_temp_path(client_with_temp_db)
+    assert pending_path.exists()
+    _insert_asset(asset_tag="STALE-OCCUPANT", home_slot_id=931, case_number="CASE-STALE", slot_number="1", slotted=True)
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", ("STALE-OCCUPANT", 931))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+
+    commit_response = _post_commit(client_with_temp_db, token)
+
+    assert commit_response.status_code == 200
+    assert b"preview is stale" in commit_response.data.lower()
+    assert not pending_path.exists()
+    assert _pending_asset_import(client_with_temp_db) == {}
+    assert _asset_record("STALE-100") is None
+    assert _asset_events("STALE-100") == []
+
+
+def test_asset_import_commit_rolls_back_complete_batch_on_mid_batch_failure(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=941, case_name="CASE-ROLL", slot_position=1)
+    _insert_slot(slot_id=942, case_name="CASE-ROLL", slot_position=2)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"ROLL-OK,SER-ROLL-OK,laptop,CASE-ROLL,1\n"
+        b"ROLL-FAIL,SER-ROLL-FAIL,laptop,CASE-ROLL,2\n",
+        "assets.csv",
+    )
+    token = _preview_token(response)
+    original_append_event = intake_app._asset_import_append_event
+
+    def fail_second_created(*args, **kwargs):
+        if kwargs.get("asset_tag") == "ROLL-FAIL" and kwargs.get("event_type") == "ASSET_CREATED":
+            raise RuntimeError("forced import failure")
+        return original_append_event(*args, **kwargs)
+
+    monkeypatch.setattr(intake_app, "_asset_import_append_event", fail_second_created)
+
+    with pytest.raises(RuntimeError, match="forced import failure"):
+        _post_commit(client_with_temp_db, token)
+
+    assert _asset_record("ROLL-OK") is None
+    assert _asset_record("ROLL-FAIL") is None
+    assert _asset_events("ROLL-OK") == []
+    assert _asset_events("ROLL-FAIL") == []
+    assert _occupancy_asset_tags() == {}
+    assert _slot_record(941)["current_asset_tag"] is None
+    assert _slot_record(942)["current_asset_tag"] is None
+
+
+def test_asset_import_replacing_preview_removes_previous_pending_file(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    first = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nREPLACE-ONE,SER-REPLACE-ONE,laptop\n",
+        "first.csv",
+    )
+    assert first.status_code == 200
+    first_path = _pending_temp_path(client_with_temp_db)
+    assert first_path.exists()
+
+    second = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nREPLACE-TWO,SER-REPLACE-TWO,laptop\n",
+        "second.csv",
+    )
+
+    assert second.status_code == 200
+    second_path = _pending_temp_path(client_with_temp_db)
+    assert second_path.exists()
+    assert second_path != first_path
+    assert not first_path.exists()
+
+
+def test_asset_import_logout_removes_pending_file_and_session_state(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nLOGOUT-100,SER-LOGOUT-100,laptop\n",
+        "logout.csv",
+    )
+    assert response.status_code == 200
+    pending_path = _pending_temp_path(client_with_temp_db)
+    assert pending_path.exists()
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    assert not pending_path.exists()
+    with client_with_temp_db.session_transaction() as sess:
+        assert "pending_asset_import" not in sess
+        assert "user_id" not in sess
+
+
+def test_asset_import_logout_cleanup_tolerates_missing_pending_file(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type\nMISSING-100,SER-MISSING-100,laptop\n",
+        "missing.csv",
+    )
+    assert response.status_code == 200
+    pending_path = _pending_temp_path(client_with_temp_db)
+    pending_path.unlink(missing_ok=True)
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    with client_with_temp_db.session_transaction() as sess:
+        assert "pending_asset_import" not in sess
+        assert "user_id" not in sess

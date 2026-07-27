@@ -48,7 +48,7 @@
         <input type="checkbox" name="acknowledge_unslotted" value="1" />
         Acknowledge rows with missing or unavailable storage may continue as Unslotted.
       </label>
-      <button type="submit">Analyze Import</button>
+      <button type="submit" name="action" value="analyze">Analyze Import</button>
     </form>
   </div>
 
@@ -97,6 +97,32 @@
           <li>{{ result.category_labels[category] }}: {{ result.totals[category] }}</li>
         {% endfor %}
       </ul>
+      {% if commit_summary %}
+        <h3>Commit Result</h3>
+        <ul class="compact-list">
+          <li>Committed rows: {{ commit_summary.committed_rows }}</li>
+          <li>Created assets: {{ commit_summary.created }}</li>
+          <li>Updated assets: {{ commit_summary.updated }}</li>
+          <li>Slot assignments: {{ commit_summary.slot_assigned }}</li>
+          <li>Slot moves: {{ commit_summary.slot_moved }}</li>
+          <li>Unchanged rows: {{ commit_summary.unchanged }}</li>
+          <li>Blocked rows: {{ commit_summary.blocked }}</li>
+        </ul>
+      {% endif %}
+      <p class="import-help">
+        <a href="{{ url_for('admin_asset_import_reconciliation_csv') }}">Download reconciliation CSV</a>
+      </p>
+      {% if result.preview_token and not commit_summary %}
+        <form method="post" class="row">
+          <input type="hidden" name="action" value="commit" />
+          <input type="hidden" name="preview_token" value="{{ result.preview_token }}" />
+          <label class="row">
+            <input type="checkbox" name="confirm_import" value="1" required />
+            Confirm this preview and commit the approved safe rows.
+          </label>
+          <button type="submit">Commit Approved Rows</button>
+        </form>
+      {% endif %}
       <h3>System Defaults Before Commit</h3>
       <ul class="compact-list">
         {% for default in result.defaults %}

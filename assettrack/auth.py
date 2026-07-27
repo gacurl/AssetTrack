@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import wraps
+from pathlib import Path
 import time
 
 from flask import g, render_template, request, session
@@ -24,7 +25,17 @@ def begin_auth_session(user_id: int) -> None:
     session["session_started_at"] = started_at
 
 
+def _clear_pending_asset_import_session() -> None:
+    pending = session.pop("pending_asset_import", None)
+    if not isinstance(pending, dict):
+        return
+    temp_path_value = str(pending.get("temp_path") or "").strip()
+    if temp_path_value:
+        Path(temp_path_value).unlink(missing_ok=True)
+
+
 def clear_auth_session() -> None:
+    _clear_pending_asset_import_session()
     for key in AUTH_SESSION_KEYS:
         session.pop(key, None)
 
