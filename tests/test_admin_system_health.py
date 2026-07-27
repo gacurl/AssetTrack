@@ -131,7 +131,9 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Replace Asset" in response.data
     assert b"Import Assets" in response.data
     assert b"CSV/XLSX; Laptop, Switch, Router" in response.data
-    assert b"Import Switch/Router CSV" in response.data
+    assert response.data.count(b'href="/admin/assets/import"') == 1
+    assert b"Import Switch/Router CSV" not in response.data
+    assert b'href="/admin/network-assets/import"' not in response.data
     assert b"Provision Slots" in response.data
     assert b"Assign Slot" in response.data
     assert b"Move Slot" in response.data
@@ -162,7 +164,6 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         b'href="/admin/assets/retire"',
         b'href="/admin/assets/replace"',
         b'href="/admin/assets/import"',
-        b'href="/admin/network-assets/import"',
         b'href="/admin/slots/provision"',
         b'href="/admin/assign-slot"',
         b'href="/admin/slot-move"',
@@ -191,7 +192,6 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         "/admin/assets/retire",
         "/admin/assets/replace",
         "/admin/assets/import",
-        "/admin/network-assets/import",
         "/admin/slots/provision",
         "/admin/assign-slot",
         "/admin/slot-move",
@@ -269,15 +269,17 @@ def test_operator_is_forbidden_for_holder_import_page(client_with_temp_db) -> No
     assert response.status_code == 403
 
 
-def test_admin_network_asset_import_page_exposes_existing_cli_process(client_with_temp_db) -> None:
+def test_admin_network_asset_import_page_is_deprecated_and_points_to_import_assets(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-network-import", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
 
     response = client_with_temp_db.get("/admin/network-assets/import")
 
     assert response.status_code == 200
-    assert b"Import Switch/Router CSV" in response.data
-    assert b"AssetTrack supports Laptop, Switch, and Router" in response.data
+    assert b"Deprecated Switch/Router CSV Import" in response.data
+    assert b"deprecated for operator use" in response.data
+    assert b'href="/admin/assets/import"' in response.data
+    assert b"Import Assets supports CSV and XLSX files for Laptop, Switch, and Router" in response.data
     assert b"python scripts/import_network_assets_csv.py" in response.data
     assert b"network_switch_router_staging_template_v1.csv" in response.data
     assert b'href="/admin/network-assets/import/template.csv"' in response.data

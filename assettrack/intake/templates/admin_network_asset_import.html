@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Import Switch/Router CSV{% endblock %}
-{% block page_heading %}Admin: Import Switch/Router CSV{% endblock %}
+{% block title %}Deprecated Switch/Router CSV Import{% endblock %}
+{% block page_heading %}Admin: Deprecated Switch/Router CSV Import{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -17,12 +17,16 @@
   </nav>
 
   <div class="card">
-    <h2>Switch/Router Import</h2>
+    <h2>Use Import Assets</h2>
     <p class="import-help">
-      Use the existing command-line CSV importer for custody-only switch and router records.
-      AssetTrack supports Laptop, Switch, and Router; this CSV path imports Switch and Router only.
+      This Switch/Router CSV guidance is deprecated for operator use. Use Import Assets for bulk asset imports.
+      Import Assets supports CSV and XLSX files for Laptop, Switch, and Router records with analysis, preview,
+      explicit confirmation, atomic commit, and results.
     </p>
     <p>
+      <a class="nav-link" href="{{ url_for('admin_asset_import') }}">Open Import Assets</a>
+    </p>
+    <p class="import-help">
       <a class="nav-link" href="{{ url_for('admin_network_asset_import_template') }}">Download CSV template</a>
     </p>
   </div>
