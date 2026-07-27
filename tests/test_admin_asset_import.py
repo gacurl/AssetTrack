@@ -44,11 +44,13 @@ def _table_counts() -> dict[str, int]:
         conn.close()
 
 
-def _post_file(client, content: bytes, filename: str):
+def _post_file(client, content: bytes, filename: str, *, form: dict[str, str] | None = None):
     before = _table_counts()
+    data = dict(form or {})
+    data["asset_file"] = (io.BytesIO(content), filename)
     response = client.post(
         "/admin/assets/import",
-        data={"asset_file": (io.BytesIO(content), filename)},
+        data=data,
         content_type="multipart/form-data",
     )
     after = _table_counts()
@@ -842,6 +844,13 @@ def test_traversal_style_csv_filename_uses_server_tempfile_suffix(
         assert created_path.parent.resolve() == temp_root
         assert created_path.suffix == ".csv"
         assert "outside" not in created_path.name
+        assert created_path.exists()
+    assert _pending_temp_path(client_with_temp_db) == created_paths[-1]
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    for created_path in created_paths:
         assert not created_path.exists()
 
 
@@ -850,10 +859,13 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _login_admin(client_with_temp_db)
+    xlsx_content = _xlsx_bytes()
     created_paths: list[Path] = []
     original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
 
     def recording_named_temporary_file(*args, **kwargs):
+        if kwargs.get("prefix") == "openpyxl.":
+            return original_named_temporary_file(*args, **kwargs)
         assert kwargs["suffix"] == ".xlsx"
         handle = original_named_temporary_file(*args, **kwargs)
         created_paths.append(Path(handle.name))
@@ -861,7 +873,7 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
 
     monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", recording_named_temporary_file)
 
-    response = _post_file(client_with_temp_db, _xlsx_bytes(), "..\\..\\outside.xlsx")
+    response = _post_file(client_with_temp_db, xlsx_content, "..\\..\\outside.xlsx")
 
     assert response.status_code == 200
     assert b"Asset import preview complete. No database changes were made." in response.data
@@ -871,6 +883,13 @@ def test_traversal_style_xlsx_filename_uses_server_tempfile_suffix(
         assert created_path.parent.resolve() == temp_root
         assert created_path.suffix == ".xlsx"
         assert "outside" not in created_path.name
+        assert created_path.exists()
+    assert _pending_temp_path(client_with_temp_db) == created_paths[-1]
+
+    logout_response = client_with_temp_db.get("/logout")
+
+    assert logout_response.status_code == 302
+    for created_path in created_paths:
         assert not created_path.exists()
 
 
@@ -1252,6 +1271,7 @@ def test_asset_import_commit_writes_approved_safe_rows_atomically_and_leaves_blo
         b"CONFLICT-TAG,SER-CONFLICT,laptop,Dell,Latitude,,\n"
         b",SER-MISSING,laptop,Dell,Latitude,,\n",
         "assets.csv",
+        form={"acknowledge_unslotted": "1"},
     )
     assert response.status_code == 200
     token = _preview_token(response)
