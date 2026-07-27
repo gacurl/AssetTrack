@@ -7633,6 +7633,17 @@ def _asset_import_row_by_number(analysis) -> dict[int, object]:
 
 
 def _asset_import_existing_asset(conn: sqlite3.Connection, asset_tag: str) -> sqlite3.Row | None:
+    exact = conn.execute(
+        """
+        SELECT *
+        FROM assets
+        WHERE asset_tag = ?
+        LIMIT 1;
+        """,
+        (asset_tag,),
+    ).fetchone()
+    if exact is not None:
+        return exact
     return conn.execute(
         """
         SELECT *
@@ -7647,6 +7658,19 @@ def _asset_import_existing_asset(conn: sqlite3.Connection, asset_tag: str) -> sq
 def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | None:
     if row.storage_intent != "slotted":
         return None
+    slot_position = int(row.slot_identifier)
+    exact = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE case_name = ?
+          AND slot_position = ?
+        LIMIT 1;
+        """,
+        (row.case_identifier, slot_position),
+    ).fetchone()
+    if exact is not None:
+        return exact
     return conn.execute(
         """
         SELECT id, case_name, slot_position, current_asset_tag
@@ -7655,7 +7679,7 @@ def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | N
           AND slot_position = ?
         LIMIT 1;
         """,
-        (row.case_identifier, int(row.slot_identifier)),
+        (row.case_identifier, slot_position),
     ).fetchone()
 
 
