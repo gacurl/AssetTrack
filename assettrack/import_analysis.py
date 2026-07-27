@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import pandas as pd
@@ -109,6 +110,31 @@ def _normalize_text(value: object) -> str:
     return str(value or "").strip()
 
 
+def _normalize_slot_identifier(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, bool):
+        return str(value).strip()
+    if isinstance(value, int):
+        return str(value)
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    try:
+        numeric_value = Decimal(text)
+    except InvalidOperation:
+        return text
+
+    # Spreadsheet readers commonly coerce whole-number cells to floats. Slot
+    # identifiers are logical integers, so normalize at the import boundary and
+    # give downstream reconciliation one canonical representation.
+    if numeric_value.is_finite() and numeric_value == numeric_value.to_integral_value():
+        return str(int(numeric_value))
+    return text
+
+
 def _first_line(value: object) -> str:
     text = str(value or "").strip()
     return text.splitlines()[0] if text else ""
@@ -143,7 +169,9 @@ def _validate_headers(headers: list[str], *, file_type: str) -> tuple[str, ...]:
 
 def _canonical_row(raw_row: dict[str, object], *, row_number: int) -> AssetImportAnalysisRow | None:
     row = {
-        normalized_key: _normalize_text(value)
+        normalized_key: _normalize_slot_identifier(value)
+        if normalized_key in {"slot_identifier", "slot_number"}
+        else _normalize_text(value)
         for key, value in raw_row.items()
         if (normalized_key := _normalize_header(key)) in ALLOWED_COLUMNS
     }
@@ -168,7 +196,7 @@ def _canonical_row(raw_row: dict[str, object], *, row_number: int) -> AssetImpor
     if not case_identifier:
         case_number = _normalize_text(row.get("case_number")).upper()
         case_identifier = f"CASE-{case_number}" if case_number else ""
-    slot_identifier = _normalize_text(row.get("slot_identifier")) or _normalize_text(row.get("slot_number"))
+    slot_identifier = _normalize_slot_identifier(row.get("slot_identifier")) or _normalize_slot_identifier(row.get("slot_number"))
 
     if bool(case_identifier) != bool(slot_identifier):
         raise ValueError(f"Row {row_number}: storage case and slot must both be present or both be blank.")

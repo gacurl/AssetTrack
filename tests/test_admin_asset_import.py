@@ -250,6 +250,112 @@ def test_csv_and_xlsx_use_equivalent_canonical_analysis_rows(tmp_path: Path) -> 
     assert csv_analysis.equipment_types == xlsx_analysis.equipment_types == ["Laptop", "Switch"]
 
 
+def test_slot_identifiers_normalize_integer_like_csv_and_xlsx_values(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,equipment_type,case_identifier,slot_identifier\n"
+        "CSV-INT,laptop,CASE-CSV,4\n"
+        "CSV-DECIMAL,switch,CASE-CSV,4.0\n",
+        encoding="utf-8",
+    )
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-FOUR",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-2912-SMOKE",
+                    "slot_identifier": 4.0,
+                },
+                {
+                    "clean_asset_tag": "XLSX-NINES",
+                    "equipment_type": "router",
+                    "case_identifier": "CASE-999",
+                    "slot_identifier": 999.0,
+                },
+                {
+                    "clean_asset_tag": "XLSX-FRACTION",
+                    "equipment_type": "switch",
+                    "case_identifier": "CASE-FRACTION",
+                    "slot_identifier": 4.5,
+                },
+            ]
+        )
+    )
+
+    csv_rows = analyze_asset_import_csv(csv_path, filename="assets.csv").rows
+    xlsx_rows = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx").rows
+
+    assert [row.slot_identifier for row in csv_rows] == ["4", "4"]
+    assert [row.slot_identifier for row in xlsx_rows] == ["4", "999", "4.5"]
+    assert xlsx_rows[0].case_identifier == "CASE-2912-SMOKE"
+
+
+def test_fractional_slot_identifier_is_rejected_without_rounding(
+    client_with_temp_db,
+    tmp_path: Path,
+) -> None:
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-FRACTION",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-FRACTION",
+                    "slot_identifier": 4.5,
+                }
+            ]
+        )
+    )
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx", collect_row_errors=True)
+    assert analysis.rows[0].slot_identifier == "4.5"
+
+    conn = sqlite3.connect(f"file:{db.DB_PATH.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview = build_asset_import_preview(conn, analysis)
+    finally:
+        conn.close()
+
+    assert preview.rows[0].category == "slot_conflict_unslotted"
+    assert preview.rows[0].message == "slot_identifier must be numeric; row can continue as Unslotted after acknowledgment."
+
+
+def test_xlsx_numeric_slot_identifier_reaches_available_slot_classification(
+    client_with_temp_db,
+    tmp_path: Path,
+) -> None:
+    _insert_slot(slot_id=560, case_name="CASE-2912-SMOKE", slot_position=4)
+    xlsx_path = tmp_path / "assets.xlsx"
+    xlsx_path.write_bytes(
+        _xlsx_bytes(
+            [
+                {
+                    "clean_asset_tag": "XLSX-SLOT-4",
+                    "equipment_type": "laptop",
+                    "case_identifier": "CASE-2912-SMOKE",
+                    "slot_identifier": 4.0,
+                }
+            ]
+        )
+    )
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="assets.xlsx", collect_row_errors=True)
+    conn = sqlite3.connect(f"file:{db.DB_PATH.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        preview = build_asset_import_preview(conn, analysis)
+    finally:
+        conn.close()
+
+    assert analysis.rows[0].case_identifier == "CASE-2912-SMOKE"
+    assert analysis.rows[0].slot_identifier == "4"
+    assert preview.rows[0].category == "new_asset"
+
+
 def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
 
