@@ -129,6 +129,8 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Edit Asset" in response.data
     assert b"Retire Asset" in response.data
     assert b"Replace Asset" in response.data
+    assert b"Import Assets" in response.data
+    assert b"CSV/XLSX; Laptop, Switch, Router" in response.data
     assert b"Import Switch/Router CSV" in response.data
     assert b"Provision Slots" in response.data
     assert b"Assign Slot" in response.data
@@ -159,6 +161,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         b'href="/admin/assets/edit"',
         b'href="/admin/assets/retire"',
         b'href="/admin/assets/replace"',
+        b'href="/admin/assets/import"',
         b'href="/admin/network-assets/import"',
         b'href="/admin/slots/provision"',
         b'href="/admin/assign-slot"',
@@ -187,6 +190,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
         "/admin/assets/edit",
         "/admin/assets/retire",
         "/admin/assets/replace",
+        "/admin/assets/import",
         "/admin/network-assets/import",
         "/admin/slots/provision",
         "/admin/assign-slot",
@@ -218,6 +222,7 @@ def test_admin_tools_link_destinations_remain_reachable_for_admin(client_with_te
         "/admin/assets/edit",
         "/admin/assets/retire",
         "/admin/assets/replace",
+        "/admin/assets/import",
         "/admin/network-assets/import",
         "/admin/network-assets/import/template.csv",
         "/admin/slots/provision",

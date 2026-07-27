@@ -38,6 +38,12 @@
       color: var(--color-primary);
       font-weight: 800;
     }
+    .admin-tool-link span {
+      display: block;
+      margin-top: 0.15rem;
+      color: var(--color-text-muted);
+      font-size: 0.85rem;
+    }
     .admin-tool-link:hover {
       text-decoration: none;
       background: color-mix(in srgb, var(--color-primary-soft) 36%, var(--color-surface-bg));
@@ -191,6 +197,10 @@
         </a>
         <a class="admin-tool-link" href="{{ url_for('admin_replace_asset') }}">
           <strong>Replace Asset</strong>
+        </a>
+        <a class="admin-tool-link" href="{{ url_for('admin_asset_import') }}">
+          <strong>Import Assets</strong>
+          <span>CSV/XLSX; Laptop, Switch, Router</span>
         </a>
         <a class="admin-tool-link" href="{{ url_for('admin_network_asset_import') }}">
           <strong>Import Switch/Router CSV</strong>
