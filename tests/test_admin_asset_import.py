@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 
 import io
@@ -13,9 +14,25 @@ import pytest
 
 import assettrack.db as db
 from assettrack.intake import app as intake_app
-from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
+from assettrack.import_analysis import ALLOWED_COLUMNS, analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
 from tests.auth_test_utils import create_test_user, login_session
+
+
+ASSET_IMPORT_TEMPLATE_HEADERS = [
+    "equipment_type",
+    "asset_tag",
+    "barcode",
+    "serial_number",
+    "manufacturer",
+    "model",
+    "model_code",
+    "building_room",
+    "case_identifier",
+    "slot_identifier",
+    "notes_comments",
+]
+ASSET_IMPORT_TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "docs" / "fixtures" / "imports" / "asset_import_template.csv"
 
 
 @pytest.fixture
@@ -30,6 +47,41 @@ def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def _login_admin(client) -> None:
     admin_id = create_test_user(username="admin-asset-import", password="admin-pass", role="admin")
     login_session(client, admin_id)
+
+
+def test_canonical_asset_import_template_headers_match_parser_contract() -> None:
+    with ASSET_IMPORT_TEMPLATE_PATH.open(newline="", encoding="utf-8") as handle:
+        headers = next(csv.reader(handle))
+
+    assert headers == ASSET_IMPORT_TEMPLATE_HEADERS
+    assert set(headers) <= ALLOWED_COLUMNS
+    analysis = analyze_asset_import_csv(ASSET_IMPORT_TEMPLATE_PATH, filename="asset_import_template.csv")
+    assert analysis.file_type == "CSV"
+    assert analysis.rows == ()
+    assert analysis.warnings == ()
+
+
+def test_canonical_asset_import_template_supports_laptop_switch_and_router_rows(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        ",".join(ASSET_IMPORT_TEMPLATE_HEADERS)
+        + "\n"
+        + "Laptop,LAP-100,,SER-LAP-100,Dell,Latitude,7420,HQ 101,,,Ready for issue\n"
+        + "Switch,,SW-BC-100,SER-SW-100,Cisco,Catalyst,C9300,Network Lab,,,Barcode identity\n"
+        + "Router,RTR-100,,SER-RTR-100,Juniper,MX,MX204,Storage,CASE-CORE,4,Slotted intent\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+
+    assert [row.equipment_type for row in analysis.rows] == ["laptop", "switch", "router"]
+    assert [row.asset_tag for row in analysis.rows] == ["LAP-100", "SW-BC-100", "RTR-100"]
+    assert analysis.rows[0].storage_intent == "unslotted"
+    assert analysis.rows[1].storage_intent == "unslotted"
+    assert analysis.rows[2].case_identifier == "CASE-CORE"
+    assert analysis.rows[2].slot_identifier == "4"
+    assert analysis.rows[2].storage_intent == "slotted"
+    assert analysis.warnings == ()
 
 
 def _table_counts() -> dict[str, int]:
