@@ -48,6 +48,7 @@ data/import/
 *.xlsx
 *.xls
 *.csv
+!docs/fixtures/imports/asset_import_template.csv
 
 # ----------------------------
 # Docker / runtime artifacts
