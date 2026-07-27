@@ -290,7 +290,7 @@ Admin Tools can include:
 - manage reference data
 - import holders
 - create or edit assets
-- import switch and router CSV data
+- import assets from CSV or XLSX
 - provision, assign, or move slots
 - receipt search
 - receipt CC settings
@@ -340,20 +340,43 @@ Use Import Holders when you need to load holder records from an approved file.
 
 Fix the file if AssetTrack reports errors.
 
-## Import Switch And Router CSV Data
+## Import Assets
 
 **Admin only**
 
-Use this page for switch and router CSV imports.
+Use Import Assets for supported bulk asset imports.
+
+Supported files:
+
+- CSV
+- XLSX
+
+Supported asset types:
+
+- Laptop
+- Switch
+- Router
 
 1. Select `Admin`.
 2. Select `Admin Tools`.
-3. Select `Import Switch/Router CSV`.
-4. Download the CSV template if needed.
-5. Review the page instructions.
-6. Run the approved local import command from the operational computer.
+3. Select `Import Assets`.
+4. Choose the CSV or XLSX file.
+5. Select `Analyze Import`.
+6. Review the preview.
+7. Fix blocked rows before import, or leave them blocked.
+8. Confirm the preview.
+9. Commit the approved rows.
+10. Review the results.
 
-This import path is for switches and routers only.
+Expected result:
+
+- Analyze Import creates a preview only. It does not write assets, events, slots, or occupancy.
+- Commit requires explicit confirmation.
+- Approved safe rows commit atomically.
+- Blocked rows do not modify state.
+- The results show category totals and committed row counts.
+
+Legacy network CSV command-line utilities are not normal operator procedures. They are retained for internal or maintainer use only.
 
 ## Backup The Database
 
