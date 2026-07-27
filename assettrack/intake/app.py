@@ -8122,12 +8122,12 @@ def admin_network_asset_import():
 @require_login
 @require_role("admin")
 def admin_network_asset_import_template():
-    template_path = Path(__file__).resolve().parents[2] / "docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv"
+    template_path = Path(__file__).resolve().parents[2] / "docs/fixtures/imports/asset_import_template.csv"
     return send_file(
         template_path,
         mimetype="text/csv",
         as_attachment=True,
-        download_name="network_switch_router_staging_template_v1.csv",
+        download_name="asset_import_template.csv",
     )
 
 

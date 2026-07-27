@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from email.message import Message
 from io import BytesIO
 from pathlib import Path
 
@@ -9,6 +10,11 @@ import pytest
 import assettrack.db as db
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
+
+
+CANONICAL_ASSET_IMPORT_TEMPLATE = (
+    Path(__file__).resolve().parents[1] / "docs" / "fixtures" / "imports" / "asset_import_template.csv"
+)
 
 
 @pytest.fixture
@@ -280,6 +286,7 @@ def test_admin_network_asset_import_page_is_deprecated_and_points_to_import_asse
     assert b"deprecated for operator use" in response.data
     assert b'href="/admin/assets/import"' in response.data
     assert b"Import Assets supports CSV and XLSX files for Laptop, Switch, and Router" in response.data
+    assert b"Download Import Assets CSV template" in response.data
     assert b"python scripts/import_network_assets_csv.py" in response.data
     assert b"network_switch_router_staging_template_v1.csv" in response.data
     assert b'href="/admin/network-assets/import/template.csv"' in response.data
@@ -290,7 +297,7 @@ def test_admin_network_asset_import_page_is_deprecated_and_points_to_import_asse
     assert b"CMDB relationship" in response.data
 
 
-def test_admin_network_asset_import_template_downloads_existing_csv(client_with_temp_db) -> None:
+def test_admin_network_asset_import_template_downloads_canonical_import_assets_csv(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-network-template", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
 
@@ -298,8 +305,20 @@ def test_admin_network_asset_import_template_downloads_existing_csv(client_with_
 
     assert response.status_code == 200
     assert response.mimetype == "text/csv"
-    assert b"asset_tag,barcode,serial_number,equipment_type" in response.data
-    assert b"case_identifier,slot_identifier,notes_comments" in response.data
+    disposition = Message()
+    disposition["content-disposition"] = response.headers["Content-Disposition"]
+    assert disposition.get_filename() == "asset_import_template.csv"
+    assert response.data == CANONICAL_ASSET_IMPORT_TEMPLATE.read_bytes()
+    assert (
+        response.data
+        == b"equipment_type,asset_tag,barcode,serial_number,manufacturer,model,model_code,building_room,case_identifier,slot_identifier,notes_comments\n"
+    )
+
+
+def test_network_asset_import_template_requires_login(client_with_temp_db) -> None:
+    response = client_with_temp_db.get("/admin/network-assets/import/template.csv")
+
+    assert response.status_code == 403
 
 
 def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:
