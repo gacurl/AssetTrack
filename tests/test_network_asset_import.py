@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from assettrack.db import bootstrap_db
-from assettrack.network_asset_import import import_network_assets_csv
+from assettrack.network_asset_import import LEGACY_NETWORK_CSV_CLI_WARNING, import_network_assets_csv
 
 
 class NetworkAssetImportTests(unittest.TestCase):
@@ -216,6 +216,26 @@ class NetworkAssetImportTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), '{"errors": 0, "imported": 1, "processed": 1}')
+        self.assertEqual(result.stderr.count(LEGACY_NETWORK_CSV_CLI_WARNING), 1)
+
+    def test_script_entrypoint_warns_once_and_preserves_failure_exit_code(self) -> None:
+        csv_path = self._write_csv(
+            "asset_tag,equipment_type,ip_address\n"
+            "SW-IP,switch,192.0.2.10\n"
+        )
+        script_path = Path(__file__).resolve().parents[1] / "scripts" / "import_network_assets_csv.py"
+
+        result = subprocess.run(
+            [sys.executable, str(script_path), str(csv_path), "--db", str(self.db_path), "--actor", "admin-import"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout.strip(), '{"errors": 1, "imported": 0, "processed": 0}')
+        self.assertEqual(result.stderr.count(LEGACY_NETWORK_CSV_CLI_WARNING), 1)
+        self.assertIn("Rejected CMDB-like CSV columns: ip_address", result.stderr)
 
 
 if __name__ == "__main__":

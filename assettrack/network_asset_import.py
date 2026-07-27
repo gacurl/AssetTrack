@@ -36,6 +36,11 @@ REJECTED_CMDB_COLUMNS = {
     "device_configuration",
 }
 ALLOWED_EQUIPMENT_TYPES = {"switch", "router"}
+LEGACY_NETWORK_CSV_CLI_WARNING = (
+    "Warning: assettrack.network_asset_import is a legacy internal maintenance utility. "
+    "It is not the supported operator workflow. Normal administrators must use "
+    "Admin Tools -> Import Assets."
+)
 
 
 @dataclass(frozen=True)
@@ -276,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--actor", required=True, help="Operator performing the import")
     args = parser.parse_args(argv)
 
+    print(LEGACY_NETWORK_CSV_CLI_WARNING, file=sys.stderr)
     report = import_network_assets_csv(args.csv_path, db_path=args.db, actor=args.actor)
     print(json.dumps(report.summary(), sort_keys=True))
     if report.errors:
