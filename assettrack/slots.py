@@ -1,9 +1,12 @@
 # assettrack/slots.py
 from __future__ import annotations
 
+import json
 import sqlite3
+from datetime import datetime, timezone
 from typing import Optional
 
+from assettrack.assets import get_asset_table_columns
 from assettrack.db import get_connection
 
 
@@ -329,6 +332,124 @@ def move_asset_to_slot(
             _set_asset_home_slot_in_tx(conn, normalized_tag, destination_slot_id)
     finally:
         conn.close()
+
+def move_asset_between_slots_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    move_preview: dict,
+    notes: str = "",
+    actor: str = "admin",
+    event_date: str | None = None,
+) -> None:
+    asset_id = int(move_preview["asset"]["asset_id"])
+    asset_tag = str(move_preview["asset"]["asset_tag"])
+    source_slot_id = int(move_preview["source"]["slot_id"])
+    destination_slot_id = int(move_preview["destination"]["slot_id"])
+    now_iso = event_date or datetime.now(timezone.utc).isoformat()
+
+    delete_source = conn.execute(
+        """
+        DELETE FROM slot_occupancy
+        WHERE slot_id = ? AND asset_id = ?;
+        """,
+        (source_slot_id, asset_id),
+    )
+    if delete_source.rowcount != 1:
+        raise ValueError("Source slot is missing or empty.")
+
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (?, ?, ?);
+        """,
+        (destination_slot_id, asset_id, now_iso),
+    )
+
+    conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = NULL
+        WHERE id = ?;
+        """,
+        (source_slot_id,),
+    )
+    conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = ?
+        WHERE id = ?;
+        """,
+        (asset_tag, destination_slot_id),
+    )
+
+    asset_columns = get_asset_table_columns(conn)
+    update_clauses: list[str] = []
+    update_values: list[object] = []
+    if "home_slot_id" in asset_columns:
+        update_clauses.append("home_slot_id = ?")
+        update_values.append(destination_slot_id)
+    if "building" in asset_columns:
+        update_clauses.append("building = ?")
+        update_values.append(str(move_preview["destination"]["building"]))
+    if "room" in asset_columns:
+        update_clauses.append("room = ?")
+        update_values.append(str(move_preview["destination"]["room"]))
+    if "building_room" in asset_columns:
+        update_clauses.append("building_room = ?")
+        update_values.append(str(move_preview["destination"]["building_room"]))
+    if "case_number" in asset_columns:
+        update_clauses.append("case_number = ?")
+        update_values.append(str(move_preview["destination"]["case_number"]))
+    if "slot_number" in asset_columns:
+        update_clauses.append("slot_number = ?")
+        update_values.append(str(move_preview["destination"]["slot_number"]))
+    if "updated_date" in asset_columns:
+        update_clauses.append("updated_date = ?")
+        update_values.append(now_iso)
+    if update_clauses:
+        update_values.append(asset_id)
+        conn.execute(
+            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+            tuple(update_values),
+        )
+
+    payload = {
+        "from_slot": {
+            "slot_id": source_slot_id,
+            "building_room": str(move_preview["source"]["building_room"]),
+            "case_number": str(move_preview["source"]["case_number"]),
+            "slot_number": int(move_preview["source"]["slot_number"]),
+        },
+        "to_slot": {
+            "slot_id": destination_slot_id,
+            "building_room": str(move_preview["destination"]["building_room"]),
+            "case_number": str(move_preview["destination"]["case_number"]),
+            "slot_number": int(move_preview["destination"]["slot_number"]),
+        },
+    }
+    conn.execute(
+        """
+        INSERT INTO asset_events (
+            asset_tag,
+            event_type,
+            event_date,
+            actor,
+            notes,
+            payload,
+            holder_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            asset_tag,
+            "SLOT_MOVE",
+            now_iso,
+            actor,
+            notes or None,
+            json.dumps(payload),
+            None,
+        ),
+    )
 
 
 def _set_asset_home_slot_in_tx(conn: sqlite3.Connection, asset_tag: str, slot_id: Optional[int]) -> None:
