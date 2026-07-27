@@ -64,6 +64,15 @@ class AssetImportPreviewRow:
 
 
 @dataclass(frozen=True)
+class AssetImportPreviewContext:
+    assets_by_tag: dict[str, sqlite3.Row]
+    assets_by_serial: dict[str, sqlite3.Row]
+    slots_by_case_position: dict[tuple[str, int], sqlite3.Row]
+    occupants_by_slot_id: dict[int, sqlite3.Row]
+    home_slots_by_id: dict[int, sqlite3.Row]
+
+
+@dataclass(frozen=True)
 class AssetImportPreview:
     filename: str
     file_type: str
@@ -133,7 +142,14 @@ def _text(value: object) -> str:
     return str(value or "").strip()
 
 
-def _asset_by_tag(conn: sqlite3.Connection, asset_tag: str) -> sqlite3.Row | None:
+def _chunked(values: list[str], size: int = 900):
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
+
+
+def _asset_by_tag(conn: sqlite3.Connection, asset_tag: str, context: AssetImportPreviewContext | None = None) -> sqlite3.Row | None:
+    if context is not None:
+        return context.assets_by_tag.get(asset_tag.upper())
     return conn.execute(
         """
         SELECT *
@@ -145,9 +161,11 @@ def _asset_by_tag(conn: sqlite3.Connection, asset_tag: str) -> sqlite3.Row | Non
     ).fetchone()
 
 
-def _asset_by_serial(conn: sqlite3.Connection, serial_number: str) -> sqlite3.Row | None:
+def _asset_by_serial(conn: sqlite3.Connection, serial_number: str, context: AssetImportPreviewContext | None = None) -> sqlite3.Row | None:
     if not serial_number:
         return None
+    if context is not None:
+        return context.assets_by_serial.get(serial_number.upper())
     return conn.execute(
         """
         SELECT *
@@ -160,13 +178,22 @@ def _asset_by_serial(conn: sqlite3.Connection, serial_number: str) -> sqlite3.Ro
     ).fetchone()
 
 
-def _slot_for_row(conn: sqlite3.Connection, row: AssetImportAnalysisRow) -> tuple[sqlite3.Row | None, str | None]:
+def _slot_for_row(
+    conn: sqlite3.Connection,
+    row: AssetImportAnalysisRow,
+    context: AssetImportPreviewContext | None = None,
+) -> tuple[sqlite3.Row | None, str | None]:
     if not row.case_identifier or not row.slot_identifier:
         return None, None
     try:
         slot_position = int(row.slot_identifier)
     except ValueError:
         return None, "slot_identifier must be numeric"
+    if context is not None:
+        slot = context.slots_by_case_position.get((row.case_identifier.upper(), slot_position))
+        if slot is None:
+            return None, "slot does not exist"
+        return slot, None
 
     slot = conn.execute(
         """
@@ -183,7 +210,9 @@ def _slot_for_row(conn: sqlite3.Connection, row: AssetImportAnalysisRow) -> tupl
     return slot, None
 
 
-def _slot_occupant(conn: sqlite3.Connection, slot_id: int) -> sqlite3.Row | None:
+def _slot_occupant(conn: sqlite3.Connection, slot_id: int, context: AssetImportPreviewContext | None = None) -> sqlite3.Row | None:
+    if context is not None:
+        return context.occupants_by_slot_id.get(slot_id)
     return conn.execute(
         """
         SELECT a.asset_tag
@@ -206,9 +235,17 @@ def _slot_label(slot: sqlite3.Row) -> str:
     return f"{_text(slot['case_name'])} / {_text(slot['slot_position'])}"
 
 
-def _asset_home_slot_label(conn: sqlite3.Connection, asset: sqlite3.Row) -> str:
+def _asset_home_slot_label(
+    conn: sqlite3.Connection,
+    asset: sqlite3.Row,
+    context: AssetImportPreviewContext | None = None,
+) -> str:
     if asset["home_slot_id"] is None:
         return "Unslotted"
+    if context is not None:
+        slot = context.home_slots_by_id.get(int(asset["home_slot_id"]))
+        if slot is not None:
+            return _slot_label(slot)
     slot = conn.execute(
         """
         SELECT case_name, slot_position
@@ -244,9 +281,10 @@ def _field_changes(asset: sqlite3.Row, row: AssetImportAnalysisRow) -> tuple[Ass
 def _preview_row(
     conn: sqlite3.Connection,
     row: AssetImportAnalysisRow,
+    context: AssetImportPreviewContext | None = None,
 ) -> AssetImportPreviewRow:
-    existing = _asset_by_tag(conn, row.asset_tag)
-    serial_match = _asset_by_serial(conn, row.serial_number)
+    existing = _asset_by_tag(conn, row.asset_tag, context)
+    serial_match = _asset_by_serial(conn, row.serial_number, context)
     if serial_match is not None and _text(serial_match["asset_tag"]).upper() != row.asset_tag.upper():
         return AssetImportPreviewRow(
             row_number=row.row_number,
@@ -270,7 +308,7 @@ def _preview_row(
 
     slot = None
     if storage_requested:
-        slot, slot_error = _slot_for_row(conn, row)
+        slot, slot_error = _slot_for_row(conn, row, context)
         if slot_error is not None:
             return AssetImportPreviewRow(
                 row_number=row.row_number,
@@ -283,7 +321,7 @@ def _preview_row(
             )
 
         assert slot is not None
-        occupant = _slot_occupant(conn, int(slot["id"]))
+        occupant = _slot_occupant(conn, int(slot["id"]), context)
         legacy_current_asset_tag = _text(slot["current_asset_tag"])
         occupied_by_other = occupant is not None and _text(occupant["asset_tag"]).upper() != row.asset_tag.upper()
         legacy_occupied_by_other = legacy_current_asset_tag and legacy_current_asset_tag.upper() != row.asset_tag.upper()
@@ -314,7 +352,7 @@ def _preview_row(
         changes.append(
             AssetImportFieldChange(
                 field="home_slot",
-                current=_asset_home_slot_label(conn, existing),
+                current=_asset_home_slot_label(conn, existing, context),
                 proposed=_slot_label(slot),
             )
         )
@@ -340,12 +378,114 @@ def _preview_row(
     )
 
 
+def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnalysisRow, ...]) -> AssetImportPreviewContext:
+    asset_tags = {row.asset_tag.upper() for row in rows if row.asset_tag}
+    serial_numbers = {row.serial_number.upper() for row in rows if row.serial_number}
+    assets_by_tag: dict[str, sqlite3.Row] = {}
+    assets_by_serial: dict[str, sqlite3.Row] = {}
+    home_slot_ids: set[int] = set()
+
+    for chunk in _chunked(sorted(asset_tags)):
+        placeholders = ", ".join("?" for _ in chunk)
+        for asset in conn.execute(
+            f"""
+            SELECT *
+            FROM assets
+            WHERE asset_tag IN ({placeholders});
+            """,
+            chunk,
+        ).fetchall():
+            normalized_tag = _text(asset["asset_tag"]).upper()
+            assets_by_tag.setdefault(normalized_tag, asset)
+            if asset["home_slot_id"] is not None:
+                home_slot_ids.add(int(asset["home_slot_id"]))
+
+    unmatched_asset_tags = asset_tags - set(assets_by_tag)
+    if unmatched_asset_tags or serial_numbers:
+        for asset in conn.execute("SELECT * FROM assets;").fetchall():
+            normalized_tag = _text(asset["asset_tag"]).upper()
+            normalized_serial = _text(asset["serial_number"]).upper()
+            if normalized_tag in unmatched_asset_tags:
+                assets_by_tag.setdefault(normalized_tag, asset)
+            if normalized_serial and normalized_serial in serial_numbers:
+                assets_by_serial.setdefault(normalized_serial, asset)
+            if (normalized_tag in unmatched_asset_tags or normalized_serial in serial_numbers) and asset["home_slot_id"] is not None:
+                home_slot_ids.add(int(asset["home_slot_id"]))
+
+    requested_cases: set[str] = set()
+    requested_positions: set[int] = set()
+    for row in rows:
+        if not row.case_identifier or not row.slot_identifier:
+            continue
+        try:
+            requested_positions.add(int(row.slot_identifier))
+        except ValueError:
+            continue
+        requested_cases.add(row.case_identifier.upper())
+
+    slots_by_case_position: dict[tuple[str, int], sqlite3.Row] = {}
+    requested_slot_ids: set[int] = set()
+    if requested_cases:
+        for slot in conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            """
+        ).fetchall():
+            normalized_case = str(slot["case_name"]).upper()
+            if normalized_case not in requested_cases:
+                continue
+            slot_position = int(slot["slot_position"])
+            if slot_position not in requested_positions:
+                continue
+            slots_by_case_position[(normalized_case, slot_position)] = slot
+            requested_slot_ids.add(int(slot["id"]))
+
+    occupants_by_slot_id: dict[int, sqlite3.Row] = {}
+    for slot_id_chunk in _chunked([str(slot_id) for slot_id in sorted(requested_slot_ids)]):
+        placeholders = ", ".join("?" for _ in slot_id_chunk)
+        for occupant in conn.execute(
+            f"""
+            SELECT so.slot_id, a.asset_tag
+            FROM slot_occupancy so
+            JOIN assets a ON a.id = so.asset_id
+            WHERE so.slot_id IN ({placeholders})
+            ORDER BY so.slot_id;
+            """,
+            slot_id_chunk,
+        ).fetchall():
+            occupants_by_slot_id[int(occupant["slot_id"])] = occupant
+
+    home_slots_by_id: dict[int, sqlite3.Row] = {}
+    for slot_id_chunk in _chunked([str(slot_id) for slot_id in sorted(home_slot_ids)]):
+        placeholders = ", ".join("?" for _ in slot_id_chunk)
+        for slot in conn.execute(
+            f"""
+            SELECT id, case_name, slot_position
+            FROM slots
+            WHERE id IN ({placeholders})
+            ORDER BY id;
+            """,
+            slot_id_chunk,
+        ).fetchall():
+            home_slots_by_id[int(slot["id"])] = slot
+
+    return AssetImportPreviewContext(
+        assets_by_tag=assets_by_tag,
+        assets_by_serial=assets_by_serial,
+        slots_by_case_position=slots_by_case_position,
+        occupants_by_slot_id=occupants_by_slot_id,
+        home_slots_by_id=home_slots_by_id,
+    )
+
+
 def build_asset_import_preview(
     conn: sqlite3.Connection,
     analysis: AssetImportAnalysis,
     *,
     unslotted_acknowledged: bool = False,
 ) -> AssetImportPreview:
+    context = _build_preview_context(conn, analysis.rows)
     rows: list[AssetImportPreviewRow] = [
         AssetImportPreviewRow(
             row_number=issue.row_number,
@@ -357,7 +497,7 @@ def build_asset_import_preview(
         )
         for issue in analysis.issues
     ]
-    rows.extend(_preview_row(conn, row) for row in analysis.rows)
+    rows.extend(_preview_row(conn, row, context) for row in analysis.rows)
     rows.sort(key=lambda row: row.row_number)
     return AssetImportPreview(
         filename=analysis.filename,
