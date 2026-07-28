@@ -163,6 +163,61 @@ Image artifacts:
 The upload steps use `if: always()` so reports remain available for failed
 security runs.
 
+## Unfixed Finding Review
+
+The active Trivy commands use `--ignore-unfixed` for both report generation and
+fail gates. That keeps CI focused on actionable fixes, but it also means
+unfixed vulnerabilities are not enough by themselves to mark the image clean.
+
+Operators reviewing release readiness must inspect both GitHub Actions artifact
+sets from the most recent relevant `Security Baseline` run:
+
+- `trivy-filesystem-reports`
+- `trivy-image-reports`
+
+Retrieve them from the workflow run's artifact list in GitHub Actions. Use the
+filesystem table report first, then the filesystem JSON report when package,
+path, or vulnerability identifiers need confirmation. Repeat the same review
+for the image table report and image JSON report; use the image SBOM when the
+affected component needs package or layer context.
+
+For unfixed-finding review, rerun the same filesystem and image scan scope
+without `--ignore-unfixed` as a non-gating operator review step. Do not change
+the workflow or active CI flags for this review. The reviewing operator records
+each real and relevant unfixed finding in the related issue or maintenance
+record with:
+
+- source: filesystem report, image report, or both
+- package, image layer, path, and vulnerability identifier when available
+- severity and whether a fix exists
+- operational exposure and deployment risk
+- disposition: accepted, deferred, false positive, follow-on issue required, or
+  deployment stopped
+- date reviewed and reviewer
+
+Create a follow-on issue when the finding is real and relevant and remediation,
+containment, additional testing, dependency update, base-image update, or owner
+risk acceptance is required before relying on the image.
+
+Stop deployment when:
+
+- any real and relevant unfixed `CRITICAL` finding lacks an approved documented
+  risk acceptance
+- any real and relevant unfixed `HIGH` finding meets immediate patch criteria
+- any unfixed finding affects authentication, authorization, recovery,
+  persistence safety, receipt integrity, event history, or offline-first
+  operation and no approved disposition exists
+- Trivy database refresh or artifact retrieval fails, because the review is
+  incomplete
+
+Close a recorded unfixed finding only after rerunning the filesystem and image
+review paths and recording one of these outcomes:
+
+- the fixed package or image layer is present and the finding no longer appears
+- the finding remains unfixed but has an approved documented risk acceptance
+- the finding is confirmed false positive with the evidence kept in the related
+  issue or maintenance record
+
 ## Finding Triage
 
 Operators should triage findings from the uploaded table report first, then use
