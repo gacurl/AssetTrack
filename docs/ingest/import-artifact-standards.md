@@ -69,8 +69,8 @@ Rationale: diff-friendly, reviewable, portable, and aligned with current repo ig
 
 For switch/router staging artifacts, tracked canonical files should follow:
 
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+- `docs/legacy/network_switch_router_staging_template_v1.csv`
+- `docs/legacy/network_switch_router_staging_template_v1.md`
 - `docs/fixtures/imports/network/network_switch_router_staging_sample_v1.csv`
 
 Operational uploads/exports for these templates remain local-only under `data/import/`.

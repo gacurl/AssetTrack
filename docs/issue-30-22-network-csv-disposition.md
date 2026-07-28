@@ -19,15 +19,15 @@ Issue 30-15 classifies the Network Switch/Router CSV CLI as an internal legacy u
 | `assettrack/network_asset_import.py` | Retain with deprecation warning | It contains the actual legacy parser and writer for Switch/Router-only CSV rows. Tests prove it rejects CMDB-like columns, unsupported equipment types, duplicate tags/serials, missing or occupied slots, and uses `commit_batch` for all-or-nothing writes. It still has maintenance value for exceptional legacy CSV recovery, but it bypasses Flask role enforcement and lacks the canonical upload, preview, confirmation, and results workflow. |
 | `scripts/import_network_assets_csv.py` | Retain with deprecation warning | It is only a thin local wrapper around `assettrack.network_asset_import.main`. Retaining it avoids breaking maintainers who intentionally invoke the legacy tool, but it should clearly warn that normal operators must use Import Assets. |
 | `/admin/network-assets/import/template.csv` | Replace with a canonical Import Assets artifact | The route is admin-protected and currently serves the legacy Switch/Router-only CSV header. Because the route exists only to distribute the legacy template, its long-term target should be a canonical Import Assets CSV template or redirect/link to one after a scoped implementation issue. Do not remove the route until callers and docs are updated. |
-| `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv` | Move to legacy or quarantine | The file is the legacy Switch/Router-only template served by the deprecated route. It should remain available until the route stops serving it, then move under a legacy/quarantine location so it is not mistaken for the canonical import contract. |
-| `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md` | Move to legacy or quarantine | The markdown contract is useful maintainer documentation for the old importer, but it contains CLI invocation guidance. It now says normal operators should use Import Assets. Once the canonical artifact exists, this doc should move with the legacy CSV or be retained only in a legacy technical archive. |
+| `docs/legacy/network_switch_router_staging_template_v1.csv` | Quarantined in legacy docs | The file is the legacy Switch/Router-only template. It remains available for exceptional maintenance reference but is not the canonical import contract. |
+| `docs/legacy/network_switch_router_staging_template_v1.md` | Quarantined in legacy docs | The markdown contract is useful maintainer documentation for the old importer, but it contains CLI invocation guidance. It says normal operators should use Import Assets. |
 
 ## Evidence
 
 ### `assettrack/network_asset_import.py`
 
 - Known callers: `scripts/import_network_assets_csv.py`; `tests/test_network_asset_import.py`.
-- Known docs: `docs/issue-30-12-canonical-switch-router-import-workflow.md`, `docs/issue-30-15-legacy-import-tool-audit.md`, and `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`.
+- Known docs: `docs/issue-30-12-canonical-switch-router-import-workflow.md`, `docs/issue-30-15-legacy-import-tool-audit.md`, and `docs/legacy/network_switch_router_staging_template_v1.md`.
 - Behavior: reads CSV, normalizes headers/text, allows only Switch and Router, rejects CMDB-like fields, rejects unsupported columns, validates duplicate asset tags and serial numbers, validates existing empty slots, requires an actor, converts rows to `SCAN` ingest rows, and calls `commit_batch`.
 - Boundary: local CLI/module use is outside Flask login, session timeout, and role checks. It has no admin upload page, no interactive preview, no explicit web confirmation, and no web results surface.
 - Maintenance value: can still import reviewed legacy Switch/Router staging CSVs through the shared committer if a maintainer explicitly needs that capability.
@@ -42,18 +42,18 @@ Issue 30-15 classifies the Network Switch/Router CSV CLI as an internal legacy u
 ### `/admin/network-assets/import/template.csv`
 
 - Known callers: `assettrack/intake/app.py:admin_network_asset_import_template`, `assettrack/intake/templates/admin_network_asset_import.html`, and `tests/test_admin_system_health.py`.
-- Behavior: admin-protected download of `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`.
-- Boundary: route itself is read-only and admin-only, but it distributes a legacy Switch/Router-only artifact tied to a non-canonical CLI process.
-- Maintenance value: keeps direct admin access and tests stable until a canonical Import Assets template exists.
+- Behavior: admin-protected download of the canonical Import Assets CSV template at `docs/fixtures/imports/asset_import_template.csv`.
+- Boundary: route itself is read-only and admin-only. It now distributes the canonical Import Assets CSV template, while the page still labels the old CLI as deprecated internal guidance.
+- Maintenance value: keeps direct admin access and tests stable while directing operators to the canonical Import Assets template.
 
-### `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
+### `docs/legacy/network_switch_router_staging_template_v1.csv`
 
-- Known callers: served by `/admin/network-assets/import/template.csv`; referenced by `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`, Issue 30 docs, roadmap docs, and tests.
+- Known callers: referenced by `docs/legacy/network_switch_router_staging_template_v1.md`, Issue 30 docs, and roadmap docs.
 - Behavior: header-only legacy CSV template for the Switch/Router-only importer.
 - Boundary: docs artifact only; no direct writes.
-- Maintenance value: documents the exact legacy field contract while the deprecated route still serves it.
+- Maintenance value: documents the exact legacy field contract for exceptional maintenance reference.
 
-### `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+### `docs/legacy/network_switch_router_staging_template_v1.md`
 
 - Known callers: maintainer/operator documentation searches; referenced by Issue 30 audit docs.
 - Behavior: documents the legacy CSV fields, duplicate rules, rejected CMDB fields, slot mapping, and old CLI command.

@@ -83,7 +83,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Authentication or role boundary: bypasses Flask roles because it is a CLI; actor is required.
 - Actor attribution: free-form `--actor` string stored as ingest operator.
 - Direct derived-state writes: yes, through the committer; can create storage assets and slot occupancy when an existing empty slot is specified.
-- Tests and maintainer documentation: `tests/test_network_asset_import.py`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`, `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`, and admin template page tests.
+- Tests and maintainer documentation: `tests/test_network_asset_import.py`, `docs/legacy/network_switch_router_staging_template_v1.md`, `docs/legacy/network_switch_router_staging_template_v1.csv`, and admin template page tests.
 - Relationship to current workflows: internal legacy utility. Normal operators should use Admin Tools -> Import Assets for bulk Switch/Router import.
 
 ### Network Import Admin Template Page
@@ -238,7 +238,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 
 ### Network Import Fixtures
 
-- Name and location: `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv` and `.md`.
+- Name and location: `docs/legacy/network_switch_router_staging_template_v1.csv` and `.md`.
 - Invocation method: downloaded from admin page or copied from docs.
 - Purpose: define the staging contract for switch/router CSV import.
 - Input format: CSV template plus markdown contract.

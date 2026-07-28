@@ -4,8 +4,8 @@
 
 Implementation is bounded to reviewed switch/router staging rows that comply with:
 
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+- `docs/legacy/network_switch_router_staging_template_v1.csv`
+- `docs/legacy/network_switch_router_staging_template_v1.md`
 
 ## Purpose
 
