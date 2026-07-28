@@ -319,7 +319,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 
 - Generic `assettrack.ingest` CLI: lacks enforced validation, preview, Flask roles, app-user attribution, direct tests, operator docs, and in-file collision checks.
 - Network CSV CLI: lacks Flask role enforcement and interactive preview; validation/commit are separate phases.
-- Holder import: lacks separate preview/confirmation, actor attribution, and reference-data audit.
+- Holder import: Issue 30-13 adds preview/confirmation and documents the current policy that Holder imports change reference data without custody events or a separate persistent audit record; persistent reference-data import auditing is deferred to Issue 30-27 / #1078.
 - Admin reference-data UI: lacks preview and actor/audit trail.
 - Admin slot provisioning UI: lacks preview and actor/audit trail.
 - Standard XLSX inventory importer: lacks Flask role enforcement, interactive preview, app-user attribution, and shared-committer behavior; collision reporting relies partly on DB integrity.
@@ -342,7 +342,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Add a small docs/control issue for `assettrack.ingest` that documents internal-only status and prevents accidental operator exposure, without changing `commit_batch`.
 - Add direct CLI tests for `assettrack.ingest` only if Greg wants it retained as more than private plumbing.
 - In Issue 30-12, decide whether Switch/Router import remains CLI-backed, becomes an admin upload workflow, or keeps the current admin template page as guidance only.
-- In Issue 30-13, add Holder import preview and audit policy without deciding schema changes in this audit.
+- In Issue 30-13, add Holder import preview and document the current audit policy without schema changes; persistent reference-data import auditing is deferred to Issue 30-27 / #1078.
 - In Issue 30-5, repair XLSX inventory import scaling and deterministic reconciliation while preserving first-asset prerequisites and avoiding silent reference-data creation.
 - In Issue 30-16, document first-run operator guidance without exposing internal or legacy tools as supported workflows.
 - Add a future reference-data audit design only with explicit approval if it requires schema or persistence changes.
