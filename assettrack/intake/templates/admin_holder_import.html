@@ -8,6 +8,42 @@
     .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
     .import-summary { margin: 0; }
     .import-errors { margin: 0.75rem 0 0 1.25rem; }
+    .import-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; margin-top: 1rem; }
+    .holder-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin: 0 0 1rem 0;
+    }
+    .holder-preview-metric {
+      padding: 0.75rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 8px;
+      background: var(--color-panel-bg);
+    }
+    .holder-preview-metric span {
+      display: block;
+      color: var(--color-text-muted);
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .holder-preview-metric strong { display: block; margin-top: 0.25rem; font-size: 1.35rem; }
+    .holder-preview-table { overflow-x: auto; }
+    .holder-preview-table table { width: 100%; border-collapse: collapse; }
+    .holder-preview-table th,
+    .holder-preview-table td {
+      padding: 0.65rem;
+      border-bottom: 1px solid var(--color-surface);
+      text-align: left;
+      vertical-align: top;
+    }
+    .holder-preview-table th { background: var(--color-primary-soft); }
+    .holder-preview-category { font-weight: 800; text-transform: capitalize; }
+    .holder-preview-change { margin: 0; color: var(--color-text-muted); line-height: 1.35; }
+    @media (max-width: 780px) {
+      .holder-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
   </style>
 {% endblock %}
 
@@ -22,12 +58,14 @@
 
   <div class="card">
     <h2>Holder CSV Import</h2>
+    <p class="import-help">Upload, validate, preview, confirm, then commit one batch. Preview does not create or update Holders or Organizations.</p>
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="preview" />
       <div class="row">
         <label for="csv_file"><strong>CSV file</strong></label><br />
         <input id="csv_file" type="file" name="csv_file" accept=".csv,text/csv" required />
       </div>
-      <button type="submit">Import Holders</button>
+      <button type="submit">Preview Holders</button>
     </form>
   </div>
 
@@ -39,8 +77,87 @@
     <div class="disclosure-body">
       <p class="import-help">Required columns: <code>organization</code>, <code>name</code>, <code>email</code>.</p>
       <p class="import-help">Matching email addresses update existing holder records. New email addresses create new holders.</p>
+      <p class="import-help">Organizations are reused by case-insensitive name; missing Organizations are proposed in preview and created only after confirmation.</p>
+      <p class="import-help">Holder imports change Holder and Organization reference data. Holder imports do not create asset custody events. A separate persistent import audit record is not currently created.</p>
     </div>
   </details>
+
+  {% if preview is not none %}
+    {% set summary = preview.summary() %}
+    <div class="card">
+      <h2>Import Preview</h2>
+      {% if pending_filename %}<p class="import-help">File: <code>{{ pending_filename }}</code></p>{% endif %}
+      <div class="holder-preview-grid" aria-label="Holder import preview totals">
+        <div class="holder-preview-metric"><span>Processed</span><strong>{{ summary.processed }}</strong></div>
+        <div class="holder-preview-metric"><span>New</span><strong>{{ summary.new }}</strong></div>
+        <div class="holder-preview-metric"><span>Updated</span><strong>{{ summary.updated }}</strong></div>
+        <div class="holder-preview-metric"><span>Unchanged</span><strong>{{ summary.unchanged }}</strong></div>
+        <div class="holder-preview-metric"><span>Duplicate</span><strong>{{ summary.duplicate }}</strong></div>
+        <div class="holder-preview-metric"><span>Ambiguous</span><strong>{{ summary.ambiguous }}</strong></div>
+        <div class="holder-preview-metric"><span>Invalid</span><strong>{{ summary.invalid }}</strong></div>
+        <div class="holder-preview-metric"><span>Blocked</span><strong>{{ summary.blocked }}</strong></div>
+      </div>
+
+      <div class="holder-preview-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Status</th>
+              <th>Email</th>
+              <th>Before</th>
+              <th>After</th>
+              <th>Problem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.rows %}
+              <tr>
+                <td>{{ row.row_number }}</td>
+                <td class="holder-preview-category">{{ row.category }}</td>
+                <td>{% if row.email %}<code>{{ row.email }}</code>{% endif %}</td>
+                <td>
+                  {% if row.before %}
+                    <p class="holder-preview-change"><strong>Name:</strong> {{ row.before.name }}</p>
+                    <p class="holder-preview-change"><strong>Organization:</strong> {{ row.before.organization }}</p>
+                  {% else %}
+                    <span class="muted">None</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.after %}
+                    <p class="holder-preview-change"><strong>Name:</strong> {{ row.after.name }}</p>
+                    <p class="holder-preview-change"><strong>Organization:</strong> {{ row.after.organization }}</p>
+                    {% if row.after.organization_id is none %}
+                      <p class="holder-preview-change"><strong>Organization action:</strong> Create</p>
+                    {% else %}
+                      <p class="holder-preview-change"><strong>Organization action:</strong> Reuse</p>
+                    {% endif %}
+                  {% else %}
+                    <span class="muted">None</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.problem }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="import-actions">
+        {% if preview.can_commit %}
+          <form method="post">
+            <input type="hidden" name="action" value="commit" />
+            <button type="submit">Confirm and Commit Holder Import</button>
+          </form>
+        {% endif %}
+        <form method="post">
+          <input type="hidden" name="action" value="cancel" />
+          <button type="submit" class="button-secondary">Clear Preview</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
 
   {% if report is not none %}
     <div class="card">

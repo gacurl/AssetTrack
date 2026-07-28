@@ -69,7 +69,7 @@ from assettrack.auth import (
     require_role,
 )
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, set_holder_active, update_holder
-from assettrack.holder_import import HolderImportReport, import_holders_csv
+from assettrack.holder_import import HolderImportPreview, HolderImportReport, import_holders_csv, preview_holders_csv
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
 from assettrack.reference_data import (
@@ -7481,52 +7481,121 @@ def admin_recovery_acknowledge():
     return redirect(url_for("admin_system"))
 
 
+HOLDER_IMPORT_PENDING_SESSION_KEY = "pending_holder_import"
+
+
+def _clear_pending_holder_import() -> None:
+    pending = session.pop(HOLDER_IMPORT_PENDING_SESSION_KEY, None)
+    if not isinstance(pending, dict):
+        return
+    pending_path = pending.get("path")
+    if not pending_path:
+        return
+    try:
+        Path(str(pending_path)).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _pending_holder_import_path() -> Path | None:
+    pending = session.get(HOLDER_IMPORT_PENDING_SESSION_KEY)
+    if not isinstance(pending, dict):
+        return None
+    pending_path = pending.get("path")
+    if not pending_path:
+        return None
+    path = Path(str(pending_path))
+    if not path.exists():
+        session.pop(HOLDER_IMPORT_PENDING_SESSION_KEY, None)
+        return None
+    return path
+
+
+def _holder_import_flash(report: HolderImportReport) -> None:
+    summary = report.summary()
+    if report.errors:
+        flash(
+            (
+                f"Holder import failed. Processed {summary['processed']} row"
+                f"{'' if summary['processed'] == 1 else 's'} with {summary['errors']} error"
+                f"{'' if summary['errors'] == 1 else 's'}."
+            ),
+            "error",
+        )
+    else:
+        flash(
+            (
+                f"Holder import complete. Processed {summary['processed']} row"
+                f"{'' if summary['processed'] == 1 else 's'}: created {summary['created']}, "
+                f"updated {summary['updated']}."
+            ),
+            "success",
+        )
+
 @app.route("/admin/holders/import", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
 def admin_holder_import():
+    preview: HolderImportPreview | None = None
     report: HolderImportReport | None = None
+    pending_filename = ""
 
     if request.method == "POST":
+        action = (request.form.get("action") or "preview").strip().lower()
+
+        if action == "cancel":
+            _clear_pending_holder_import()
+            flash("Holder import preview cleared.", "success")
+            return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
+
+        if action == "commit":
+            temp_path = _pending_holder_import_path()
+            if temp_path is None:
+                flash("Upload and preview a Holder CSV before confirming import.", "error")
+                return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
+
+            preview = preview_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
+            pending = session.get(HOLDER_IMPORT_PENDING_SESSION_KEY)
+            pending_filename = str((pending or {}).get("filename") or "") if isinstance(pending, dict) else ""
+            if not preview.can_commit:
+                flash("Holder import preview has blocked rows. Fix the CSV and upload again.", "error")
+                return render_template(
+                    "admin_holder_import.html",
+                    preview=preview,
+                    report=None,
+                    pending_filename=pending_filename,
+                )
+
+            report = import_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
+            _holder_import_flash(report)
+            _clear_pending_holder_import()
+            return render_template("admin_holder_import.html", preview=None, report=report, pending_filename="")
+
+        _clear_pending_holder_import()
         upload = request.files.get("csv_file")
         filename = str((upload.filename if upload is not None else "") or "").strip()
         if upload is None or not filename:
-            flash("Choose a CSV file to import.", "error")
-            return render_template("admin_holder_import.html", report=None)
+            flash("Choose a CSV file to preview.", "error")
+            return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
 
-        suffix = Path(filename).suffix or ".csv"
-        temp_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-                upload.save(handle)
-                temp_path = Path(handle.name)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as handle:
+            upload.save(handle)
+            temp_path = Path(handle.name)
 
-            report = import_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
-            summary = report.summary()
-            if report.errors:
-                flash(
-                    (
-                        f"Holder import failed. Processed {summary['processed']} row"
-                        f"{'' if summary['processed'] == 1 else 's'} with {summary['errors']} error"
-                        f"{'' if summary['errors'] == 1 else 's'}."
-                    ),
-                    "error",
-                )
-            else:
-                flash(
-                    (
-                        f"Holder import complete. Processed {summary['processed']} row"
-                        f"{'' if summary['processed'] == 1 else 's'}: created {summary['created']}, "
-                        f"updated {summary['updated']}."
-                    ),
-                    "success",
-                )
-        finally:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
+        session[HOLDER_IMPORT_PENDING_SESSION_KEY] = {"path": str(temp_path), "filename": filename}
+        preview = preview_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
+        pending_filename = filename
+        if preview.can_commit:
+            flash("Holder import preview ready. Review and confirm one batch to commit.", "success")
+        else:
+            flash("Holder import preview found blocked rows. Fix the CSV and upload again.", "error")
 
-    return render_template("admin_holder_import.html", report=report)
-
+    return render_template(
+        "admin_holder_import.html",
+        preview=preview,
+        report=report,
+        pending_filename=pending_filename,
+    )
 
 def _analyze_asset_import_csv(temp_path: Path, *, filename: str) -> dict:
     return analyze_asset_import_csv(temp_path, filename=filename, collect_row_errors=True).to_template_result()

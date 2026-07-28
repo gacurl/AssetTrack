@@ -320,28 +320,51 @@ def test_network_asset_import_template_requires_login(client_with_temp_db) -> No
     assert response.status_code == 403
 
 
-def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:
+def test_admin_can_preview_and_confirm_holders_from_csv(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-import", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
 
-    response = client_with_temp_db.post(
+    preview_response = client_with_temp_db.post(
         "/admin/holders/import",
         data={
+            "action": "preview",
             "csv_file": (
                 BytesIO(b"organization,name,email\nOps Alpha,Jane Doe,jane@example.org\n"),
                 "holders.csv",
-            )
+            ),
         },
         content_type="multipart/form-data",
         follow_redirects=True,
     )
 
-    assert response.status_code == 200
-    assert b"Holder import complete. Processed 1 row: created 1, updated 0." in response.data
-    assert b"Processed:</strong> 1" in response.data
-    assert b"Created:</strong> 1" in response.data
-    assert b"Updated:</strong> 0" in response.data
-    assert b"Errors:</strong> 0" in response.data
+    assert preview_response.status_code == 200
+    assert b"Holder import preview ready. Review and confirm one batch to commit." in preview_response.data
+    assert b"Import Preview" in preview_response.data
+    assert b"Confirm and Commit Holder Import" in preview_response.data
+    assert b"New</span><strong>1" in preview_response.data
+
+    conn = db.get_connection()
+    try:
+        holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        org = conn.execute("SELECT id FROM organizations WHERE name = ?;", ("Ops Alpha",)).fetchone()
+    finally:
+        conn.close()
+
+    assert holder_count == 0
+    assert org is None
+
+    commit_response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={"action": "commit"},
+        follow_redirects=True,
+    )
+
+    assert commit_response.status_code == 200
+    assert b"Holder import complete. Processed 1 row: created 1, updated 0." in commit_response.data
+    assert b"Processed:</strong> 1" in commit_response.data
+    assert b"Created:</strong> 1" in commit_response.data
+    assert b"Updated:</strong> 0" in commit_response.data
+    assert b"Errors:</strong> 0" in commit_response.data
 
     conn = db.get_connection()
     try:
@@ -355,6 +378,41 @@ def test_admin_can_import_holders_from_csv(client_with_temp_db) -> None:
     assert holder is not None
     assert dict(holder) == {"name": "Jane Doe", "organization": "Ops Alpha", "email": "jane@example.org"}
 
+def test_admin_holder_import_temp_path_ignores_uploaded_filename(client_with_temp_db, monkeypatch) -> None:
+    admin_id = create_test_user(username="admin-import-hostile-name", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
+    captured_calls: list[dict[str, object]] = []
+
+    def spy_named_temporary_file(*args, **kwargs):
+        handle = original_named_temporary_file(*args, **kwargs)
+        captured_calls.append({"kwargs": dict(kwargs), "name": handle.name})
+        return handle
+
+    monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", spy_named_temporary_file)
+
+    response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={
+            "csv_file": (
+                BytesIO(b"organization,name,email\nOps Alpha,Jane Doe,jane@example.org\n"),
+                "..\\..\\hostile-holder-import.pwn",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Holder import preview ready. Review and confirm one batch to commit." in response.data
+    assert captured_calls
+    assert captured_calls[0]["kwargs"]["suffix"] == ".csv"
+    temp_name = Path(str(captured_calls[0]["name"])).name.lower()
+    assert temp_name.endswith(".csv")
+    assert "hostile" not in temp_name
+    assert "pwn" not in temp_name
+
+    client_with_temp_db.post("/admin/holders/import", data={"action": "cancel"}, follow_redirects=True)
 
 def test_admin_holder_import_page_exposes_collapsible_csv_requirements(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-import-page", password="admin-pass", role="admin")
@@ -364,8 +422,13 @@ def test_admin_holder_import_page_exposes_collapsible_csv_requirements(client_wi
 
     assert response.status_code == 200
     assert b"Holder CSV Import" in response.data
+    assert b"Preview Holders" in response.data
     assert b"CSV requirements" in response.data
     assert b"Columns and import behavior" in response.data
+    assert b"Holder imports change Holder and Organization reference data." in response.data
+    assert b"Holder imports do not create asset custody events." in response.data
+    assert b"A separate persistent import audit record is not currently created." in response.data
+    assert b"Issue 30-27" not in response.data
     assert b'<details class="disclosure-section">' in response.data
 
 
@@ -386,8 +449,11 @@ def test_admin_holder_import_surfaces_existing_validation_errors(client_with_tem
     )
 
     assert response.status_code == 200
-    assert b"Holder import failed. Processed 1 row with 1 error." in response.data
-    assert b"Row 2: name is required" in response.data
+    assert b"Holder import preview found blocked rows. Fix the CSV and upload again." in response.data
+    assert b"<td>2</td>" in response.data
+    assert b"name is required" in response.data
+    assert b"<td>-</td>" not in response.data
+    assert b"Confirm and Commit Holder Import" not in response.data
 
     conn = db.get_connection()
     try:
@@ -397,6 +463,46 @@ def test_admin_holder_import_surfaces_existing_validation_errors(client_with_tem
 
     assert holder_count == 0
 
+
+def test_admin_holder_import_preview_shows_duplicate_and_invalid_rows(client_with_temp_db) -> None:
+    admin_id = create_test_user(username="admin-import-mixed-blocked", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+
+    response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={
+            "csv_file": (
+                BytesIO(
+                    b"organization,name,email\n"
+                    b"Ops Alpha,Duplicate One,dup@example.org\n"
+                    b"Ops Alpha,Duplicate Two,dup@example.org\n"
+                    b"Ops Alpha,,invalid@example.org\n"
+                ),
+                "holders.csv",
+            )
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Holder import preview found blocked rows. Fix the CSV and upload again." in response.data
+    assert b"Duplicate email in uploaded CSV: dup@example.org appears on rows 2, 3." in response.data
+    assert response.data.count(b"Duplicate email in uploaded CSV: dup@example.org appears on rows 2, 3.") == 2
+    assert b"name is required" in response.data
+    assert b"<td>2</td>" in response.data
+    assert b"<td>3</td>" in response.data
+    assert b"<td>4</td>" in response.data
+    assert b"<td>-</td>" not in response.data
+    assert b"Confirm and Commit Holder Import" not in response.data
+
+    conn = db.get_connection()
+    try:
+        holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+    finally:
+        conn.close()
+
+    assert holder_count == 0
 
 def test_operator_is_forbidden_for_human_readable_report(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-report", password="op-pass", role="operator")

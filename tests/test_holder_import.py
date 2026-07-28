@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,113 @@ class HolderImportTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_preview_classifies_rows_and_performs_no_writes(self) -> None:
+        original_org_id = self._insert_organization("Ops Alpha")
+        self._insert_holder(
+            name="Existing Holder",
+            organization="Ops Alpha",
+            organization_id=original_org_id,
+            email="existing@example.org",
+        )
+        self._insert_holder(
+            name="Same Holder",
+            organization="Ops Alpha",
+            organization_id=original_org_id,
+            email="same@example.org",
+        )
+        csv_path = self._write_csv(
+            "holders.csv",
+            (
+                "organization,name,email\n"
+                "Ops Bravo,New Holder,new@example.org\n"
+                "Ops Alpha,Existing Holder Updated,existing@example.org\n"
+                "Ops Alpha,Same Holder,same@example.org\n"
+            ),
+        )
+
+        preview = holder_import.preview_holders_csv(csv_path, db_path=self.db_path)
+
+        self.assertTrue(preview.can_commit)
+        self.assertEqual(
+            preview.summary(),
+            {
+                "processed": 3,
+                "new": 1,
+                "unchanged": 1,
+                "updated": 1,
+                "duplicate": 0,
+                "ambiguous": 0,
+                "invalid": 0,
+                "blocked": 0,
+            },
+        )
+        self.assertEqual([row.category for row in preview.rows], ["new", "updated", "unchanged"])
+        conn = self._connection()
+        try:
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+            org = conn.execute("SELECT id FROM organizations WHERE name = ?;", ("Ops Bravo",)).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(holder_count, 2)
+        self.assertIsNone(org)
+
+    def test_preview_blocks_duplicate_and_ambiguous_rows_without_writes(self) -> None:
+        org_id = self._insert_organization("Ops Alpha")
+        self._insert_holder(name="First", organization="Ops Alpha", organization_id=org_id, email="shared@example.org")
+        self._insert_holder(name="Second", organization="Ops Alpha", organization_id=org_id, email="shared@example.org")
+        csv_path = self._write_csv(
+            "holders.csv",
+            (
+                "organization,name,email\n"
+                "Ops Alpha,Ambiguous,shared@example.org\n"
+                "Ops Alpha,Duplicate One,dup@example.org\n"
+                "Ops Alpha,Duplicate Two,dup@example.org\n"
+            ),
+        )
+
+        preview = holder_import.preview_holders_csv(csv_path, db_path=self.db_path)
+        report = holder_import.import_holders_csv(csv_path, db_path=self.db_path)
+
+        self.assertFalse(preview.can_commit)
+        self.assertEqual(preview.summary()["ambiguous"], 1)
+        self.assertEqual(preview.summary()["duplicate"], 2)
+        self.assertEqual(preview.summary()["blocked"], 3)
+        self.assertEqual(report.summary(), {"processed": 3, "created": 0, "updated": 0, "errors": 3})
+        conn = self._connection()
+        try:
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        finally:
+            conn.close()
+        self.assertEqual(holder_count, 2)
+    def test_preview_shows_duplicate_and_invalid_rows_together(self) -> None:
+        csv_path = self._write_csv(
+            "holders.csv",
+            (
+                "organization,name,email\n"
+                "Ops Alpha,Duplicate One,dup@example.org\n"
+                "Ops Alpha,Duplicate Two,dup@example.org\n"
+                "Ops Alpha,,invalid@example.org\n"
+            ),
+        )
+
+        preview = holder_import.preview_holders_csv(csv_path, db_path=self.db_path)
+        report = holder_import.import_holders_csv(csv_path, db_path=self.db_path)
+
+        self.assertFalse(preview.can_commit)
+        self.assertEqual(preview.summary()["duplicate"], 2)
+        self.assertEqual(preview.summary()["invalid"], 1)
+        self.assertEqual(preview.summary()["blocked"], 3)
+        self.assertEqual([(row.row_number, row.category) for row in preview.rows], [(2, "duplicate"), (3, "duplicate"), (4, "invalid")])
+        duplicate_problems = [row.problem for row in preview.rows if row.category == "duplicate"]
+        self.assertEqual(
+            duplicate_problems,
+            [
+                "Duplicate email in uploaded CSV: dup@example.org appears on rows 2, 3.",
+                "Duplicate email in uploaded CSV: dup@example.org appears on rows 2, 3.",
+            ],
+        )
+        self.assertEqual(preview.rows[2].problem, "name is required")
+        self.assertEqual(report.summary(), {"processed": 3, "created": 0, "updated": 0, "errors": 3})
     def test_import_creates_new_holder_for_new_email(self) -> None:
         csv_path = self._write_csv(
             "holders.csv",
@@ -160,6 +268,27 @@ class HolderImportTests(unittest.TestCase):
         self.assertEqual(report.summary(), {"processed": 0, "created": 0, "updated": 0, "errors": 1})
         self.assertEqual(report.errors, ("Row 2: malformed CSV row has extra columns.",))
 
+    def test_import_rolls_back_approved_batch_on_commit_failure(self) -> None:
+        org_id = self._insert_organization("Ops Alpha")
+        csv_path = self._write_csv(
+            "holders.csv",
+            (
+                "organization,name,email\n"
+                "Ops Alpha,First,first@example.org\n"
+                "Ops Alpha,Second,second@example.org\n"
+            ),
+        )
+
+        with patch.object(holder_import, "_ensure_organization", side_effect=[org_id, RuntimeError("forced failure")]):
+            with self.assertRaises(RuntimeError):
+                holder_import.import_holders_csv(csv_path, db_path=self.db_path)
+
+        conn = self._connection()
+        try:
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        finally:
+            conn.close()
+        self.assertEqual(holder_count, 0)
     def test_cli_returns_summary_and_nonzero_exit_on_invalid_csv(self) -> None:
         csv_path = self._write_csv(
             "holders.csv",
