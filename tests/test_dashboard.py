@@ -52,6 +52,10 @@ class DashboardTests(unittest.TestCase):
         operator_user_id = create_test_user(username="operator", password="op-pass", role="operator")
         login_session(self.client, operator_user_id)
 
+    def _login_admin(self) -> None:
+        admin_user_id = create_test_user(username="admin", password="admin-pass", role="admin")
+        login_session(self.client, admin_user_id)
+
     def tearDown(self) -> None:
         self.conn.close()
         self.temp_dir.cleanup()
@@ -244,10 +248,69 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b"Workflow Shortcuts", response.data)
         self.assertNotIn(b'href="/issue/preview">Issue</a>', response.data)
 
+    def test_first_run_guide_shows_for_admin_when_no_operational_data(self) -> None:
+        self._login_admin()
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"First-run deployment guide", response.data)
+        self.assertIn(b"No assets, holders, storage, or asset events exist yet.", response.data)
+        self.assertIn(b"Assets may remain Unslotted. Storage can be created and assigned later.", response.data)
+        self.assertIn(b"Recommended", response.data)
+        self.assertIn(b"Optional", response.data)
+        self.assertIn(b"Deferrable", response.data)
+        self.assertIn(b'href="/admin/assets/import"', response.data)
+        self.assertIn(b"Import inventory", response.data)
+        self.assertIn(b'href="/admin/holders/import"', response.data)
+        self.assertIn(b"Import Holders", response.data)
+        self.assertIn(b'href="/holders/new?return_to=/dashboard"', response.data)
+        self.assertIn(b"Add one Holder", response.data)
+        self.assertIn(b"Create a holder before issuing assets.", response.data)
+        self.assertIn(b'href="/admin/slots/provision"', response.data)
+        self.assertIn(b"Create storage", response.data)
+        self.assertIn(b'href="/admin/assets/new"', response.data)
+        self.assertIn(b"Add one asset", response.data)
+        self.assertIn(b'href="#dashboard-main"', response.data)
+        self.assertIn(b"Continue to Dashboard", response.data)
+        self.assertIn(b"Assets Out", response.data)
+        self.assertIn(b"No active assets in the custody map.", response.data)
+        for table_name in ("assets", "holders", "slots", "asset_events"):
+            row_count = int(self.conn.execute(f"SELECT COUNT(*) FROM {table_name};").fetchone()[0])
+            self.assertEqual(row_count, 0)
+
+    def test_first_run_guide_hides_after_creating_one_holder(self) -> None:
+        self._login_admin()
+
+        holder_form = self.client.get("/holders/new?return_to=/dashboard")
+        self.assertEqual(holder_form.status_code, 200)
+        self.assertIn(b"Create Holder", holder_form.data)
+        self.assertIn(b'name="return_to" value="/dashboard"', holder_form.data)
+
+        response = self.client.post(
+            "/holders/new",
+            data={
+                "name": "First Holder",
+                "organization_id": "1",
+                "email": "first@example.org",
+                "return_to": "/dashboard",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"First-run deployment guide", response.data)
+        self.assertNotIn(b"Import inventory", response.data)
+        self.assertIn(b"Assets Out", response.data)
+        holder_count = int(self.conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        self.assertEqual(holder_count, 1)
     def test_dashboard_empty_states_are_operator_facing(self) -> None:
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"First-run deployment guide", response.data)
+        self.assertNotIn(b"Import inventory", response.data)
+        self.assertNotIn(b'href="/admin/assets/import"', response.data)
         self.assertNotIn(b"At a Glance", response.data)
         self.assertIn(b"Assets Out", response.data)
         self.assertNotIn(b"Issue Assets", response.data)
