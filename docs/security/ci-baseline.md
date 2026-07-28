@@ -15,13 +15,13 @@ This repository uses a minimal GitHub Actions security baseline for pull request
 
 ## Failure Thresholds
 
-- `CRITICAL` findings fail the workflow
-- `HIGH`, `MEDIUM`, `LOW`, and `UNKNOWN` findings are advisory and uploaded as workflow artifacts
+- `MEDIUM`, `HIGH`, and `CRITICAL` findings fail the workflow
+- `LOW` and `UNKNOWN` findings are advisory and uploaded as workflow artifacts
 - `--ignore-unfixed` is enabled so the baseline does not fail on issues without an upstream fix
 
 Why it matters:
-- the current baseline reports every severity for visibility while blocking only `CRITICAL` findings
-- this keeps the pipeline usable while still surfacing lower-severity issues for review
+- the current baseline reports every severity for visibility while blocking known findings above Low
+- this keeps lower-severity and unknown findings visible for review without treating them as clean
 
 ## Trivy Reference and Update Path
 
@@ -48,7 +48,7 @@ Why it matters:
 
 ## Triage Guidance
 
-- treat `CRITICAL` findings as merge blockers until fixed or explicitly risk-accepted
+- treat `MEDIUM`, `HIGH`, and `CRITICAL` findings as merge blockers until fixed or explicitly risk-accepted
 - review advisory findings from uploaded artifacts during the normal patch cadence process and convert real issues into scoped remediation work
 - if a finding is a false positive, document the suppression in a separate change instead of weakening the baseline broadly
 
