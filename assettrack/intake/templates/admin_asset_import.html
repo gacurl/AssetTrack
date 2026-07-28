@@ -8,6 +8,23 @@
     .import-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
     .import-summary { margin: 0; }
     .compact-list { margin: 0.5rem 0 0 1.25rem; }
+    .import-result-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+    .import-result-metric {
+      border: 1px solid var(--color-surface);
+      padding: 0.75rem;
+      background: var(--color-surface-bg);
+    }
+    .import-result-metric strong {
+      display: block;
+      font-size: 1.75rem;
+      line-height: 1;
+    }
+    .blocked-row-list { margin-top: 1rem; }
     .import-row-section { margin-top: 1rem; border-top: 1px solid var(--color-surface); padding-top: 0.75rem; }
     .import-row-section summary { cursor: pointer; font-weight: 700; }
     .import-row-count { color: var(--color-text-muted); font-weight: 400; margin-left: 0.5rem; }
@@ -68,6 +85,7 @@
   </details>
 
   {% if result is not none %}
+    {% set blocked_rows = result.rows_by_category["identity_conflict"] + result.rows_by_category["invalid_duplicate_upload_row"] %}
     <div class="card">
       <h2>Analysis Result</h2>
       <p class="import-summary">
@@ -91,27 +109,52 @@
           <p class="flash error">Unslotted acknowledgment is required before these rows can continue.</p>
         {% endif %}
       {% endif %}
-      <h3>Category Totals</h3>
-      <ul class="compact-list">
-        {% for category in result.category_order %}
-          <li>{{ result.category_labels[category] }}: {{ result.totals[category] }}</li>
-        {% endfor %}
-      </ul>
+      <div class="import-result-metrics" aria-label="Import result counts">
+        <div class="import-result-metric">
+          <strong>{{ commit_summary.committed_rows if commit_summary else result.total_rows - blocked_rows|length }}</strong>
+          <span>{{ "Committed rows" if commit_summary else "Ready to commit" }}</span>
+        </div>
+        <div class="import-result-metric">
+          <strong>{{ commit_summary.blocked if commit_summary else blocked_rows|length }}</strong>
+          <span>Blocked rows</span>
+        </div>
+      </div>
       {% if commit_summary %}
-        <h3>Commit Result</h3>
-        <ul class="compact-list">
-          <li>Committed rows: {{ commit_summary.committed_rows }}</li>
-          <li>Created assets: {{ commit_summary.created }}</li>
-          <li>Updated assets: {{ commit_summary.updated }}</li>
-          <li>Slot assignments: {{ commit_summary.slot_assigned }}</li>
-          <li>Slot moves: {{ commit_summary.slot_moved }}</li>
-          <li>Unchanged rows: {{ commit_summary.unchanged }}</li>
-          <li>Blocked rows: {{ commit_summary.blocked }}</li>
-        </ul>
+        <p class="import-help">
+          {{ commit_summary.committed_rows }} row{% if commit_summary.committed_rows != 1 %}s{% endif %} committed. {{ commit_summary.blocked }} blocked row{% if commit_summary.blocked != 1 %}s{% endif %} left unchanged.
+        </p>
       {% endif %}
-      <p class="import-help">
-        <a href="{{ url_for('admin_asset_import_reconciliation_csv') }}">Download reconciliation CSV</a>
-      </p>
+      {% if blocked_rows %}
+        <div class="blocked-row-list" aria-label="Blocked rows requiring correction">
+          <h3>Blocked Rows To Fix</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Row</th>
+                <th>Asset</th>
+                <th>Problem</th>
+                <th>Required correction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in blocked_rows %}
+                <tr>
+                  <td>{{ row.row_number }}</td>
+                  <td><code>{{ row.asset_identifier or "missing asset_tag or barcode" }}</code></td>
+                  <td>{{ row.message }}</td>
+                  <td>
+                    {% if row.category == "identity_conflict" %}
+                      Use a unique asset tag and serial number, or update the existing asset outside this import.
+                    {% else %}
+                      Correct the upload row, then analyze the file again.
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
       {% if result.preview_token and not commit_summary %}
         <form method="post" class="row">
           <input type="hidden" name="action" value="commit" />
@@ -123,69 +166,98 @@
           <button type="submit">Commit Approved Rows</button>
         </form>
       {% endif %}
-      <h3>System Defaults Before Commit</h3>
-      <ul class="compact-list">
-        {% for default in result.defaults %}
-          <li><code>{{ default.field }}</code>: {{ default.value }}</li>
-        {% endfor %}
-      </ul>
-      <h3>Rows</h3>
-      {% for category in result.category_order %}
-        {% set category_rows = result.rows_by_category[category] %}
-        <details
-          id="asset-import-{{ category|replace('_', '-') }}"
-          class="import-row-section"
-          {% if category in result.attention_categories %}open{% endif %}
-        >
-          <summary>
-            {{ result.category_labels[category] }}
-            <span class="import-row-count">{{ category_rows|length }} row{% if category_rows|length != 1 %}s{% endif %}</span>
-          </summary>
-          <div class="import-row-table-wrap" tabindex="0" aria-label="{{ result.category_labels[category] }} rows">
-            <table>
-              <thead>
-                <tr>
-                  <th>Row</th>
-                  <th>Asset</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in category_rows %}
-                  <tr>
-                    <td>{{ row.row_number }}</td>
-                    <td><code>{{ row.asset_tag or "n/a" }}</code></td>
-                    <td>
-                      <p class="import-summary">{{ row.message }}</p>
-                      {% if row.fields %}
-                        <p class="import-help"><strong>Fields:</strong> {{ row.fields|join(", ") }}</p>
-                      {% endif %}
-                      {% if row.warnings %}
-                        <ul class="compact-list">
-                          {% for warning in row.warnings %}
-                            <li>{{ warning }}</li>
-                          {% endfor %}
-                        </ul>
-                      {% endif %}
-                      {% if row.changed_fields %}
-                        <ul class="compact-list">
-                          {% for change in row.changed_fields %}
-                            <li><code>{{ change.field }}</code>: {{ change.current or "blank" }} -> {{ change.proposed or "blank" }}</li>
-                          {% endfor %}
-                        </ul>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr>
-                    <td colspan="3">No rows in this category.</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      {% endfor %}
+      <details class="disclosure-section">
+        <summary>
+          <span class="disclosure-title">Technical Details</span>
+          <span class="disclosure-hint">Totals, defaults, reconciliation, and row diagnostics</span>
+        </summary>
+        <div class="disclosure-body">
+          <p class="import-help">
+            <a href="{{ url_for('admin_asset_import_reconciliation_csv') }}">Download reconciliation CSV</a>
+          </p>
+          {% if commit_summary %}
+            <h3>Commit Result</h3>
+            <ul class="compact-list">
+              <li>Committed rows: {{ commit_summary.committed_rows }}</li>
+              <li>Created assets: {{ commit_summary.created }}</li>
+              <li>Updated assets: {{ commit_summary.updated }}</li>
+              <li>Slot assignments: {{ commit_summary.slot_assigned }}</li>
+              <li>Slot moves: {{ commit_summary.slot_moved }}</li>
+              <li>Unchanged rows: {{ commit_summary.unchanged }}</li>
+              <li>Blocked rows: {{ commit_summary.blocked }}</li>
+            </ul>
+          {% endif %}
+          <h3>Category Totals</h3>
+          <ul class="compact-list">
+            {% for category in result.category_order %}
+              <li>{{ result.category_labels[category] }}: {{ result.totals[category] }}</li>
+            {% endfor %}
+          </ul>
+          <h3>System Defaults Before Commit</h3>
+          <ul class="compact-list">
+            {% for default in result.defaults %}
+              <li><code>{{ default.field }}</code>: {{ default.value }}</li>
+            {% endfor %}
+          </ul>
+          <h3>Rows</h3>
+          {% for category in result.category_order %}
+            {% set category_rows = result.rows_by_category[category] %}
+            <details
+              id="asset-import-{{ category|replace('_', '-') }}"
+              class="import-row-section"
+              {% if category in result.attention_categories %}open{% endif %}
+            >
+              <summary>
+                {{ result.category_labels[category] }}
+                <span class="import-row-count">{{ category_rows|length }} row{% if category_rows|length != 1 %}s{% endif %}</span>
+              </summary>
+              <div class="import-row-table-wrap" tabindex="0" aria-label="{{ result.category_labels[category] }} rows">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Asset</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in category_rows %}
+                      <tr>
+                        <td>{{ row.row_number }}</td>
+                        <td><code>{{ row.asset_tag or "n/a" }}</code></td>
+                        <td>
+                          <p class="import-summary">{{ row.message }}</p>
+                          {% if row.fields %}
+                            <p class="import-help"><strong>Fields:</strong> {{ row.fields|join(", ") }}</p>
+                          {% endif %}
+                          {% if row.warnings %}
+                            <ul class="compact-list">
+                              {% for warning in row.warnings %}
+                                <li>{{ warning }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                          {% if row.changed_fields %}
+                            <ul class="compact-list">
+                              {% for change in row.changed_fields %}
+                                <li><code>{{ change.field }}</code>: {{ change.current or "blank" }} -> {{ change.proposed or "blank" }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% else %}
+                      <tr>
+                        <td colspan="3">No rows in this category.</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          {% endfor %}
+        </div>
+      </details>
     </div>
   {% endif %}
 {% endblock %}

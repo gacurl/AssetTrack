@@ -471,6 +471,8 @@ def test_asset_import_preview_classifies_new_asset_with_available_slot(client_wi
     )
 
     assert response.status_code == 200
+    assert b"Ready to commit" in response.data
+    assert b"Committed rows" not in response.data
     assert b"New Asset: 1" in response.data
     assert b"New Laptop asset with available storage." in response.data
     assert b"location_type</code>: STORAGE" in response.data
@@ -852,7 +854,9 @@ def test_asset_import_preview_classifies_identity_conflict(client_with_temp_db) 
 
     assert response.status_code == 200
     assert b"Identity Conflict: 1" in response.data
+    assert b"Blocked Rows To Fix" in response.data
     assert b"serial_number matches existing asset SERIAL-OWNER" in response.data
+    assert b"Use a unique asset tag and serial number" in response.data
     assert b"serial_number" in response.data
 
 
@@ -872,8 +876,29 @@ def test_asset_import_preview_classifies_invalid_and_duplicate_upload_rows(
 
     assert response.status_code == 200
     assert b"Invalid Or Duplicate Upload Row: 2" in response.data
+    assert b"Blocked Rows To Fix" in response.data
+    assert b"<code>DUP-100</code>" in response.data
+    assert b"missing asset_tag or barcode" in response.data
     assert b"asset_tag or barcode is required." in response.data
     assert b"duplicate asset_tag matches row 2: DUP-100." in response.data
+    assert b"Correct the upload row, then analyze the file again." in response.data
+
+def test_asset_import_blocked_row_uses_barcode_identifier_when_asset_tag_blank(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,barcode,equipment_type,case_identifier,slot_identifier\n,BC-BAD,laptop,CASE-ONLY,\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Blocked Rows To Fix" in response.data
+    assert b"<code>BC-BAD</code>" in response.data
+    assert b"missing asset_tag or barcode" not in response.data
+    assert b"Correct the upload row, then analyze the file again." in response.data
 
 
 def test_asset_import_preview_groups_rows_by_category_with_expected_disclosure_defaults(
@@ -939,6 +964,9 @@ def test_asset_import_preview_groups_rows_by_category_with_expected_disclosure_d
     assert "Slot Conflict Eligible For Unslotted Import: 1" in html
     assert "Identity Conflict: 1" in html
     assert "Invalid Or Duplicate Upload Row: 1" in html
+    assert "Technical Details" in html
+    assert "Blocked Rows To Fix" in html
+    assert "Required correction" in html
 
     for section_id in (
         "asset-import-new-asset",
@@ -1446,8 +1474,13 @@ def test_asset_import_commit_writes_approved_safe_rows_atomically_and_leaves_blo
 
     assert commit_response.status_code == 200
     assert b"Asset import committed." in commit_response.data
+    assert b"Committed rows" in commit_response.data
+    assert b"Blocked rows" in commit_response.data
+    assert b"6 rows committed. 2 blocked rows left unchanged." in commit_response.data
     assert b"Committed rows: 6" in commit_response.data
     assert b"Blocked rows: 2" in commit_response.data
+    assert b"Blocked Rows To Fix" in commit_response.data
+    assert b"Required correction" in commit_response.data
     assert _asset_record("CONFLICT-TAG") is None
     assert _asset_record("SER-MISSING") is None
 
