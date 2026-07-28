@@ -75,6 +75,7 @@ class AssetImportAnalysisIssue:
     category: str
     message: str
     fields: tuple[str, ...] = ()
+    asset_identifier: str = ""
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,19 @@ def _validate_headers(headers: list[str], *, file_type: str) -> tuple[str, ...]:
     return tuple(warnings)
 
 
+def _raw_asset_identifier(raw_row: dict[str, object]) -> str:
+    row = {
+        normalized_key: _normalize_text(value)
+        for key, value in raw_row.items()
+        if (normalized_key := _normalize_header(key)) in ALLOWED_COLUMNS
+    }
+    for column in IDENTITY_COLUMNS:
+        identifier = _normalize_text(row.get(column)).upper()
+        if identifier:
+            return identifier
+    return ""
+
+
 def _canonical_row(raw_row: dict[str, object], *, row_number: int) -> AssetImportAnalysisRow | None:
     row = {
         normalized_key: _normalize_slot_identifier(value)
@@ -231,6 +245,7 @@ def _duplicate_issues(rows: list[AssetImportAnalysisRow]) -> tuple[AssetImportAn
                     category="duplicate_upload_row",
                     message=f"duplicate asset_tag matches row {previous_asset_row}: {row.asset_tag}.",
                     fields=("asset_tag",),
+                    asset_identifier=row.asset_tag,
                 )
             )
         else:
@@ -247,6 +262,7 @@ def _duplicate_issues(rows: list[AssetImportAnalysisRow]) -> tuple[AssetImportAn
                     category="duplicate_upload_row",
                     message=f"duplicate serial_number matches row {previous_serial_row}: {row.serial_number}.",
                     fields=("serial_number",),
+                    asset_identifier=row.asset_tag,
                 )
             )
         else:
@@ -285,6 +301,7 @@ def _analyze_rows(
                     row_number=offset,
                     category="invalid_upload_row",
                     message=str(exc).removeprefix(f"Row {offset}: "),
+                    asset_identifier=_raw_asset_identifier(raw_row),
                 )
             )
             continue

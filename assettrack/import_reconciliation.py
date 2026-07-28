@@ -55,6 +55,7 @@ class AssetImportFieldChange:
 class AssetImportPreviewRow:
     row_number: int
     asset_tag: str
+    asset_identifier: str
     category: str
     category_label: str
     message: str
@@ -105,6 +106,7 @@ class AssetImportPreview:
             {
                 "row_number": row.row_number,
                 "asset_tag": row.asset_tag,
+                "asset_identifier": row.asset_identifier,
                 "category": row.category,
                 "category_label": row.category_label,
                 "message": row.message,
@@ -132,6 +134,7 @@ class AssetImportPreview:
             "attention_categories": ATTENTION_CATEGORIES,
             "rows": row_dicts,
             "rows_by_category": rows_by_category,
+            "total_rows": self.total_rows,
             "unslotted_acknowledged": self.unslotted_acknowledged,
             "requires_unslotted_acknowledgment": self.requires_unslotted_acknowledgment,
             "blocks_without_unslotted_acknowledgment": self.blocks_without_unslotted_acknowledgment,
@@ -289,6 +292,7 @@ def _preview_row(
         return AssetImportPreviewRow(
             row_number=row.row_number,
             asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
             category="identity_conflict",
             category_label=CATEGORY_LABELS["identity_conflict"],
             message=f"serial_number matches existing asset {serial_match['asset_tag']}",
@@ -300,6 +304,7 @@ def _preview_row(
         return AssetImportPreviewRow(
             row_number=row.row_number,
             asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
             category="unslotted_import",
             category_label=CATEGORY_LABELS["unslotted_import"],
             message="No storage case and slot supplied; row can continue as Unslotted after acknowledgment.",
@@ -313,6 +318,7 @@ def _preview_row(
             return AssetImportPreviewRow(
                 row_number=row.row_number,
                 asset_tag=row.asset_tag,
+                asset_identifier=row.asset_tag,
                 category="slot_conflict_unslotted",
                 category_label=CATEGORY_LABELS["slot_conflict_unslotted"],
                 message=f"{slot_error}; row can continue as Unslotted after acknowledgment.",
@@ -330,6 +336,7 @@ def _preview_row(
             return AssetImportPreviewRow(
                 row_number=row.row_number,
                 asset_tag=row.asset_tag,
+                asset_identifier=row.asset_tag,
                 category="slot_conflict_unslotted",
                 category_label=CATEGORY_LABELS["slot_conflict_unslotted"],
                 message=f"Requested slot is occupied by {occupant_tag}; row can continue as Unslotted after acknowledgment.",
@@ -341,6 +348,7 @@ def _preview_row(
         return AssetImportPreviewRow(
             row_number=row.row_number,
             asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
             category="new_asset",
             category_label=CATEGORY_LABELS["new_asset"],
             message=f"New {equipment_type_label(row.equipment_type)} asset with available storage.",
@@ -363,6 +371,7 @@ def _preview_row(
         return AssetImportPreviewRow(
             row_number=row.row_number,
             asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
             category="proposed_update",
             category_label=CATEGORY_LABELS["proposed_update"],
             message=message,
@@ -372,11 +381,11 @@ def _preview_row(
     return AssetImportPreviewRow(
         row_number=row.row_number,
         asset_tag=row.asset_tag,
+        asset_identifier=row.asset_tag,
         category="unchanged_exact_match",
         category_label=CATEGORY_LABELS["unchanged_exact_match"],
         message="Upload row matches current asset data exactly.",
     )
-
 
 def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnalysisRow, ...]) -> AssetImportPreviewContext:
     asset_tags = {row.asset_tag.upper() for row in rows if row.asset_tag}
@@ -490,6 +499,7 @@ def build_asset_import_preview(
         AssetImportPreviewRow(
             row_number=issue.row_number,
             asset_tag="",
+            asset_identifier=issue.asset_identifier,
             category="invalid_duplicate_upload_row",
             category_label=CATEGORY_LABELS["invalid_duplicate_upload_row"],
             message=issue.message,
