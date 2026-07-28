@@ -7578,8 +7578,7 @@ def admin_holder_import():
             flash("Choose a CSV file to preview.", "error")
             return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
 
-        suffix = Path(filename).suffix or ".csv"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as handle:
             upload.save(handle)
             temp_path = Path(handle.name)
 

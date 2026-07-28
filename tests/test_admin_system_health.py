@@ -378,6 +378,42 @@ def test_admin_can_preview_and_confirm_holders_from_csv(client_with_temp_db) -> 
     assert holder is not None
     assert dict(holder) == {"name": "Jane Doe", "organization": "Ops Alpha", "email": "jane@example.org"}
 
+def test_admin_holder_import_temp_path_ignores_uploaded_filename(client_with_temp_db, monkeypatch) -> None:
+    admin_id = create_test_user(username="admin-import-hostile-name", password="admin-pass", role="admin")
+    login_session(client_with_temp_db, admin_id)
+    original_named_temporary_file = intake_app.tempfile.NamedTemporaryFile
+    captured_calls: list[dict[str, object]] = []
+
+    def spy_named_temporary_file(*args, **kwargs):
+        handle = original_named_temporary_file(*args, **kwargs)
+        captured_calls.append({"kwargs": dict(kwargs), "name": handle.name})
+        return handle
+
+    monkeypatch.setattr(intake_app.tempfile, "NamedTemporaryFile", spy_named_temporary_file)
+
+    response = client_with_temp_db.post(
+        "/admin/holders/import",
+        data={
+            "csv_file": (
+                BytesIO(b"organization,name,email\nOps Alpha,Jane Doe,jane@example.org\n"),
+                "..\\..\\hostile-holder-import.pwn",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Holder import preview ready. Review and confirm one batch to commit." in response.data
+    assert captured_calls
+    assert captured_calls[0]["kwargs"]["suffix"] == ".csv"
+    temp_name = Path(str(captured_calls[0]["name"])).name.lower()
+    assert temp_name.endswith(".csv")
+    assert "hostile" not in temp_name
+    assert "pwn" not in temp_name
+
+    client_with_temp_db.post("/admin/holders/import", data={"action": "cancel"}, follow_redirects=True)
+
 def test_admin_holder_import_page_exposes_collapsible_csv_requirements(client_with_temp_db) -> None:
     admin_id = create_test_user(username="admin-import-page", password="admin-pass", role="admin")
     login_session(client_with_temp_db, admin_id)
