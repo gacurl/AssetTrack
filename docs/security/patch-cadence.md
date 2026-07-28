@@ -119,7 +119,7 @@ Why it matters:
 - track during routine cadence unless more concrete risk information appears
 
 Why it matters:
-- the workflow provides full visibility across severities, but only `CRITICAL` findings block the pipeline
+- the workflow provides full visibility across severities, and `MEDIUM`, `HIGH`, and `CRITICAL` findings block the pipeline
 
 ## Advisory Finding Triage
 

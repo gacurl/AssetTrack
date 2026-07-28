@@ -180,8 +180,6 @@ The active `security-baseline.yml` fails on:
 
 for both filesystem and image findings.
 
-Note: `docs/security/ci-baseline.md` still says only `CRITICAL` findings fail. The workflow and `docs/security-ci-baseline.md` show the effective current gate is `MEDIUM,HIGH,CRITICAL`.
-
 ### Secrets Handling
 
 No workflow passes AssetTrack runtime secrets through `env`.
@@ -230,7 +228,7 @@ No workflow step uses repository secrets.
 | F-08 | Medium | Docker base image is pinned by tag but not by digest. | `Dockerfile` uses `FROM python:3.12.13-alpine3.23`. | Rebuilding later can consume different base image contents under the same tag. |
 | F-09 | Low | Artifact retention is implicit. | `upload-artifact` steps do not set `retention-days`; GitHub API showed current artifacts expiring about 90 days after creation. | Retention behavior depends on repository/org defaults and may drift. |
 | F-10 | Low | CI upgrades pip without pinning the installed pip version. | `.github/workflows/ci.yml` runs `python -m pip install --upgrade pip`; Dockerfile pins `pip==26.1.2`. | CI dependency resolution can drift independently from the Docker build path. |
-| F-11 | Low | Existing CI security docs disagree about the Trivy severity gate. | `docs/security/ci-baseline.md` says only `CRITICAL` fails; `security-baseline.yml` fails on `MEDIUM,HIGH,CRITICAL`; `docs/security-ci-baseline.md` matches the workflow. | Operators may misunderstand which findings block CI. |
+| F-11 | Low | CI security docs now agree about the Trivy severity gate. | `docs/security/ci-baseline.md`, `docs/security-ci-baseline.md`, and `security-baseline.yml` all describe the active `MEDIUM,HIGH,CRITICAL` fail gate. | Operators can see which findings block CI. |
 | F-12 | Low | Trivy uses `--ignore-unfixed`. | Both filesystem and image scan commands include `--ignore-unfixed`. | Vulnerabilities without an upstream fix do not fail the gate and need human review through report artifacts. |
 
 ## Coverage Assessment
@@ -277,7 +275,7 @@ Ordered by risk first, then effort.
 | 7 | Medium | Low | Enable Dependabot security updates and add a minimal `.github/dependabot.yml` for `pip` and GitHub Actions. |
 | 8 | Medium | Medium | Evaluate digest pinning for the Docker base image and define a reviewed update process that preserves offline deployment needs. |
 | 9 | Low | Low | Set explicit `retention-days` for Trivy artifacts and SBOMs. |
-| 10 | Low | Low | Align `docs/security/ci-baseline.md` with the active `MEDIUM,HIGH,CRITICAL` Trivy gate. |
+| 10 | Low | Low | Keep CI security documentation aligned with the active `MEDIUM,HIGH,CRITICAL` Trivy gate. |
 | 11 | Low | Low | Pin CI pip version or remove the CI pip upgrade so CI dependency installation tracks the Docker path more closely. |
 | 12 | Low | Low | Decide whether to enable GitHub secret scanning non-provider patterns and validity checks. |
 
