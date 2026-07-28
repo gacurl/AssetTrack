@@ -4951,6 +4951,17 @@ def account_change_password_submit():
     return redirect(url_for("account_change_password"))
 
 
+FIRST_RUN_OPERATIONAL_TABLES = ("assets", "holders", "slots", "asset_events")
+
+
+def _database_has_operational_data(conn: sqlite3.Connection) -> bool:
+    for table_name in FIRST_RUN_OPERATIONAL_TABLES:
+        row = conn.execute(f"SELECT 1 FROM {table_name} LIMIT 1;").fetchone()
+        if row is not None:
+            return True
+    return False
+
+
 @app.get("/dashboard")
 @require_login
 def dashboard():
@@ -4965,6 +4976,9 @@ def dashboard():
             conn,
             custody_days_threshold=threshold_days,
         )
+        user = current_user()
+        user_role = str((user or {}).get("role") or "").strip().lower()
+        show_first_run_guide = user_role == "admin" and not _database_has_operational_data(conn)
     finally:
         conn.close()
 
@@ -4972,6 +4986,7 @@ def dashboard():
         "dashboard.html",
         dashboard=dashboard_data,
         custody_days_threshold=threshold_days,
+        show_first_run_guide=show_first_run_guide,
     )
 
 

@@ -94,6 +94,57 @@
       grid-column: span 2;
     }
 
+    .first-run-guide {
+      margin-bottom: 1rem;
+      border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--color-surface));
+      background: var(--color-panel-bg);
+    }
+    .first-run-guide-header {
+      display: grid;
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+    }
+    .first-run-guide-header p {
+      margin: 0;
+      color: var(--color-text-muted);
+      line-height: 1.45;
+    }
+    .first-run-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .first-run-action {
+      display: grid;
+      gap: 0.35rem;
+      min-width: 0;
+      padding: 0.85rem;
+      border: 1px solid var(--color-surface);
+      border-radius: 8px;
+      background: var(--color-surface-bg);
+      text-decoration: none;
+    }
+    .first-run-action:hover {
+      text-decoration: none;
+      border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-surface));
+    }
+    .first-run-label {
+      color: var(--color-text-muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .first-run-title {
+      color: var(--color-primary);
+      font-weight: 800;
+      line-height: 1.25;
+    }
+    .first-run-copy {
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
     .dashboard-map-card {
       margin-bottom: 1rem;
     }
@@ -217,7 +268,11 @@
     .status-dot.low { background: #f59e0b; }
     .status-dot.open { background: #16a34a; }
 
-    @media (max-width: 1180px) {
+    @media (max-width: 980px) {
+      .first-run-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }    @media (max-width: 1180px) {
       .dashboard-primary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -227,7 +282,8 @@
       }
     }
     @media (max-width: 760px) {
-      .dashboard-primary-grid {
+      .dashboard-primary-grid,
+      .first-run-actions {
         grid-template-columns: 1fr;
       }
     }
@@ -242,7 +298,49 @@
     <p class="dashboard-note">Custody map is read-only.</p>
   </div>
 
-  <div class="dashboard-primary-grid" aria-label="Primary dashboard cards">
+  {% if show_first_run_guide %}
+    <section class="dashboard-primary-card first-run-guide" aria-label="First-run deployment guide">
+      <div class="first-run-guide-header">
+        <h2>First-run deployment guide</h2>
+        <p>No assets, holders, storage, or asset events exist yet. These steps are available now and do not block dashboard access.</p>
+        <p>Assets may remain Unslotted. Storage can be created and assigned later.</p>
+      </div>
+      <div class="first-run-actions">
+        <a class="first-run-action" href="{{ url_for('admin_asset_import') }}">
+          <span class="first-run-label">Recommended</span>
+          <span class="first-run-title">Import inventory</span>
+          <span class="first-run-copy">Load the canonical asset inventory CSV or XLSX.</span>
+        </a>
+        <a class="first-run-action" href="{{ url_for('admin_holder_import') }}">
+          <span class="first-run-label">Recommended</span>
+          <span class="first-run-title">Import Holders</span>
+          <span class="first-run-copy">Load holder records before custody operations.</span>
+        </a>
+        <a class="first-run-action" href="{{ url_for('holders_new', return_to=url_for('dashboard')) }}">
+          <span class="first-run-label">Recommended</span>
+          <span class="first-run-title">Add one Holder</span>
+          <span class="first-run-copy">Create a holder before issuing assets.</span>
+        </a>
+        <a class="first-run-action" href="{{ url_for('admin_slot_provision') }}">
+          <span class="first-run-label">Optional</span>
+          <span class="first-run-title">Create storage</span>
+          <span class="first-run-copy">Add empty case slots when storage is ready.</span>
+        </a>
+        <a class="first-run-action" href="{{ url_for('admin_new_asset') }}">
+          <span class="first-run-label">Optional</span>
+          <span class="first-run-title">Add one asset</span>
+          <span class="first-run-copy">Create a single asset without requiring a slot.</span>
+        </a>
+        <a class="first-run-action" href="#dashboard-main">
+          <span class="first-run-label">Deferrable</span>
+          <span class="first-run-title">Continue to Dashboard</span>
+          <span class="first-run-copy">Skip setup guidance and view current empty state.</span>
+        </a>
+      </div>
+    </section>
+  {% endif %}
+
+  <div id="dashboard-main" class="dashboard-primary-grid" aria-label="Primary dashboard cards">
     <section class="dashboard-primary-card dashboard-metric-card">
       <p class="dashboard-primary-label">Assets Out</p>
       <strong>{{ overview.issued_assets }}</strong>
