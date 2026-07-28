@@ -8,8 +8,8 @@ This issue defines the staging contract before any import behavior is implemente
 
 ## Artifacts
 
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+- `docs/legacy/network_switch_router_staging_template_v1.csv`
+- `docs/legacy/network_switch_router_staging_template_v1.md`
 - `docs/roadmap/issue-27-123-import-staged-switches-and-routers.md`
 
 ## Boundary

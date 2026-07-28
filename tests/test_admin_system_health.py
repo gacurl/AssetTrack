@@ -309,10 +309,9 @@ def test_admin_network_asset_import_template_downloads_canonical_import_assets_c
     disposition["content-disposition"] = response.headers["Content-Disposition"]
     assert disposition.get_filename() == "asset_import_template.csv"
     assert response.data == CANONICAL_ASSET_IMPORT_TEMPLATE.read_bytes()
-    assert (
-        response.data
-        == b"equipment_type,asset_tag,barcode,serial_number,manufacturer,model,model_code,building_room,case_identifier,slot_identifier,notes_comments\n"
-    )
+    assert response.data.splitlines() == [
+        b"equipment_type,asset_tag,barcode,serial_number,manufacturer,model,model_code,building_room,case_identifier,slot_identifier,notes_comments"
+    ]
 
 
 def test_network_asset_import_template_requires_login(client_with_temp_db) -> None:

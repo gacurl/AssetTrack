@@ -1,5 +1,7 @@
 # Network Switch/Router Staging Template v1
 
+> LEGACY REFERENCE ONLY: This document and its companion CSV are retained for historical and exceptional maintenance reference. They are not the canonical operator import contract. Normal administrators must use Admin Tools -> Import Assets. The legacy CLI remains internal and deprecated.
+
 ## Purpose
 
 Use `network_switch_router_staging_template_v1.csv` only as a legacy network CSV reference for switch and router custody records.

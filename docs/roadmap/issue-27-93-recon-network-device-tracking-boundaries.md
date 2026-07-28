@@ -50,8 +50,8 @@ These fields do not belong in staging templates, imports, asset notes, or future
 
 Issue 27-122 defined the custody-only staging contract:
 
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+- `docs/legacy/network_switch_router_staging_template_v1.csv`
+- `docs/legacy/network_switch_router_staging_template_v1.md`
 - `docs/roadmap/issue-27-122-stage-switches-and-routers.md`
 
 Issue 27-123 implemented the bounded CSV-only importer:

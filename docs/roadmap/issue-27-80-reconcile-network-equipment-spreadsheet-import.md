@@ -15,8 +15,8 @@ AssetTrack does not track CMDB/network configuration.
 
 Reviewed switch/router custody rows use the canonical CSV staging contract:
 
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.csv`
-- `docs/fixtures/imports/network/network_switch_router_staging_template_v1.md`
+- `docs/legacy/network_switch_router_staging_template_v1.csv`
+- `docs/legacy/network_switch_router_staging_template_v1.md`
 - `docs/roadmap/issue-27-122-stage-switches-and-routers.md`
 
 The bounded importer is:
