@@ -330,17 +330,17 @@ Why it matters: clean reference data helps operators select the right holder and
 
 **Admin only**
 
-Use Import Holders when you need to load holder records from an approved file.
+Use Import Holders when you need to load holder records from an approved CSV file.
 
 1. Select `Admin`.
 2. Select `Import Holders`.
-3. Choose the holder import file.
+3. Choose the holder CSV file.
 4. Select `Preview Holders`.
 5. Review the totals, blocked rows, and proposed before/after changes.
 6. Select `Confirm and Commit Holder Import` only after the preview is correct.
 7. Review the result.
 
-Fix the file if AssetTrack reports duplicate, ambiguous, invalid, or blocked rows. Preview does not create or update Holders or Organizations. Successful admin UI Holder imports change Holder and Organization reference data, do not create custody events, and create a persistent import audit record retained indefinitely.
+Fix the CSV file if AssetTrack reports duplicate, ambiguous, invalid, or blocked rows. Preview does not create or update Holders or Organizations. Successful admin UI Holder imports change Holder and Organization reference data, do not create custody events, and create persistent append-only Import History retained indefinitely.
 
 ## Import Assets
 

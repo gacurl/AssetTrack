@@ -105,9 +105,9 @@ If this is a fresh database with no users yet, bootstrap the first admin at:
 
 `http://localhost:8000/bootstrap/admin`
 
-## Standard Inventory Import Workflow
+## Fixed-Workbook Inventory Bootstrap
 
-Run inventory import inside the running Docker container so it uses the image's installed dependencies and the mounted persistent SQLite database:
+For the fixed `.xlsx` bootstrap workbook at `data/import/BQ26_ETP.xlsx`, run the inventory importer inside the running Docker container so it uses the image's installed dependencies and the mounted persistent SQLite database:
 
 ```bash
 ./scripts/bootstrap_docker.sh
@@ -120,7 +120,7 @@ Equivalent direct command:
 docker compose exec -T assettrack python -m scripts.import_inventory
 ```
 
-This is the supported import path for `.xlsx` inventory loads. Do not rely on host-installed `pandas` or `openpyxl`.
+This is a fixed-workbook/bootstrap path. Normal CSV/XLSX asset imports use Admin Tools -> Import Assets for Laptop, Switch, and Router records. Do not rely on host-installed `pandas` or `openpyxl` for the bootstrap workbook.
 
 ## Release Documentation
 
