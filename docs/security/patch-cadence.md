@@ -172,6 +172,30 @@ After any dependency update or base-image update:
 Why it matters:
 - AssetTrack runs in Docker, so dependency changes are not complete until the image is rebuilt and verified
 
+## Docker Base Image Digest Review
+
+The Dockerfile keeps the readable Python base-image tag and pins it to the reviewed multi-platform manifest digest:
+
+```text
+python:3.12.13-alpine3.23@sha256:<digest>
+```
+
+Before changing the base-image tag or digest:
+
+1. Inspect the official Docker Hub image tag:
+   `docker buildx imagetools inspect python:<tag>`
+2. Confirm the image name is `docker.io/library/python:<tag>`.
+3. Confirm the reported top-level digest is an OCI image index or Docker manifest list, not a single-architecture child manifest.
+4. Confirm the manifests include the deployment architecture and annotate `org.opencontainers.image.version` with the exact tag.
+5. Record the reviewed tag, digest, source revision, and review date in the related issue.
+6. Update the Dockerfile only after review, keeping the tag and digest together.
+7. Rebuild the image, confirm Python and Alpine versions, confirm container health, and confirm SQLite persistence survives restart.
+
+Why it matters:
+- the readable tag explains operator intent
+- the digest prevents a future rebuild from silently consuming different base-image contents
+- reviewing the manifest list keeps multi-platform builds aligned instead of pinning one local architecture by accident
+
 ## Required Verification Before Deployment
 
 Before deploying an update based on scan findings:
