@@ -67,6 +67,102 @@ class HolderImportTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _audit_context(self, *, filename: str = "holders.csv") -> holder_import.HolderImportAuditContext:
+        return holder_import.HolderImportAuditContext(
+            actor_user_id=7,
+            actor_username="admin-import",
+            source_filename=filename,
+        )
+
+    def _holder_import_events(self) -> list[dict]:
+        conn = self._connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT actor_user_id, actor_username, source_filename, processed_count, created_count, updated_count
+                FROM holder_import_events
+                ORDER BY id ASC;
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def test_holder_import_audit_schema_is_idempotent_and_append_only(self) -> None:
+        bootstrap_db(self.db_path)
+        conn = self._connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO holder_import_events (
+                    created_at,
+                    actor_user_id,
+                    actor_username,
+                    source_filename,
+                    processed_count,
+                    created_count,
+                    updated_count
+                )
+                VALUES ('2026-01-01T00:00:00+00:00', 7, 'admin-import', 'holders.csv', 1, 1, 0);
+                """
+            )
+            conn.commit()
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute("UPDATE holder_import_events SET source_filename = 'changed.csv' WHERE id = 1;")
+            conn.rollback()
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute("DELETE FROM holder_import_events WHERE id = 1;")
+            conn.rollback()
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO holder_import_events (
+                        created_at,
+                        actor_user_id,
+                        actor_username,
+                        source_filename,
+                        processed_count,
+                        created_count,
+                        updated_count
+                    )
+                    VALUES ('2026-01-01T00:00:00+00:00', 7, 'admin-import', 'holders.csv', -1, 0, 0);
+                    """
+                )
+        finally:
+            conn.close()
+
+    def test_older_database_bootstrap_adds_holder_import_events_without_data_change(self) -> None:
+        conn = self._connection()
+        try:
+            conn.execute("DROP TABLE holder_import_events;")
+            conn.execute(
+                """
+                INSERT INTO holders (
+                    holder_type, name, organization, organization_id, email, identifier, contact_info, created_at, updated_at
+                )
+                VALUES ('PERSON', 'Existing Holder', 'Ad Hoc', 1, 'existing@example.org', NULL, NULL, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        bootstrap_db(self.db_path)
+
+        conn = self._connection()
+        try:
+            audit_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'holder_import_events';"
+            ).fetchone()
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        finally:
+            conn.close()
+        self.assertIsNotNone(audit_table)
+        self.assertEqual(holder_count, 1)
+
     def test_preview_classifies_rows_and_performs_no_writes(self) -> None:
         original_org_id = self._insert_organization("Ops Alpha")
         self._insert_holder(
@@ -116,6 +212,7 @@ class HolderImportTests(unittest.TestCase):
             conn.close()
         self.assertEqual(holder_count, 2)
         self.assertIsNone(org)
+        self.assertEqual(self._holder_import_events(), [])
 
     def test_preview_blocks_duplicate_and_ambiguous_rows_without_writes(self) -> None:
         org_id = self._insert_organization("Ops Alpha")
@@ -145,6 +242,75 @@ class HolderImportTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(holder_count, 2)
+        self.assertEqual(self._holder_import_events(), [])
+
+    def test_audited_import_creates_one_holder_import_event(self) -> None:
+        original_org_id = self._insert_organization("Ops Alpha")
+        self._insert_holder(
+            name="Existing Holder",
+            organization="Ops Alpha",
+            organization_id=original_org_id,
+            email="existing@example.org",
+        )
+        csv_path = self._write_csv(
+            "admin-upload.csv",
+            (
+                "organization,name,email\n"
+                "Ops Bravo,New Holder,new@example.org\n"
+                "Ops Alpha,Existing Holder Updated,existing@example.org\n"
+            ),
+        )
+
+        report = holder_import.import_holders_csv(
+            csv_path,
+            db_path=self.db_path,
+            audit_context=self._audit_context(filename="admin-upload.csv"),
+        )
+
+        self.assertEqual(report.summary(), {"processed": 2, "created": 1, "updated": 1, "errors": 0})
+        self.assertEqual(
+            self._holder_import_events(),
+            [
+                {
+                    "actor_user_id": 7,
+                    "actor_username": "admin-import",
+                    "source_filename": "admin-upload.csv",
+                    "processed_count": 2,
+                    "created_count": 1,
+                    "updated_count": 1,
+                }
+            ],
+        )
+
+    def test_cli_style_import_without_audit_context_creates_no_audit_event(self) -> None:
+        csv_path = self._write_csv(
+            "holders.csv",
+            "organization,name,email\nOps Alpha,Jane Doe,jane@example.org\n",
+        )
+
+        report = holder_import.import_holders_csv(csv_path, db_path=self.db_path)
+
+        self.assertEqual(report.summary(), {"processed": 1, "created": 1, "updated": 0, "errors": 0})
+        self.assertEqual(self._holder_import_events(), [])
+
+    def test_blocked_audited_import_creates_no_audit_event(self) -> None:
+        csv_path = self._write_csv(
+            "holders.csv",
+            (
+                "organization,name,email\n"
+                "Ops Alpha,Duplicate One,dup@example.org\n"
+                "Ops Alpha,Duplicate Two,dup@example.org\n"
+            ),
+        )
+
+        report = holder_import.import_holders_csv(
+            csv_path,
+            db_path=self.db_path,
+            audit_context=self._audit_context(),
+        )
+
+        self.assertEqual(report.summary(), {"processed": 2, "created": 0, "updated": 0, "errors": 2})
+        self.assertEqual(self._holder_import_events(), [])
     def test_preview_shows_duplicate_and_invalid_rows_together(self) -> None:
         csv_path = self._write_csv(
             "holders.csv",
@@ -289,6 +455,32 @@ class HolderImportTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(holder_count, 0)
+
+    def test_audit_insert_failure_rolls_back_holder_and_organization_changes(self) -> None:
+        csv_path = self._write_csv(
+            "holders.csv",
+            "organization,name,email\nOps Audit,Jane Doe,jane@example.org\n",
+        )
+
+        with patch.object(holder_import, "_insert_holder_import_event", side_effect=RuntimeError("audit insert failed")):
+            with self.assertRaises(RuntimeError):
+                holder_import.import_holders_csv(
+                    csv_path,
+                    db_path=self.db_path,
+                    audit_context=self._audit_context(),
+                )
+
+        conn = self._connection()
+        try:
+            holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+            org = conn.execute("SELECT id FROM organizations WHERE name = 'Ops Audit';").fetchone()
+            audit_count = int(conn.execute("SELECT COUNT(*) FROM holder_import_events;").fetchone()[0])
+        finally:
+            conn.close()
+        self.assertEqual(holder_count, 0)
+        self.assertIsNone(org)
+        self.assertEqual(audit_count, 0)
+
     def test_cli_returns_summary_and_nonzero_exit_on_invalid_csv(self) -> None:
         csv_path = self._write_csv(
             "holders.csv",

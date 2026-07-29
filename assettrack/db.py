@@ -554,6 +554,41 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS holder_import_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            actor_user_id INTEGER NOT NULL,
+            actor_username TEXT NOT NULL CHECK(length(trim(actor_username)) > 0),
+            source_filename TEXT NOT NULL CHECK(length(trim(source_filename)) > 0),
+            processed_count INTEGER NOT NULL CHECK(processed_count >= 0),
+            created_count INTEGER NOT NULL CHECK(created_count >= 0),
+            updated_count INTEGER NOT NULL CHECK(updated_count >= 0)
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS holder_import_events_no_update
+        BEFORE UPDATE ON holder_import_events
+        BEGIN
+            SELECT RAISE(ABORT, 'holder_import_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS holder_import_events_no_delete
+        BEFORE DELETE ON holder_import_events
+        BEGIN
+            SELECT RAISE(ABORT, 'holder_import_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS receipt_queue (
             id INTEGER PRIMARY KEY,
             receipt_key TEXT NOT NULL UNIQUE,

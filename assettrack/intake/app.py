@@ -69,7 +69,13 @@ from assettrack.auth import (
     require_role,
 )
 from assettrack.holders import create_holder, get_holder, list_holders, search_holders, set_holder_active, update_holder
-from assettrack.holder_import import HolderImportPreview, HolderImportReport, import_holders_csv, preview_holders_csv
+from assettrack.holder_import import (
+    HolderImportAuditContext,
+    HolderImportPreview,
+    HolderImportReport,
+    import_holders_csv,
+    preview_holders_csv,
+)
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
 from assettrack.reference_data import (
@@ -7951,6 +7957,44 @@ def _holder_import_flash(report: HolderImportReport) -> None:
             "success",
         )
 
+
+def _list_holder_import_history() -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                created_at,
+                actor_username,
+                source_filename,
+                processed_count,
+                created_count,
+                updated_count
+            FROM holder_import_events
+            ORDER BY id DESC;
+            """
+        ).fetchall()
+        history = []
+        for row in rows:
+            processed_count = int(row["processed_count"])
+            created_count = int(row["created_count"])
+            updated_count = int(row["updated_count"])
+            history.append(
+                {
+                    "created_at": str(row["created_at"] or ""),
+                    "actor_username": str(row["actor_username"] or ""),
+                    "source_filename": str(row["source_filename"] or ""),
+                    "processed_count": processed_count,
+                    "created_count": created_count,
+                    "updated_count": updated_count,
+                    "unchanged_count": max(0, processed_count - created_count - updated_count),
+                }
+            )
+        return history
+    finally:
+        conn.close()
+
+
 @app.route("/admin/holders/import", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
@@ -7959,43 +8003,60 @@ def admin_holder_import():
     report: HolderImportReport | None = None
     pending_filename = ""
 
+    def render_holder_import():
+        return render_template(
+            "admin_holder_import.html",
+            preview=preview,
+            report=report,
+            pending_filename=pending_filename,
+            holder_import_history=_list_holder_import_history(),
+        )
+
     if request.method == "POST":
         action = (request.form.get("action") or "preview").strip().lower()
 
         if action == "cancel":
             _clear_pending_holder_import()
             flash("Holder import preview cleared.", "success")
-            return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
+            return render_holder_import()
 
         if action == "commit":
             temp_path = _pending_holder_import_path()
             if temp_path is None:
                 flash("Upload and preview a Holder CSV before confirming import.", "error")
-                return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
+                return render_holder_import()
 
             preview = preview_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
             pending = session.get(HOLDER_IMPORT_PENDING_SESSION_KEY)
             pending_filename = str((pending or {}).get("filename") or "") if isinstance(pending, dict) else ""
             if not preview.can_commit:
                 flash("Holder import preview has blocked rows. Fix the CSV and upload again.", "error")
-                return render_template(
-                    "admin_holder_import.html",
-                    preview=preview,
-                    report=None,
-                    pending_filename=pending_filename,
-                )
+                return render_holder_import()
 
-            report = import_holders_csv(temp_path, db_path=_resolved_runtime_db_path())
+            user = current_user()
+            if user is None:
+                return _require_admin_for_route()
+            report = import_holders_csv(
+                temp_path,
+                db_path=_resolved_runtime_db_path(),
+                audit_context=HolderImportAuditContext(
+                    actor_user_id=int(user["id"]),
+                    actor_username=str(user.get("username") or ""),
+                    source_filename=pending_filename,
+                ),
+            )
             _holder_import_flash(report)
             _clear_pending_holder_import()
-            return render_template("admin_holder_import.html", preview=None, report=report, pending_filename="")
+            preview = None
+            pending_filename = ""
+            return render_holder_import()
 
         _clear_pending_holder_import()
         upload = request.files.get("csv_file")
         filename = str((upload.filename if upload is not None else "") or "").strip()
         if upload is None or not filename:
             flash("Choose a CSV file to preview.", "error")
-            return render_template("admin_holder_import.html", preview=None, report=None, pending_filename="")
+            return render_holder_import()
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as handle:
             upload.save(handle)
@@ -8009,12 +8070,7 @@ def admin_holder_import():
         else:
             flash("Holder import preview found blocked rows. Fix the CSV and upload again.", "error")
 
-    return render_template(
-        "admin_holder_import.html",
-        preview=preview,
-        report=report,
-        pending_filename=pending_filename,
-    )
+    return render_holder_import()
 
 def _analyze_asset_import_csv(temp_path: Path, *, filename: str) -> dict:
     return analyze_asset_import_csv(temp_path, filename=filename, collect_row_errors=True).to_template_result()
