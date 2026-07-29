@@ -23,13 +23,13 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 | Generic `assettrack.ingest` CLI | Internal utility | Approved internal commit adapter, but no Flask role gate, no enforced parser/validator, no preview command, free-text actor, and no direct CLI tests. |
 | Network Switch/Router CSV CLI | Internal legacy utility | Domain-specific CSV validation and shared committer for physical Switch/Router asset records. It bypasses Flask roles and has no admin upload, preview, confirmation, or results workflow, so it is not the normal operator procedure. |
 | Network import admin template page | Deprecated operator guidance page | Admin-gated guidance/template download only; it performs no upload, validation, preview, transaction, or DB write. Import Assets is the canonical operator workflow. |
-| Holder CSV import UI | Supported operational workflow | Admin-gated UI with import report and transaction boundary. It writes holder/org reference state and lacks separate administrative audit, but does not bypass event-derived asset custody state. |
-| Holder CSV import CLI | Internal utility | Same holder importer as UI but no Flask role boundary. Useful for local/admin support only unless Issue 30-13 approves more. |
+| Holder CSV import UI | Supported operational workflow | Admin-gated CSV UI with preview, confirmation, transaction boundary, and persistent append-only Import History for successful admin UI imports. It writes holder/org reference state but does not bypass event-derived asset custody state. |
+| Holder CSV import CLI | Internal utility | Same CSV holder importer as UI but no Flask role boundary and no persistent Import History audit row. Useful for local/admin support only unless Issue 30-13 approves more. |
 | Admin reference-data UI | Supported operational workflow | Admin-gated creation/update of organizations, buildings, and mappings with helper validation. No asset events, because this is reference data. |
 | Admin slot provisioning UI | Supported operational workflow | Admin-gated empty slot seed path with explicit transaction and rollback. No asset/custody event because no asset is assigned. |
 | `assettrack.slots.initialize_case_slots` | Internal utility | Helper can seed an entire new case but is not wired to a route or documented operator command. |
-| Standard XLSX inventory importer | Supported operational workflow | Documented Docker path with tests and event/state reconciliation, but it writes assets, slots, and occupancy directly outside the shared committer. Issue 30-5 remains the owner for repair and deterministic reconciliation. |
-| `scripts/import_inventory_docker.sh` | Supported operational wrapper | Wrapper for the standard XLSX importer in the app container. |
+| Standard XLSX inventory importer | Fixed-workbook/bootstrap path | Documented Docker path for `data/import/BQ26_ETP.xlsx` with tests and event/state reconciliation, but it writes assets, slots, and occupancy directly outside the shared committer. Normal CSV/XLSX asset imports use Admin Tools -> Import Assets. Issue 30-5 remains the owner for repair and deterministic reconciliation. |
+| `scripts/import_inventory_docker.sh` | Fixed-workbook/bootstrap wrapper | Wrapper for the fixed-workbook XLSX importer in the app container. |
 | Older BQ26 direct importer | Retire | Legacy direct-state writer with no events, no slot occupancy, no preview, no role gate, no tests, and no supported docs. |
 | Root BQ26 CSV/XLSX files | Legacy | Historical source artifacts in the repo root; not the current documented `data/import/BQ26_ETP.xlsx` input path. |
 | `legacy/inventory_legacy.db` | Legacy | Inert historical SQLite reference artifact with a non-current schema, explicitly not used by current AssetTrack. Deletion/removal requires Greg's approval. |
@@ -107,14 +107,14 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Invocation method: admin upload page at `/admin/holders/import`, or local CLI `python scripts/import_holders_csv.py <csv> --db <sqlite-path>`.
 - Purpose: create or update holders by email and create/reuse organizations needed by holders.
 - Input format: CSV with required `organization`, `name`, and `email`.
-- Validation and preview: validates header presence, blank/duplicate headers, malformed rows, required values, email format, duplicate email in CSV, and multiple existing holder matches. UI shows result report after POST; CLI prints JSON summary. No separate row-by-row confirmation page.
+- Validation and preview: validates header presence, blank/duplicate headers, malformed rows, required values, email format, duplicate email in CSV, and multiple existing holder matches. UI shows preview before confirmation; CLI prints JSON summary. No separate row-by-row confirmation page.
 - Transaction behavior: validates before writes, then creates organizations and creates/updates holders in one SQLite transaction.
-- Event and audit behavior: writes authoritative holder and organization reference tables; does not append asset custody events or a separate administrative audit event. This does not inherently bypass event-derived asset custody state.
+- Event and audit behavior: admin UI commits write authoritative holder and organization reference tables and exactly one persistent append-only Import History row for a successful import. Holder imports do not append asset custody events. CLI commits do not create Import History rows. This does not inherently bypass event-derived asset custody state.
 - Authentication or role boundary: UI requires login and admin role. CLI bypasses Flask roles.
-- Actor attribution: no actor field is recorded by the importer.
+- Actor attribution: admin UI Import History records the authenticated admin actor; CLI imports do not record an actor.
 - Direct derived-state writes: directly writes authoritative reference tables, not asset/custody-derived state.
 - Tests and operator documentation: `tests/test_holder_import.py`, `tests/test_admin_reference_data.py`, `tests/test_admin_system_health.py`, `docs/BAREBONES_APPLICATION_BOUNDARY.md`, and release user manual holder import steps.
-- Relationship to current workflows: UI is supported current workflow; CLI is internal utility. Issue 30-13 owns final preview and audit policy.
+- Relationship to current workflows: UI is supported current CSV workflow with persistent Import History for successful admin UI imports; CLI is an internal unaudited utility. Issue 30-13 owns final preview and audit policy.
 
 ### Admin Reference-Data UI
 
@@ -173,8 +173,8 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Authentication or role boundary: bypasses Flask roles because it is a CLI/container command.
 - Actor attribution: fixed string `inventory_import`; not linked to an app user.
 - Direct derived-state writes: yes, directly writes assets, slots, slot occupancy, and creates a unique slot index if missing.
-- Tests and operator documentation: `tests/test_import_inventory.py`, README Standard Inventory Import Workflow, and deployment guide.
-- Relationship to current workflows: supported current workflow, but constrained by Issue 30-5 for repair, scaling, and deterministic reconciliation. This audit should not decide whether it must move through `commit_batch`.
+- Tests and operator documentation: `tests/test_import_inventory.py`, README Fixed-Workbook Inventory Bootstrap, and deployment guide.
+- Relationship to current workflows: fixed-workbook/bootstrap path, but constrained by Issue 30-5 for repair, scaling, and deterministic reconciliation. Normal CSV/XLSX asset imports use Admin Tools -> Import Assets. This audit should not decide whether it must move through `commit_batch`.
 
 ### Older BQ26 Direct Import Tool
 
@@ -297,7 +297,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 
 ### Paths That Bypass Shared Event Behavior
 
-- Holder CSV import writes authoritative holder/organization reference state without a separate administrative audit trail; it does not inherently bypass event-derived asset custody state.
+- Holder CSV admin UI import writes authoritative holder/organization reference state and a persistent append-only Import History row for each successful admin UI import; CLI Holder imports remain internal and unaudited. Holder imports do not inherently bypass event-derived asset custody state.
 - Admin reference-data UI writes authoritative organizations/buildings/mappings without a separate administrative audit trail; it does not inherently bypass event-derived asset custody state.
 - Admin slot provisioning writes empty seed slot records without a separate administrative audit trail; it does not write asset custody state or slot occupancy.
 - Standard XLSX inventory importer bypasses `commit_batch`, though it appends `ASSET_CREATED` and `SLOT_ASSIGN` events and tests state/event reconciliation.
@@ -319,7 +319,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 
 - Generic `assettrack.ingest` CLI: lacks enforced validation, preview, Flask roles, app-user attribution, direct tests, operator docs, and in-file collision checks.
 - Network CSV CLI: lacks Flask role enforcement and interactive preview; validation/commit are separate phases.
-- Holder import: Issue 30-13 adds preview/confirmation and documents the current policy that Holder imports change reference data without custody events or a separate persistent audit record; persistent reference-data import auditing is deferred to Issue 30-27 / #1078.
+- Holder import: admin UI Holder CSV imports provide preview/confirmation and create persistent append-only Import History for successful admin UI imports. Holder CLI imports remain internal and unaudited.
 - Admin reference-data UI: lacks preview and actor/audit trail.
 - Admin slot provisioning UI: lacks preview and actor/audit trail.
 - Standard XLSX inventory importer: lacks Flask role enforcement, interactive preview, app-user attribution, and shared-committer behavior; collision reporting relies partly on DB integrity.
@@ -342,7 +342,7 @@ Why it matters: AssetTrack has several ways to create assets, holders, reference
 - Add a small docs/control issue for `assettrack.ingest` that documents internal-only status and prevents accidental operator exposure, without changing `commit_batch`.
 - Add direct CLI tests for `assettrack.ingest` only if Greg wants it retained as more than private plumbing.
 - In Issue 30-12, decide whether Switch/Router import remains CLI-backed, becomes an admin upload workflow, or keeps the current admin template page as guidance only.
-- In Issue 30-13, add Holder import preview and document the current audit policy without schema changes; persistent reference-data import auditing is deferred to Issue 30-27 / #1078.
+- Keep Holder import documentation aligned with the current boundary: admin UI CSV imports create persistent append-only Import History for successful imports, while CLI imports remain internal and unaudited.
 - In Issue 30-5, repair XLSX inventory import scaling and deterministic reconciliation while preserving first-asset prerequisites and avoiding silent reference-data creation.
 - In Issue 30-16, document first-run operator guidance without exposing internal or legacy tools as supported workflows.
 - Add a future reference-data audit design only with explicit approval if it requires schema or persistence changes.
