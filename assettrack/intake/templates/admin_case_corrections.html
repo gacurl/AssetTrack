@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Case Corrections{% endblock %}
+{% block page_heading %}Admin: Case Corrections{% endblock %}
+{% block page_class %} admin-maintenance-standard-fields{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .case-correction-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 0.75rem 1rem;
+    }
+    .case-correction-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="workflow-local-nav" aria-label="Admin case correction navigation">
+    <a class="nav-link" href="{{ url_for('admin_system') }}">Back to Admin Tools</a>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category|e }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Prepare Correction</h2>
+    {% if case_options %}
+      <form method="post" action="{{ url_for('admin_case_corrections') }}">
+        <input type="hidden" name="action" value="preview" />
+        <input type="hidden" name="event_type" value="CASE_RENAME" />
+
+        <h3>Rename Case</h3>
+        <label for="rename_old_case_name">Current Case</label>
+        <select id="rename_old_case_name" name="old_case_name" required>
+          {% for case_name in case_options %}
+            <option value="{{ case_name }}"{% if old_case_name == case_name and event_type != "CASE_REMOVE" %} selected{% endif %}>{{ case_name }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="new_case_name">New Case</label>
+        <input id="new_case_name" name="new_case_name" value="{{ new_case_name or '' }}" autocomplete="off" required />
+
+        <button type="submit">Preview Rename</button>
+      </form>
+
+      <form method="post" action="{{ url_for('admin_case_corrections') }}">
+        <input type="hidden" name="action" value="preview" />
+        <input type="hidden" name="event_type" value="CASE_REMOVE" />
+
+        <h3>Remove Never-Used Case</h3>
+        <label for="remove_old_case_name">Current Case</label>
+        <select id="remove_old_case_name" name="old_case_name" required>
+          {% for case_name in case_options %}
+            <option value="{{ case_name }}"{% if old_case_name == case_name and event_type == "CASE_REMOVE" %} selected{% endif %}>{{ case_name }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit">Preview Removal</button>
+      </form>
+    {% else %}
+      <p>No Cases are available to correct. <a href="{{ url_for('admin_slot_provision') }}">Admin Tools → Provision Slots</a></p>
+    {% endif %}
+  </div>
+
+  {% if correction_preview %}
+    <div class="card" id="case-correction-preview">
+      <h2>Preview Correction</h2>
+      <div class="case-correction-grid">
+        <div><strong>action:</strong> <code>{{ correction_preview.event_type }}</code></div>
+        <div><strong>current Case:</strong> <code>{{ correction_preview.old_case_name }}</code></div>
+        <div><strong>new Case:</strong> {% if correction_preview.new_case_name %}<code>{{ correction_preview.new_case_name }}</code>{% else %}None{% endif %}</div>
+        <div><strong>affected Slots:</strong> <code>{{ correction_preview.affected_slot_count }}</code></div>
+        <div><strong>affected Assets:</strong> <code>{{ correction_preview.affected_asset_count }}</code></div>
+      </div>
+
+      <h3>Slots</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>slot_id</th>
+            <th>Case</th>
+            <th>Slot</th>
+            <th>Marker</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for slot in correction_preview.slots %}
+            <tr>
+              <td><code>{{ slot.id }}</code></td>
+              <td><code>{{ slot.case_name }}</code></td>
+              <td><code>{{ slot.slot_position }}</code></td>
+              <td>{{ slot.current_asset_tag or "Empty" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p><strong>Existing asset events will not be changed.</strong></p>
+      <p><strong>Slot IDs and occupancy links will be preserved for rename.</strong></p>
+
+      <form method="post" action="{{ url_for('admin_case_corrections') }}">
+        <input type="hidden" name="action" value="commit" />
+        <input type="hidden" name="event_type" value="{{ correction_preview.event_type }}" />
+        <input type="hidden" name="old_case_name" value="{{ correction_preview.old_case_name }}" />
+        <input type="hidden" name="new_case_name" value="{{ correction_preview.new_case_name or '' }}" />
+        <input type="hidden" name="expected_event_type" value="{{ correction_preview.event_type }}" />
+        <input type="hidden" name="expected_old_case_name" value="{{ correction_preview.old_case_name }}" />
+        <input type="hidden" name="expected_new_case_name" value="{{ correction_preview.new_case_name or '' }}" />
+        <input type="hidden" name="expected_slot_count" value="{{ correction_preview.affected_slot_count }}" />
+        <input type="hidden" name="expected_asset_count" value="{{ correction_preview.affected_asset_count }}" />
+        <label>
+          <input type="checkbox" name="confirm_correction" value="1"{% if confirmed %} checked{% endif %} />
+          Confirm Case correction
+        </label>
+        <div class="case-correction-actions">
+          <button type="submit">Commit Correction</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
+  <div class="card" id="case-correction-history">
+    <h2>Correction History</h2>
+    {% if correction_history %}
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Date/time</th>
+            <th>Actor</th>
+            <th>Old Case</th>
+            <th>New Case</th>
+            <th>Slots</th>
+            <th>Assets</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in correction_history %}
+            <tr>
+              <td><code>{{ row.event_type }}</code></td>
+              <td>{{ row.created_at }}</td>
+              <td>{{ row.actor_username }}</td>
+              <td><code>{{ row.old_case_name }}</code></td>
+              <td>{% if row.new_case_name %}<code>{{ row.new_case_name }}</code>{% else %}None{% endif %}</td>
+              <td><code>{{ row.affected_slot_count }}</code></td>
+              <td><code>{{ row.affected_asset_count }}</code></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No Case corrections recorded.</p>
+    {% endif %}
+  </div>
+{% endblock %}

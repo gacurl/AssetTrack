@@ -219,7 +219,33 @@ Holder is stored for the Issue workflow.
 
 ---
 
-## 11. Admin Users
+## 11. Case Corrections
+
+**What this does**
+Renames one Case to an unused identifier or removes one strictly never-used Case.
+
+**Do this**
+1. Click **Admin**
+2. Click **Admin Tools**
+3. Click **Case Corrections**
+4. Enter the current Case
+5. Enter a new Case only for rename
+6. Click **Preview Correction**
+7. Confirm and commit only if the preview is correct
+
+**What happens next**
+- Rename preserves Slot IDs and asset event history
+- Removal deletes only never-used empty Slots
+- One correction row is recorded
+
+**Watch for**
+- Existing asset events are not changed
+- Used Cases cannot be removed
+- Rename cannot use an existing identifier
+
+---
+
+## 12. Admin Users
 
 **What this does**  
 Manage system users.
@@ -241,7 +267,7 @@ Changes apply immediately.
 
 ---
 
-## 12. Common Fixes
+## 13. Common Fixes
 
 **What this does**  
 Quick answers when something doesn’t work.
@@ -259,4 +285,4 @@ Fix the condition, then retry the action.
 
 **Watch for**
 - Queue is staging only  
-- Commit is the actual change  
+- Commit is the actual change

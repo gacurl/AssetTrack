@@ -505,6 +505,55 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS case_correction_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL CHECK(event_type IN ('CASE_RENAME', 'CASE_REMOVE')),
+            created_at TEXT NOT NULL,
+            actor_user_id INTEGER NOT NULL,
+            actor_username TEXT NOT NULL CHECK(length(trim(actor_username)) > 0),
+            old_case_name TEXT NOT NULL CHECK(length(trim(old_case_name)) > 0),
+            new_case_name TEXT NULL,
+            affected_slot_count INTEGER NOT NULL CHECK(affected_slot_count > 0),
+            affected_asset_count INTEGER NOT NULL CHECK(affected_asset_count >= 0),
+            CHECK (
+                (
+                    event_type = 'CASE_RENAME'
+                    AND new_case_name IS NOT NULL
+                    AND length(trim(new_case_name)) > 0
+                    AND upper(trim(old_case_name)) <> upper(trim(new_case_name))
+                )
+                OR
+                (
+                    event_type = 'CASE_REMOVE'
+                    AND new_case_name IS NULL
+                )
+            )
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS case_correction_events_no_update
+        BEFORE UPDATE ON case_correction_events
+        BEGIN
+            SELECT RAISE(ABORT, 'case_correction_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS case_correction_events_no_delete
+        BEFORE DELETE ON case_correction_events
+        BEGIN
+            SELECT RAISE(ABORT, 'case_correction_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS receipt_queue (
             id INTEGER PRIMARY KEY,
             receipt_key TEXT NOT NULL UNIQUE,

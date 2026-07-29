@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -221,6 +222,105 @@ def _slot_move_commit_data(
     return data
 
 
+def _insert_case_correction_fixture(*, case_name: str = "CASE-OLD", used: bool = True, with_event: bool = True) -> int:
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES
+                (1901, ?, 1, ?),
+                (1902, ?, 2, NULL);
+            """,
+            (case_name, "CASE-ASSET-1" if used else None, case_name),
+        )
+        asset_id = 0
+        if used:
+            cursor = conn.execute(
+                """
+                INSERT INTO assets (
+                    asset_tag,
+                    location_type,
+                    home_slot_id,
+                    case_number,
+                    slot_number,
+                    building_room
+                )
+                VALUES ('CASE-ASSET-1', 'STORAGE', 1901, ?, '1', 'HQ/101');
+                """,
+                (case_name,),
+            )
+            asset_id = int(cursor.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                VALUES (1901, ?, '2026-01-01T00:00:00+00:00');
+                """,
+                (asset_id,),
+            )
+            if with_event:
+                conn.execute(
+                    """
+                    INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+                    VALUES ('CASE-ASSET-1', 'SLOT_ASSIGN', '2026-01-01T00:00:00+00:00', 'admin', NULL, ?, NULL);
+                    """,
+                    (json.dumps({"slot": {"case_number": case_name, "slot_number": 1}}),),
+                )
+        conn.commit()
+        return asset_id
+    finally:
+        conn.close()
+
+
+def _case_correction_state() -> dict[str, object]:
+    conn = db.get_connection()
+    try:
+        slots = conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            ORDER BY id ASC;
+            """
+        ).fetchall()
+        assets = conn.execute(
+            """
+            SELECT asset_tag, home_slot_id, case_number, slot_number
+            FROM assets
+            ORDER BY asset_tag ASC;
+            """
+        ).fetchall()
+        occupancy = conn.execute(
+            """
+            SELECT slot_id, asset_id
+            FROM slot_occupancy
+            ORDER BY slot_id ASC;
+            """
+        ).fetchall()
+        events = conn.execute(
+            """
+            SELECT event_type, payload
+            FROM asset_events
+            ORDER BY id ASC;
+            """
+        ).fetchall()
+        corrections = conn.execute(
+            """
+            SELECT event_type, actor_user_id, actor_username, old_case_name, new_case_name, affected_slot_count, affected_asset_count
+            FROM case_correction_events
+            ORDER BY id ASC;
+            """
+        ).fetchall()
+        return {
+            "slots": [dict(row) for row in slots],
+            "assets": [dict(row) for row in assets],
+            "occupancy": [dict(row) for row in occupancy],
+            "events": [dict(row) for row in events],
+            "corrections": [dict(row) for row in corrections],
+        }
+    finally:
+        conn.close()
+
+
 def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
 
@@ -280,6 +380,342 @@ def test_admin_slot_provision_appends_slots_for_existing_case(client_with_temp_d
     finally:
         verify_conn.close()
     assert [int(row["slot_position"]) for row in rows] == [1, 2, 3, 4]
+
+
+def test_case_correction_schema_is_append_only(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO case_correction_events (
+                event_type,
+                created_at,
+                actor_user_id,
+                actor_username,
+                old_case_name,
+                new_case_name,
+                affected_slot_count,
+                affected_asset_count
+            )
+            VALUES ('CASE_REMOVE', '2026-01-01T00:00:00+00:00', 1, 'admin', 'CASE-X', NULL, 1, 0);
+            """
+        )
+        conn.commit()
+
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE case_correction_events SET old_case_name = 'CASE-Y' WHERE id = 1;")
+        conn.rollback()
+
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM case_correction_events WHERE id = 1;")
+    finally:
+        conn.close()
+
+
+def test_operator_denied_case_correction_preview_and_commit(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-case-correct", password="op-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+    _insert_case_correction_fixture(used=False)
+
+    entry_response = client_with_temp_db.get("/admin/case-corrections")
+    preview_response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={"action": "preview", "event_type": "CASE_REMOVE", "old_case_name": "CASE-OLD"},
+    )
+    commit_response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "commit",
+            "event_type": "CASE_REMOVE",
+            "old_case_name": "CASE-OLD",
+            "expected_event_type": "CASE_REMOVE",
+            "expected_old_case_name": "CASE-OLD",
+            "expected_new_case_name": "",
+            "expected_slot_count": "2",
+            "expected_asset_count": "0",
+            "confirm_correction": "1",
+        },
+    )
+
+    assert entry_response.status_code == 403
+    assert preview_response.status_code == 403
+    assert commit_response.status_code == 403
+    assert _case_correction_state()["corrections"] == []
+
+
+def test_case_correction_page_shows_empty_case_message(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = client_with_temp_db.get("/admin/case-corrections")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "No Cases are available to correct." in html
+    assert "Admin Tools → Provision Slots" in html
+    assert "/admin/slots/provision" in html
+    assert 'name="old_case_name"' not in html
+    assert 'name="new_case_name"' not in html
+
+
+def test_case_correction_page_uses_case_dropdowns_and_rename_only_new_case(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture(used=False)
+
+    response = client_with_temp_db.get("/admin/case-corrections")
+    html = response.get_data(as_text=True)
+    remove_section = html[html.index("Remove Never-Used Case") : html.index("Correction History")]
+
+    assert response.status_code == 200
+    assert 'id="old_case_name"' not in html
+    assert 'id="rename_old_case_name" name="old_case_name" required' in html
+    assert 'id="remove_old_case_name" name="old_case_name" required' in html
+    assert '<option value="CASE-OLD"' in html
+    assert 'id="new_case_name" name="new_case_name"' in html
+    assert 'id="new_case_name" name="new_case_name" value="" autocomplete="off" required' in html
+    assert 'name="new_case_name"' not in remove_section
+
+
+def test_case_rename_preview_does_not_write(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture()
+    before = _case_correction_state()
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "preview",
+            "event_type": "CASE_RENAME",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": "CASE-NEW",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"Preview Correction" in response.data
+    assert b'name="expected_slot_count" value="2"' in response.data
+    assert b'name="expected_asset_count" value="1"' in response.data
+    assert _case_correction_state() == before
+
+
+def test_case_correction_page_shows_successful_history(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO case_correction_events (
+                event_type,
+                created_at,
+                actor_user_id,
+                actor_username,
+                old_case_name,
+                new_case_name,
+                affected_slot_count,
+                affected_asset_count
+            )
+            VALUES (
+                'CASE_RENAME',
+                '2026-07-29T14:03:00+00:00',
+                1,
+                'admin-slots',
+                'CASE-OLD',
+                'CASE-NEW',
+                2,
+                1
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/admin/case-corrections")
+
+    assert response.status_code == 200
+    assert b"Correction History" in response.data
+    assert b"CASE_RENAME" in response.data
+    assert b"2026-07-29T14:03:00+00:00" in response.data
+    assert b"admin-slots" in response.data
+    assert b"CASE-OLD" in response.data
+    assert b"CASE-NEW" in response.data
+    assert b"<code>2</code>" in response.data
+    assert b"<code>1</code>" in response.data
+
+
+def test_case_rename_commit_updates_current_state_and_preserves_events(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    asset_id = _insert_case_correction_fixture()
+    before = _case_correction_state()
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "commit",
+            "event_type": "CASE_RENAME",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": "CASE-NEW",
+            "expected_event_type": "CASE_RENAME",
+            "expected_old_case_name": "CASE-OLD",
+            "expected_new_case_name": "CASE-NEW",
+            "expected_slot_count": "2",
+            "expected_asset_count": "1",
+            "confirm_correction": "1",
+        },
+        follow_redirects=True,
+    )
+    after = _case_correction_state()
+
+    assert response.status_code == 200
+    assert b"Renamed Case CASE-OLD to CASE-NEW." in response.data
+    assert [(row["id"], row["case_name"]) for row in after["slots"]] == [(1901, "CASE-NEW"), (1902, "CASE-NEW")]
+    assert after["assets"] == [
+        {"asset_tag": "CASE-ASSET-1", "home_slot_id": 1901, "case_number": "CASE-NEW", "slot_number": "1"}
+    ]
+    assert after["occupancy"] == [{"slot_id": 1901, "asset_id": asset_id}]
+    assert after["events"] == before["events"]
+    assert after["corrections"] == [
+        {
+            "event_type": "CASE_RENAME",
+            "actor_user_id": 1,
+            "actor_username": "admin-slots",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": "CASE-NEW",
+            "affected_slot_count": 2,
+            "affected_asset_count": 1,
+        }
+    ]
+
+
+def test_case_rename_blocks_used_target_identifier(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture()
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (1910, 'CASE-USED', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "preview",
+            "event_type": "CASE_RENAME",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": "CASE-USED",
+        },
+    )
+
+    assert b"New Case identifier is already used." in response.data
+    assert _case_correction_state()["corrections"] == []
+
+
+def test_case_rename_blocks_stale_confirmation(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture(used=True, with_event=False)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO assets (asset_tag, location_type, home_slot_id, case_number, slot_number)
+            VALUES ('CASE-ASSET-2', 'STORAGE', 1902, 'CASE-OLD', '2');
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "commit",
+            "event_type": "CASE_RENAME",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": "CASE-NEW",
+            "expected_event_type": "CASE_RENAME",
+            "expected_old_case_name": "CASE-OLD",
+            "expected_new_case_name": "CASE-NEW",
+            "expected_slot_count": "2",
+            "expected_asset_count": "1",
+            "confirm_correction": "1",
+        },
+    )
+
+    assert b"Case asset count changed. Preview again." in response.data
+    state = _case_correction_state()
+    assert {row["case_name"] for row in state["slots"]} == {"CASE-OLD"}
+    assert state["corrections"] == []
+
+
+def test_case_remove_commit_deletes_strictly_never_used_case(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture(used=False)
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={
+            "action": "commit",
+            "event_type": "CASE_REMOVE",
+            "old_case_name": "CASE-OLD",
+            "expected_event_type": "CASE_REMOVE",
+            "expected_old_case_name": "CASE-OLD",
+            "expected_new_case_name": "",
+            "expected_slot_count": "2",
+            "expected_asset_count": "0",
+            "confirm_correction": "1",
+        },
+        follow_redirects=True,
+    )
+    state = _case_correction_state()
+
+    assert response.status_code == 200
+    assert b"Removed never-used Case CASE-OLD." in response.data
+    assert state["slots"] == []
+    assert state["corrections"] == [
+        {
+            "event_type": "CASE_REMOVE",
+            "actor_user_id": 1,
+            "actor_username": "admin-slots",
+            "old_case_name": "CASE-OLD",
+            "new_case_name": None,
+            "affected_slot_count": 2,
+            "affected_asset_count": 0,
+        }
+    ]
+
+
+def test_case_remove_blocks_event_history_reference(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_case_correction_fixture(used=False)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload, holder_id)
+            VALUES ('OLD-EVENT-ASSET', 'SLOT_ASSIGN', '2026-01-01T00:00:00+00:00', 'admin', NULL, ?, NULL);
+            """,
+            (json.dumps({"slot": {"case_number": "CASE-OLD", "slot_number": 1}}),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/case-corrections",
+        data={"action": "preview", "event_type": "CASE_REMOVE", "old_case_name": "CASE-OLD"},
+    )
+
+    assert b"Cannot remove a Case referenced by event history." in response.data
+    state = _case_correction_state()
+    assert len(state["slots"]) == 2
+    assert state["corrections"] == []
 
 
 def test_unslotted_storage_asset_can_be_assigned_after_slot_provision(client_with_temp_db) -> None:
