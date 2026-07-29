@@ -30,3 +30,13 @@ def test_compose_does_not_make_persistent_data_world_writable() -> None:
 
     assert "chmod 0777" not in compose
     assert "chmod 777" not in compose
+
+
+def test_compose_passes_required_secret_key_without_default() -> None:
+    compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "ASSETTRACK_SECRET_KEY: ${ASSETTRACK_SECRET_KEY}" in compose
+    assert "ASSETTRACK_SECRET_KEY:-" not in compose
+    assert "dev-not-secret" not in compose
+    assert "ASSETTRACK_SECRET_KEY=" in env_example
