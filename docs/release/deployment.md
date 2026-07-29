@@ -25,6 +25,14 @@ cd AssetTrack
 
 ## Start the system
 
+Before starting a Docker deployment, create a private runtime secret and store it outside git in your local environment file or deployment environment:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Set the generated value as `ASSETTRACK_SECRET_KEY`. Do not commit the generated value. The tracked `.env.example` file includes the variable name only.
+
 From the repository root, run:
 
 ```bash
