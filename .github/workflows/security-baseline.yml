@@ -66,6 +66,7 @@ jobs:
           name: trivy-filesystem-reports
           path: trivy-reports/
           if-no-files-found: error
+          retention-days: 30
 
   trivy-image:
     name: Trivy container image scan
@@ -132,3 +133,4 @@ jobs:
           name: trivy-image-reports
           path: trivy-reports/
           if-no-files-found: error
+          retention-days: 30
