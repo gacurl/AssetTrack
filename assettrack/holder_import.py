@@ -40,6 +40,13 @@ class HolderImportReport:
 
 
 @dataclass(frozen=True)
+class HolderImportAuditContext:
+    actor_user_id: int
+    actor_username: str
+    source_filename: str
+
+
+@dataclass(frozen=True)
 class HolderImportPreviewRow:
     row_number: int
     category: str
@@ -263,6 +270,40 @@ def _holder_matches_import(holder: sqlite3.Row, row: HolderImportRow, organizati
     )
 
 
+def _insert_holder_import_event(
+    conn: sqlite3.Connection,
+    *,
+    audit_context: HolderImportAuditContext,
+    created_at: str,
+    processed_count: int,
+    created_count: int,
+    updated_count: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO holder_import_events (
+            created_at,
+            actor_user_id,
+            actor_username,
+            source_filename,
+            processed_count,
+            created_count,
+            updated_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            created_at,
+            int(audit_context.actor_user_id),
+            str(audit_context.actor_username or "").strip(),
+            str(audit_context.source_filename or "").strip(),
+            int(processed_count),
+            int(created_count),
+            int(updated_count),
+        ),
+    )
+
+
 def _invalid_preview_row(row_number: int, problem: str, *, organization: str = "", name: str = "", email: str = "") -> HolderImportPreviewRow:
     return HolderImportPreviewRow(
         row_number=row_number,
@@ -427,7 +468,12 @@ def preview_holders_csv(csv_path: str | Path, *, db_path: str | Path) -> HolderI
         conn.close()
 
 
-def import_holders_csv(csv_path: str | Path, *, db_path: str | Path) -> HolderImportReport:
+def import_holders_csv(
+    csv_path: str | Path,
+    *,
+    db_path: str | Path,
+    audit_context: HolderImportAuditContext | None = None,
+) -> HolderImportReport:
     preview = preview_holders_csv(csv_path, db_path=db_path)
     if not preview.can_commit:
         errors = [f"Row {row.row_number}: {row.problem}" for row in preview.rows if row.problem]
@@ -499,6 +545,16 @@ def import_holders_csv(csv_path: str | Path, *, db_path: str | Path) -> HolderIm
                     (row.name, row.organization, organization_id, row.email, now_iso, holder_id),
                 )
                 updated += 1
+
+            if audit_context is not None:
+                _insert_holder_import_event(
+                    conn,
+                    audit_context=audit_context,
+                    created_at=_utc_now_iso(),
+                    processed_count=len(parsed),
+                    created_count=created,
+                    updated_count=updated,
+                )
 
         return HolderImportReport(processed=len(parsed), created=created, updated=updated, errors=())
     finally:

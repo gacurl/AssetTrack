@@ -340,7 +340,8 @@ Use Import Holders when you need to load holder records from an approved file.
 6. Select `Confirm and Commit Holder Import` only after the preview is correct.
 7. Review the result.
 
-Fix the file if AssetTrack reports duplicate, ambiguous, invalid, or blocked rows. Preview does not create or update Holders or Organizations. Confirmed imports currently change Holder and Organization reference data only; they do not create custody events or a separate persistent audit record. Persistent reference-data import auditing is deferred to Issue 30-27 / #1078.
+Fix the file if AssetTrack reports duplicate, ambiguous, invalid, or blocked rows. Preview does not create or update Holders or Organizations. Successful admin UI Holder imports change Holder and Organization reference data, do not create custody events, and create a persistent import audit record retained indefinitely.
+
 ## Import Assets
 
 **Admin only**

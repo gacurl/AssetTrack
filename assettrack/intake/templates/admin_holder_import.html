@@ -78,7 +78,7 @@
       <p class="import-help">Required columns: <code>organization</code>, <code>name</code>, <code>email</code>.</p>
       <p class="import-help">Matching email addresses update existing holder records. New email addresses create new holders.</p>
       <p class="import-help">Organizations are reused by case-insensitive name; missing Organizations are proposed in preview and created only after confirmation.</p>
-      <p class="import-help">Holder imports change Holder and Organization reference data. Holder imports do not create asset custody events. A separate persistent import audit record is not currently created.</p>
+      <p class="import-help">Successful admin UI Holder imports create a persistent import audit record retained indefinitely. Holder imports do not create asset custody events.</p>
     </div>
   </details>
 
@@ -180,4 +180,40 @@
       {% endif %}
     </div>
   {% endif %}
+
+  <div class="card">
+    <h2>Import History</h2>
+    {% if holder_import_history %}
+      <div class="holder-preview-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Actor</th>
+              <th>Filename</th>
+              <th>Processed</th>
+              <th>Created</th>
+              <th>Updated</th>
+              <th>Unchanged</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in holder_import_history %}
+              <tr>
+                <td>{{ row.created_at }}</td>
+                <td>{{ row.actor_username }}</td>
+                <td><code>{{ row.source_filename }}</code></td>
+                <td>{{ row.processed_count }}</td>
+                <td>{{ row.created_count }}</td>
+                <td>{{ row.updated_count }}</td>
+                <td>{{ row.unchanged_count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="import-help">No Holder import audit records.</p>
+    {% endif %}
+  </div>
 {% endblock %}

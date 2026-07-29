@@ -346,11 +346,13 @@ def test_admin_can_preview_and_confirm_holders_from_csv(client_with_temp_db) -> 
     conn = db.get_connection()
     try:
         holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        audit_count = int(conn.execute("SELECT COUNT(*) FROM holder_import_events;").fetchone()[0])
         org = conn.execute("SELECT id FROM organizations WHERE name = ?;", ("Ops Alpha",)).fetchone()
     finally:
         conn.close()
 
     assert holder_count == 0
+    assert audit_count == 0
     assert org is None
 
     commit_response = client_with_temp_db.post(
@@ -365,6 +367,9 @@ def test_admin_can_preview_and_confirm_holders_from_csv(client_with_temp_db) -> 
     assert b"Created:</strong> 1" in commit_response.data
     assert b"Updated:</strong> 0" in commit_response.data
     assert b"Errors:</strong> 0" in commit_response.data
+    assert b"Import History" in commit_response.data
+    assert b"admin-import" in commit_response.data
+    assert b"<code>holders.csv</code>" in commit_response.data
 
     conn = db.get_connection()
     try:
@@ -372,11 +377,27 @@ def test_admin_can_preview_and_confirm_holders_from_csv(client_with_temp_db) -> 
             "SELECT name, organization, email FROM holders WHERE email = ?;",
             ("jane@example.org",),
         ).fetchone()
+        audit_rows = conn.execute(
+            """
+            SELECT actor_user_id, actor_username, source_filename, processed_count, created_count, updated_count
+            FROM holder_import_events;
+            """
+        ).fetchall()
     finally:
         conn.close()
 
     assert holder is not None
     assert dict(holder) == {"name": "Jane Doe", "organization": "Ops Alpha", "email": "jane@example.org"}
+    assert [dict(row) for row in audit_rows] == [
+        {
+            "actor_user_id": admin_id,
+            "actor_username": "admin-import",
+            "source_filename": "holders.csv",
+            "processed_count": 1,
+            "created_count": 1,
+            "updated_count": 0,
+        }
+    ]
 
 def test_admin_holder_import_temp_path_ignores_uploaded_filename(client_with_temp_db, monkeypatch) -> None:
     admin_id = create_test_user(username="admin-import-hostile-name", password="admin-pass", role="admin")
@@ -425,9 +446,10 @@ def test_admin_holder_import_page_exposes_collapsible_csv_requirements(client_wi
     assert b"Preview Holders" in response.data
     assert b"CSV requirements" in response.data
     assert b"Columns and import behavior" in response.data
-    assert b"Holder imports change Holder and Organization reference data." in response.data
+    assert b"Successful admin UI Holder imports create a persistent import audit record retained indefinitely." in response.data
     assert b"Holder imports do not create asset custody events." in response.data
-    assert b"A separate persistent import audit record is not currently created." in response.data
+    assert b"Import History" in response.data
+    assert b"No Holder import audit records." in response.data
     assert b"Issue 30-27" not in response.data
     assert b'<details class="disclosure-section">' in response.data
 
@@ -458,10 +480,12 @@ def test_admin_holder_import_surfaces_existing_validation_errors(client_with_tem
     conn = db.get_connection()
     try:
         holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        audit_count = int(conn.execute("SELECT COUNT(*) FROM holder_import_events;").fetchone()[0])
     finally:
         conn.close()
 
     assert holder_count == 0
+    assert audit_count == 0
 
 
 def test_admin_holder_import_preview_shows_duplicate_and_invalid_rows(client_with_temp_db) -> None:
@@ -499,10 +523,12 @@ def test_admin_holder_import_preview_shows_duplicate_and_invalid_rows(client_wit
     conn = db.get_connection()
     try:
         holder_count = int(conn.execute("SELECT COUNT(*) FROM holders;").fetchone()[0])
+        audit_count = int(conn.execute("SELECT COUNT(*) FROM holder_import_events;").fetchone()[0])
     finally:
         conn.close()
 
     assert holder_count == 0
+    assert audit_count == 0
 
 def test_operator_is_forbidden_for_human_readable_report(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-report", password="op-pass", role="operator")
