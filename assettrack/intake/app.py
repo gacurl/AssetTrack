@@ -2416,6 +2416,325 @@ def _validate_admin_slot_move_expected(
         raise ValueError("Destination slot changed. Preview the move again.")
 
 
+def _normalize_case_identifier(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _case_identifier_in_payload(value: object, case_name: str) -> bool:
+    normalized_case = _normalize_case_identifier(case_name)
+    if isinstance(value, dict):
+        return any(_case_identifier_in_payload(item, normalized_case) for item in value.values())
+    if isinstance(value, list):
+        return any(_case_identifier_in_payload(item, normalized_case) for item in value)
+    if isinstance(value, str):
+        return _normalize_case_identifier(value) == normalized_case
+    return False
+
+
+def _asset_event_payload_references_case(conn: sqlite3.Connection, case_name: str) -> bool:
+    normalized_case = _normalize_case_identifier(case_name)
+    if not normalized_case:
+        return False
+    rows = conn.execute(
+        """
+        SELECT payload
+        FROM asset_events
+        WHERE payload IS NOT NULL
+          AND TRIM(payload) <> ''
+          AND UPPER(payload) LIKE ?;
+        """,
+        (f"%{normalized_case}%",),
+    ).fetchall()
+    for row in rows:
+        payload_text = str(row["payload"] or "")
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            if normalized_case in payload_text.upper():
+                return True
+            continue
+        if _case_identifier_in_payload(payload, normalized_case):
+            return True
+    return False
+
+
+def _case_identifier_exists_in_slots(conn: sqlite3.Connection, case_name: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+        LIMIT 1;
+        """,
+        (case_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _case_identifier_exists_in_assets(conn: sqlite3.Connection, case_name: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM assets
+        WHERE UPPER(COALESCE(case_number, '')) = UPPER(?)
+        LIMIT 1;
+        """,
+        (case_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _case_identifier_is_completely_unused(conn: sqlite3.Connection, case_name: str) -> bool:
+    return (
+        not _case_identifier_exists_in_slots(conn, case_name)
+        and not _case_identifier_exists_in_assets(conn, case_name)
+        and not _asset_event_payload_references_case(conn, case_name)
+    )
+
+
+def _case_correction_source_slots(conn: sqlite3.Connection, case_name: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+        ORDER BY slot_position ASC;
+        """,
+        (case_name,),
+    ).fetchall()
+
+
+def _slot_id_placeholders(slot_ids: list[int]) -> str:
+    return ", ".join("?" for _ in slot_ids)
+
+
+def _count_assets_tied_to_slots(conn: sqlite3.Connection, slot_ids: list[int]) -> int:
+    if not slot_ids:
+        return 0
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS c
+        FROM assets
+        WHERE home_slot_id IN ({_slot_id_placeholders(slot_ids)});
+        """,
+        tuple(slot_ids),
+    ).fetchone()
+    return int(row["c"] or 0)
+
+
+def _case_has_occupancy(conn: sqlite3.Connection, slot_ids: list[int]) -> bool:
+    if not slot_ids:
+        return False
+    row = conn.execute(
+        f"""
+        SELECT 1
+        FROM slot_occupancy
+        WHERE slot_id IN ({_slot_id_placeholders(slot_ids)})
+        LIMIT 1;
+        """,
+        tuple(slot_ids),
+    ).fetchone()
+    return row is not None
+
+
+def _case_has_slot_marker(slots: list[sqlite3.Row]) -> bool:
+    return any(str(row["current_asset_tag"] or "").strip() for row in slots)
+
+
+def _build_case_correction_preview(
+    conn: sqlite3.Connection,
+    *,
+    event_type: str,
+    old_case_name: str,
+    new_case_name: str = "",
+) -> dict:
+    normalized_event_type = str(event_type or "").strip().upper()
+    old_case = _normalize_case_identifier(old_case_name)
+    new_case = _normalize_case_identifier(new_case_name)
+    if normalized_event_type not in {"CASE_RENAME", "CASE_REMOVE"}:
+        raise ValueError("Select rename or removal.")
+    if not old_case:
+        raise ValueError("Current Case is required.")
+
+    source_slots = _case_correction_source_slots(conn, old_case)
+    if not source_slots:
+        raise ValueError("Case not found.")
+    slot_ids = [int(row["id"]) for row in source_slots]
+    affected_slot_count = len(slot_ids)
+    affected_asset_count = _count_assets_tied_to_slots(conn, slot_ids)
+
+    if normalized_event_type == "CASE_RENAME":
+        if not new_case:
+            raise ValueError("New Case is required.")
+        if old_case == new_case:
+            raise ValueError("New Case must be different.")
+        if not _case_identifier_is_completely_unused(conn, new_case):
+            raise ValueError("New Case identifier is already used.")
+    else:
+        if new_case:
+            raise ValueError("Removal does not use a new Case.")
+        if affected_asset_count > 0:
+            raise ValueError("Cannot remove a Case referenced by assets.")
+        if _case_has_occupancy(conn, slot_ids):
+            raise ValueError("Cannot remove a Case with slot occupancy.")
+        if _case_has_slot_marker(source_slots):
+            raise ValueError("Cannot remove a Case with slot asset markers.")
+        if _case_identifier_exists_in_assets(conn, old_case):
+            raise ValueError("Cannot remove a Case referenced by assets.")
+        if _asset_event_payload_references_case(conn, old_case):
+            raise ValueError("Cannot remove a Case referenced by event history.")
+
+    return {
+        "event_type": normalized_event_type,
+        "old_case_name": old_case,
+        "new_case_name": new_case if normalized_event_type == "CASE_RENAME" else "",
+        "affected_slot_count": affected_slot_count,
+        "affected_asset_count": affected_asset_count,
+        "slots": [
+            {
+                "id": int(row["id"]),
+                "case_name": str(row["case_name"] or ""),
+                "slot_position": int(row["slot_position"]),
+                "current_asset_tag": str(row["current_asset_tag"] or ""),
+            }
+            for row in source_slots
+        ],
+    }
+
+
+def _validate_case_correction_expected(
+    preview: dict,
+    *,
+    expected_event_type: str,
+    expected_old_case_name: str,
+    expected_new_case_name: str,
+    expected_slot_count: str,
+    expected_asset_count: str,
+) -> None:
+    try:
+        slot_count = int(expected_slot_count)
+        asset_count = int(expected_asset_count)
+    except ValueError as exc:
+        raise ValueError("Case correction preview is stale. Preview again.") from exc
+    if preview["event_type"] != str(expected_event_type or "").strip().upper():
+        raise ValueError("Case correction action changed. Preview again.")
+    if preview["old_case_name"] != _normalize_case_identifier(expected_old_case_name):
+        raise ValueError("Case correction source changed. Preview again.")
+    if preview["new_case_name"] != _normalize_case_identifier(expected_new_case_name):
+        raise ValueError("Case correction target changed. Preview again.")
+    if int(preview["affected_slot_count"]) != slot_count:
+        raise ValueError("Case slot count changed. Preview again.")
+    if int(preview["affected_asset_count"]) != asset_count:
+        raise ValueError("Case asset count changed. Preview again.")
+
+
+def _commit_case_correction(
+    conn: sqlite3.Connection,
+    *,
+    preview: dict,
+    actor_user: dict,
+    created_at: str,
+) -> None:
+    event_type = str(preview["event_type"])
+    old_case = str(preview["old_case_name"])
+    new_case = str(preview["new_case_name"] or "")
+    slot_ids = [int(row["id"]) for row in preview["slots"]]
+
+    if event_type == "CASE_RENAME":
+        conn.execute(
+            """
+            UPDATE slots
+            SET case_name = ?
+            WHERE UPPER(case_name) = UPPER(?);
+            """,
+            (new_case, old_case),
+        )
+        conn.execute(
+            f"""
+            UPDATE assets
+            SET case_number = ?
+            WHERE home_slot_id IN ({_slot_id_placeholders(slot_ids)});
+            """,
+            (new_case, *slot_ids),
+        )
+    else:
+        conn.execute(
+            f"""
+            DELETE FROM slots
+            WHERE id IN ({_slot_id_placeholders(slot_ids)});
+            """,
+            tuple(slot_ids),
+        )
+
+    conn.execute(
+        """
+        INSERT INTO case_correction_events (
+            event_type,
+            created_at,
+            actor_user_id,
+            actor_username,
+            old_case_name,
+            new_case_name,
+            affected_slot_count,
+            affected_asset_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            event_type,
+            created_at,
+            int(actor_user["id"]),
+            str(actor_user.get("username") or ""),
+            old_case,
+            new_case if event_type == "CASE_RENAME" else None,
+            int(preview["affected_slot_count"]),
+            int(preview["affected_asset_count"]),
+        ),
+    )
+
+
+def _list_case_correction_history(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            event_type,
+            created_at,
+            actor_username,
+            old_case_name,
+            new_case_name,
+            affected_slot_count,
+            affected_asset_count
+        FROM case_correction_events
+        ORDER BY id DESC;
+        """
+    ).fetchall()
+    return [
+        {
+            "event_type": str(row["event_type"] or ""),
+            "created_at": str(row["created_at"] or ""),
+            "actor_username": str(row["actor_username"] or ""),
+            "old_case_name": str(row["old_case_name"] or ""),
+            "new_case_name": str(row["new_case_name"] or ""),
+            "affected_slot_count": int(row["affected_slot_count"]),
+            "affected_asset_count": int(row["affected_asset_count"]),
+        }
+        for row in rows
+    ]
+
+
+def _list_case_correction_case_options(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT case_name
+        FROM slots
+        WHERE TRIM(COALESCE(case_name, '')) <> ''
+        GROUP BY UPPER(case_name)
+        ORDER BY UPPER(case_name);
+        """
+    ).fetchall()
+    return [str(row["case_name"] or "") for row in rows]
+
+
 def _build_admin_retire_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     asset = _find_asset_for_scan_tag(conn, scan_tag)
     if not asset:
@@ -7463,6 +7782,106 @@ def admin_slot_provision():
         return redirect(url_for("admin_slot_provision"))
 
     return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+
+
+@app.route("/admin/case-corrections", methods=["GET", "POST"])
+@require_login
+@require_role("admin")
+def admin_case_corrections():
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    event_type = (request.form.get("event_type") or "CASE_RENAME").strip().upper()
+    old_case_name = _normalize_case_identifier(request.form.get("old_case_name"))
+    new_case_name = _normalize_case_identifier(request.form.get("new_case_name"))
+    confirmed = _is_truthy(request.form.get("confirm_correction"))
+    correction_preview: Optional[dict] = None
+
+    conn = get_connection()
+    try:
+        def render_case_corrections():
+            return render_template(
+                "admin_case_corrections.html",
+                event_type=event_type,
+                old_case_name=old_case_name,
+                new_case_name=new_case_name,
+                case_options=_list_case_correction_case_options(conn),
+                correction_preview=correction_preview,
+                correction_history=_list_case_correction_history(conn),
+                confirmed=confirmed,
+            )
+
+        if request.method == "POST":
+            action = (request.form.get("action") or "preview").strip().lower()
+
+            if action == "preview":
+                try:
+                    correction_preview = _build_case_correction_preview(
+                        conn,
+                        event_type=event_type,
+                        old_case_name=old_case_name,
+                        new_case_name=new_case_name,
+                    )
+                    event_type = str(correction_preview["event_type"])
+                    old_case_name = str(correction_preview["old_case_name"])
+                    new_case_name = str(correction_preview["new_case_name"] or "")
+                except ValueError as e:
+                    flash(str(e), "error")
+                return render_case_corrections()
+            if action != "commit":
+                flash("Unknown action.", "error")
+                return render_case_corrections()
+            if not confirmed:
+                flash("You must confirm the Case correction before commit.", "error")
+                return render_case_corrections()
+
+            actor_user = current_user()
+            if actor_user is None:
+                return _require_admin_for_route()
+
+            try:
+                conn.execute("BEGIN IMMEDIATE;")
+                correction_preview = _build_case_correction_preview(
+                    conn,
+                    event_type=event_type,
+                    old_case_name=old_case_name,
+                    new_case_name=new_case_name,
+                )
+                _validate_case_correction_expected(
+                    correction_preview,
+                    expected_event_type=request.form.get("expected_event_type") or "",
+                    expected_old_case_name=request.form.get("expected_old_case_name") or "",
+                    expected_new_case_name=request.form.get("expected_new_case_name") or "",
+                    expected_slot_count=request.form.get("expected_slot_count") or "",
+                    expected_asset_count=request.form.get("expected_asset_count") or "",
+                )
+                event_type = str(correction_preview["event_type"])
+                old_case_name = str(correction_preview["old_case_name"])
+                new_case_name = str(correction_preview["new_case_name"] or "")
+                _commit_case_correction(
+                    conn,
+                    preview=correction_preview,
+                    actor_user=actor_user,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                )
+                conn.commit()
+            except ValueError as e:
+                conn.rollback()
+                flash(str(e), "error")
+                return render_case_corrections()
+            except Exception:
+                conn.rollback()
+                raise
+
+            if event_type == "CASE_RENAME":
+                flash(f"Renamed Case {old_case_name} to {new_case_name}.", "success")
+            else:
+                flash(f"Removed never-used Case {old_case_name}.", "success")
+            return redirect(url_for("admin_case_corrections"))
+        return render_case_corrections()
+    finally:
+        conn.close()
 
 
 @app.post("/admin/recovery/acknowledge")
