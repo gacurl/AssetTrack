@@ -651,6 +651,13 @@ class DashboardTests(unittest.TestCase):
             room="Closet",
         )
         self._insert_asset(
+            "AT-ROUTER",
+            location_type="STORAGE",
+            equipment_type="router",
+            building="HQ North",
+            room="Closet",
+        )
+        self._insert_asset(
             "AT-UNKNOWN",
             location_type="STORAGE",
             equipment_type="other",
@@ -662,7 +669,7 @@ class DashboardTests(unittest.TestCase):
         data = build_dashboard_data(self.conn, custody_days_threshold=30)
 
         custody_map = data["snapshots"]["custody_map"]
-        self.assertEqual(custody_map["asset_count"], 3)
+        self.assertEqual(custody_map["asset_count"], 4)
         self.assertEqual([thread["label"] for thread in custody_map["threads"]], ["CISR", "Unknown Thread"])
 
         cisr_thread = custody_map["threads"][0]
@@ -682,7 +689,14 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual([domain["label"] for domain in hq_building["domains"]], ["Network"])
         network_holder = hq_building["domains"][0]["holders"][0]
         self.assertEqual(network_holder["label"], "Unassigned Holder")
-        self.assertEqual(network_holder["assets"][0]["asset_tag"], "AT-SWITCH")
+        self.assertEqual(
+            [asset["asset_tag"] for asset in network_holder["assets"]],
+            ["AT-ROUTER", "AT-SWITCH"],
+        )
+        self.assertEqual(
+            [asset["equipment_type_label"] for asset in network_holder["assets"]],
+            ["Router", "Switch"],
+        )
 
         unknown_building = unknown_thread["buildings"][1]
         self.assertEqual(unknown_building["domains"][0]["label"], "Unclassified Asset")
