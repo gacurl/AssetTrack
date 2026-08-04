@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import warnings
 import zipfile
 from collections import defaultdict
@@ -37,13 +38,12 @@ EXCEPTION_HEADERS = (
 
 CASE_SUMMARY_HEADERS = (
     "case_identifier",
-    "asset_count",
-    "slot_start",
-    "slot_end",
-    "first_source_sheet",
-    "first_source_row",
-    "last_source_row",
-    "reference_status",
+    "capacity",
+    "assigned_asset_count",
+    "available_position_count",
+    "highest_assigned_position",
+    "capacity_source",
+    "capacity_status",
 )
 
 QUESTIONABLE_VALUES = {
@@ -69,6 +69,7 @@ HEADER_ALIASES = {
 DEVICE_HEADER_FIELDS = {"equipment_type", "asset_tag", "serial_number", "model"}
 SUPPORTED_TYPES = {"switch": "Switch", "router": "Router"}
 REFERENCE_SHEET_NAMES = {"name cases"}
+RU_CAPACITY_PATTERN = re.compile(r"(?<![A-Z0-9])(\d+)\s*RU(?![A-Z0-9])", re.IGNORECASE)
 FIXED_ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
 FIXED_WORKBOOK_TIMESTAMP = datetime(2026, 1, 1, 0, 0, 0)
 
@@ -167,6 +168,23 @@ def _split_make_model(value: str) -> tuple[str, str]:
     if len(parts) == 2:
         return parts[0], parts[1]
     return "", value
+
+
+def _case_capacity(case_identifier: str) -> tuple[int | None, str]:
+    match = RU_CAPACITY_PATTERN.search(case_identifier)
+    if match is None:
+        return None, ""
+    return int(match.group(1)), "case_identifier RU"
+
+
+def _capacity_status(*, capacity: int | None, assigned_count: int) -> str:
+    if capacity is None:
+        return "Capacity Unknown"
+    if assigned_count > capacity:
+        return "Over Capacity"
+    if assigned_count == capacity:
+        return "Full"
+    return "Within Capacity"
 
 
 def _append_exception(
@@ -401,19 +419,45 @@ def normalize_manifest(path: Path) -> tuple[list[list[str]], list[ExceptionRow],
                     row.notes_comments,
                 ]
             )
-        reference_status = "not checked"
-        if reference_cases:
-            reference_status = "present" if case_identifier in reference_cases else "missing from reference"
+        assigned_count = len(case_rows)
+        capacity, capacity_source = _case_capacity(case_identifier)
+        available_position_count = "" if capacity is None else max(capacity - assigned_count, 0)
+        capacity_status = _capacity_status(capacity=capacity, assigned_count=assigned_count)
+        if capacity is None:
+            exceptions.append(
+                ExceptionRow(
+                    source_sheet="Case Summary",
+                    source_row=0,
+                    asset_tag="",
+                    serial_number="",
+                    case_identifier=case_identifier,
+                    field="case_identifier",
+                    value=case_identifier,
+                    reason="Capacity cannot be inferred from case identifier; expected an explicit RU value.",
+                )
+            )
+        elif assigned_count > capacity:
+            exceptions.append(
+                ExceptionRow(
+                    source_sheet="Case Summary",
+                    source_row=0,
+                    asset_tag="",
+                    serial_number="",
+                    case_identifier=case_identifier,
+                    field="case_identifier",
+                    value=case_identifier,
+                    reason=f"Assigned asset count {assigned_count} exceeds inferred RU capacity {capacity}.",
+                )
+            )
         case_summary_rows.append(
             [
                 case_identifier,
-                len(case_rows),
-                1,
-                len(case_rows),
-                case_rows[0].source_sheet,
-                case_rows[0].source_row,
-                case_rows[-1].source_row,
-                reference_status,
+                capacity if capacity is not None else "",
+                assigned_count,
+                available_position_count,
+                assigned_count,
+                capacity_source,
+                capacity_status,
             ]
         )
 
@@ -466,6 +510,10 @@ def build_output_workbook(path: Path) -> Workbook:
             ("Workflow", "Use Admin -> Import Assets at /admin/assets/import with the Asset Import sheet."),
             ("Database writes", "This normalizer does not connect to or write the AssetTrack database."),
             ("Storage source", "Case # is preserved as case_identifier. Slots are assigned by manifest order within each case."),
+            ("RU capacity", "Capacity is inferred only from an explicit RU value in the case identifier, such as 4RU or 16RU."),
+            ("Asset Import positions", "Asset Import creates only requested occupied positions for real imported assets."),
+            ("Unused capacity", "Unused capacity shown in Case Summary is informational and does not create placeholder assets or slots."),
+            ("Empty positions", "Creating unused empty positions requires a separate approved AssetTrack workflow change."),
             ("Supported rows", "Only Switch and Router rows are included in Asset Import."),
             ("Exceptions", "Questionable, unsupported, duplicate, or reference-mismatch values are listed without correction."),
         ),

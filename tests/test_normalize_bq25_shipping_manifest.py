@@ -21,6 +21,10 @@ def _write_manifest(path: Path) -> None:
     manifest.append([None, "Product", "Make\\Model", "Barcode", "Seriel", "Case #", "Quantity", "Commnet"])
     manifest.append([None, "Switch", "Cisco 3560CX-8", "SW-101", "SER-SW-101", "16RU-3", 1, "Naming variant"])
     manifest.append([None, "Router", "Cisco ISR4451", "RTR-101", "FOC270rYD9B", "LG-WHE-03", 1, "Reference omitted"])
+    manifest.append([None, "Switch", "Cisco Catalyst", "OVER-1", "SER-OVER-1", "2RU-9", 1, "Over capacity one"])
+    manifest.append([None, "Switch", "Cisco Catalyst", "OVER-2", "SER-OVER-2", "2RU-9", 1, "Over capacity two"])
+    manifest.append([None, "Router", "Cisco ISR", "OVER-3", "SER-OVER-3", "2RU-9", 1, "Over capacity three"])
+    manifest.append([None, "Switch", "Cisco Catalyst", "FULL-1", "SER-FULL-1", "1RU-1", 1, "Full case"])
 
     other = workbook.create_sheet("Manifest B")
     other.append([None, "Product", "Make", "Model", "Barcode", "Serial", "Case #", "Quantity", "Commnet (F/B)"])
@@ -68,13 +72,49 @@ def test_shipping_manifest_normalizer_writes_required_sheets_and_asset_import_ro
         ["Router", "RTR-100", "FCW1931CiPE", "Cisco", "ISR4331", "16RU-03", "2", "Preserve second"],
         ["Switch", "SW-101", "SER-SW-101", "Cisco", "3560CX-8", "16RU-3", "1", "Naming variant"],
         ["Router", "RTR-101", "FOC270rYD9B", "Cisco", "ISR4451", "LG-WHE-03", "1", "Reference omitted"],
+        ["Switch", "OVER-1", "SER-OVER-1", "Cisco", "Catalyst", "2RU-9", "1", "Over capacity one"],
+        ["Switch", "OVER-2", "SER-OVER-2", "Cisco", "Catalyst", "2RU-9", "2", "Over capacity two"],
+        ["Router", "OVER-3", "SER-OVER-3", "Cisco", "ISR", "2RU-9", "3", "Over capacity three"],
+        ["Switch", "FULL-1", "SER-FULL-1", "Cisco", "Catalyst", "1RU-1", "1", "Full case"],
         ["Switch", "SW-102", "FJC27441A0", "Cisco", "Catalyst", "LG-WHE-02", "1", "Reference duplicated"],
         ["Router", "RTR-102", "FOC238X0CG", "Cisco", "ASR", "LG-WHE-02", "2", "Reference duplicated"],
     ]
 
     analysis = analyze_asset_import_xlsx(output, filename="normalized.xlsx")
-    assert len(analysis.rows) == 6
+    assert len(analysis.rows) == 10
     assert analysis.issues == ()
+
+
+def test_shipping_manifest_normalizer_case_summary_reports_capacity_statuses(tmp_path: Path) -> None:
+    source = tmp_path / "manifest.xlsx"
+    output = tmp_path / "normalized.xlsx"
+    _write_manifest(source)
+
+    write_normalized_workbook(source, output)
+
+    summary_rows = _sheet_rows(output, "Case Summary")
+    assert summary_rows[0] == [
+        "case_identifier",
+        "capacity",
+        "assigned_asset_count",
+        "available_position_count",
+        "highest_assigned_position",
+        "capacity_source",
+        "capacity_status",
+    ]
+    summary = {row[0]: row[1:] for row in summary_rows[1:]}
+    assert summary["16RU-03"] == [16, 2, 14, 2, "case_identifier RU", "Within Capacity"]
+    assert summary["1RU-1"] == [1, 1, 0, 1, "case_identifier RU", "Full"]
+    assert summary["2RU-9"] == [2, 3, 0, 3, "case_identifier RU", "Over Capacity"]
+    assert summary["LG-WHE-02"] == [None, 2, None, 2, None, "Capacity Unknown"]
+
+    exceptions = _sheet_rows(output, "Exceptions")
+    reasons_by_case = {(row[4], row[7]) for row in exceptions[1:]}
+    assert ("2RU-9", "Assigned asset count 3 exceeds inferred RU capacity 2.") in reasons_by_case
+    assert (
+        "LG-WHE-02",
+        "Capacity cannot be inferred from case identifier; expected an explicit RU value.",
+    ) in reasons_by_case
 
 
 def test_shipping_manifest_normalizer_flags_questionable_values_without_correcting_output(tmp_path: Path) -> None:
@@ -94,6 +134,8 @@ def test_shipping_manifest_normalizer_flags_questionable_values_without_correcti
     assert any("Case naming variant also appears in manifest: 16RU-3" in reason for reason in exception_reasons)
     assert any("Case appears in manifest but is omitted from the reference sheet" in reason for reason in exception_reasons)
     assert any("Duplicate case in reference sheet rows" in reason for reason in exception_reasons)
+    assert any("exceeds inferred RU capacity" in reason for reason in exception_reasons)
+    assert any("Capacity cannot be inferred from case identifier" in reason for reason in exception_reasons)
 
     asset_rows = _sheet_rows(output, "Asset Import")
     flat_output_values = {str(value) for row in asset_rows[1:] for value in row}

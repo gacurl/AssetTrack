@@ -100,6 +100,9 @@ Normalization rules:
 - `Case #` is the storage source of truth.
 - Repeated worksheet headers are ignored.
 - Manifest row order within each case determines slot order: first device is slot `1`, second device is slot `2`, and so on.
+- Case Summary infers capacity only from an explicit RU value in the case identifier, such as `4RU`, `6RU`, `8RU`, or `16RU`.
+- Asset Import creates requested occupied positions only. Unused capacity shown in Case Summary is informational.
+- Creating unused empty positions requires a separate approved AssetTrack workflow change.
 - Source values are preserved. Questionable values are listed in `Exceptions` instead of being corrected.
 - Duplicate normalized asset tags or serial numbers are excluded from `Asset Import` and listed in `Exceptions`.
 - The script does not connect to or write the AssetTrack database.
