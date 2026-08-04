@@ -148,6 +148,22 @@
     .dashboard-map-card {
       margin-bottom: 1rem;
     }
+    .dashboard-map-card > summary {
+      flex-wrap: wrap;
+      align-items: baseline;
+    }
+    .dashboard-map-heading {
+      display: inline-flex;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.45rem 0.65rem;
+      min-width: 14rem;
+      text-align: left;
+    }
+    .dashboard-map-heading .disclosure-title {
+      flex: 0 0 auto;
+    }
     .dashboard-map-intro {
       margin: 0 0 0.9rem 0;
       color: var(--color-text-muted);
@@ -362,7 +378,10 @@
 
   <details class="disclosure-section dashboard-map-card">
     <summary aria-label="Custody map">
-      <span class="disclosure-title">Custody Map</span>
+      <span class="dashboard-map-heading">
+        <span class="disclosure-title">Custody Map</span>
+        <a class="nav-link" href="{{ url_for('asset_search') }}">Asset Search</a>
+      </span>
       <span class="disclosure-hint">Thread → Building → Operational Domain → Custody Holder → Asset</span>
     </summary>
     <div class="disclosure-body">
@@ -412,7 +431,9 @@
                                                 <ul class="custody-map-assets">
                                                   {% for asset in holder.assets %}
                                                     <li class="custody-map-asset">
-                                                      <span class="custody-map-label">Asset: <code>{{ asset.asset_tag }}</code></span>
+                                                      <span class="custody-map-label">Asset:
+                                                        <a class="nav-link" href="{{ url_for('asset_history', asset_tag=asset.asset_tag, return_to=url_for('dashboard')) }}"><code>{{ asset.asset_tag }}</code></a>
+                                                      </span>
                                                       <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
                                                     </li>
                                                   {% endfor %}
