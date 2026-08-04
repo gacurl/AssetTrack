@@ -72,3 +72,39 @@ A successful import for rows that requested valid case and slot storage must sho
 ## Unsupported Fields
 
 AssetTrack import is for custody and storage data. Do not add CMDB, IP address, MAC address, VLAN, topology, monitoring, configuration, switch port, patching, network relationship, running configuration, or device configuration fields.
+
+## BQ25 Shipping Manifest Normalization
+
+Use the local normalizer to convert a BQ25 shipping manifest into an AssetTrack-compatible workbook before using Import Assets.
+
+```bash
+./.venv/bin/python -m scripts.normalize_bq25_shipping_manifest data/import/BQ25_shipping_manifest.xlsx data/import/BQ25_assettrack_import.xlsx
+```
+
+The normalizer writes a workbook with four sheets:
+
+- `Asset Import`
+- `Exceptions`
+- `Case Summary`
+- `Read Me`
+
+Use the `Asset Import` sheet with Admin -> Import Assets at `/admin/assets/import`.
+
+Normalization rules:
+
+- Only Switch and Router rows are included.
+- `Product` identifies Switch versus Router rows.
+- `Barcode` becomes `asset_tag`.
+- `Serial` or `Seriel` becomes `serial_number`.
+- `Make\Model` is split into manufacturer and model; separate `Make` and `Model` columns are used when present.
+- `Case #` is the storage source of truth.
+- Repeated worksheet headers are ignored.
+- Manifest row order within each case determines slot order: first device is slot `1`, second device is slot `2`, and so on.
+- Case Summary infers capacity only from an explicit RU value in the case identifier, such as `4RU`, `6RU`, `8RU`, or `16RU`.
+- Asset Import creates requested occupied positions only. Unused capacity shown in Case Summary is informational.
+- Creating unused empty positions requires a separate approved AssetTrack workflow change.
+- Source values are preserved. Questionable values are listed in `Exceptions` instead of being corrected.
+- Duplicate normalized asset tags or serial numbers are excluded from `Asset Import` and listed in `Exceptions`.
+- The script does not connect to or write the AssetTrack database.
+
+Review `Exceptions` before importing. Known mixed-case serials, nearby model values, case-name variants, duplicate reference cases, and missing reference cases are intentionally flagged without being resolved.
