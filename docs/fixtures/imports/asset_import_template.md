@@ -1,19 +1,24 @@
 # Canonical Asset Import CSV Template
 
-Use `asset_import_template.csv` with Admin Tools -> Import Assets for supported bulk asset imports.
+Use `asset_import_template.csv` with Admin -> Import Assets at `/admin/assets/import` for supported bulk asset imports.
+
+The older Switch/Router CSV importer is not the Issue 31-2 workflow. Do not use it to verify storage provisioning, and do not treat it as evidence that Import Assets created case/slot storage.
 
 ## Workflow
 
-1. Open Admin Tools.
-2. Open Import Assets.
+1. Open Admin.
+2. Open Import Assets at `/admin/assets/import`.
 3. Choose a CSV or XLSX file.
 4. Select Analyze Import.
 5. Review the preview.
-6. Confirm the preview.
-7. Commit the approved rows.
-8. Review the results.
+6. Open Technical Details and review row diagnostics.
+7. Confirm the preview.
+8. Commit the approved rows.
+9. Open Cases and verify the case, slot, and occupancy results.
 
-Analyze Import creates a preview only. It does not write assets, events, slots, or occupancy. Commit requires explicit confirmation. Approved safe rows commit atomically, and blocked rows do not modify state.
+Analyze Import and Preview do not modify the database. They do not create cases, slots, assets, occupancy, or events.
+
+Commit requires explicit confirmation. Approved safe rows commit atomically, and blocked rows do not modify state.
 
 ## Required Fields
 
@@ -46,7 +51,23 @@ Supported `equipment_type` values:
 
 Storage fields are optional. Leave `case_identifier` and `slot_identifier` blank when storage is unknown or unavailable.
 
-Rows with missing or unavailable storage may continue as Unslotted only when the admin acknowledges that behavior during preview.
+When both storage fields are present, the import treats them as requested home-slot storage. Preview shows whether the requested slot already exists, is occupied, or will be created.
+
+In Technical Details, Preview explicitly identifies missing case/slot storage that will be created during commit.
+
+Confirmed Commit creates missing slots, assigns the imported assets to those slots, and updates occupancy atomically. If any commit failure occurs, slots, assets, occupancy, and events from that batch roll back together.
+
+Occupied slots remain protected. Import never displaces an existing slot occupant. Rows requesting occupied or unavailable storage may continue as Unslotted only when the admin acknowledges that behavior during preview.
+
+Repeating the same unified import does not create duplicate slots or duplicate occupancy. Existing matching slots and unchanged exact-match assets are reused or left unchanged.
+
+When both `case_identifier` and `slot_identifier` are blank, the row retains the acknowledged Unslotted behavior. The asset can be created in storage with no home slot only after the admin acknowledges Unslotted import during preview.
+
+## After Commit Verification
+
+Use the Cases view as the operator verification point after commit.
+
+A successful import for rows that requested valid case and slot storage must show the new case and slot assignments in Cases. The Unslotted asset count must not increase for those rows.
 
 ## Unsupported Fields
 

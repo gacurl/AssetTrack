@@ -8242,7 +8242,30 @@ def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | N
     ).fetchone()
 
 
+def _asset_import_get_or_create_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | None:
+    if row.storage_intent != "slotted":
+        return None
+    slot = _asset_import_slot_for_row(conn, row)
+    if slot is not None:
+        return slot
+    try:
+        slot_position = int(row.slot_identifier)
+    except ValueError as exc:
+        raise ValueError(f"Row {row.row_number}: slot_identifier must be numeric.") from exc
+    conn.execute(
+        """
+        INSERT INTO slots (case_name, slot_position, current_asset_tag)
+        VALUES (?, ?, NULL);
+        """,
+        (row.case_identifier, slot_position),
+    )
+    slot = _asset_import_slot_for_row(conn, row)
+    if slot is None:
+        raise ValueError(f"Row {row.row_number}: requested slot could not be created.")
+    return slot
+
 def _asset_import_slot_is_available_for(conn: sqlite3.Connection, *, slot_id: int, asset_tag: str) -> bool:
+
     occupant = conn.execute(
         """
         SELECT a.asset_tag
@@ -8416,7 +8439,7 @@ def _asset_import_apply_existing_update(conn: sqlite3.Connection, row, preview_r
     metadata_values = _asset_import_metadata_updates(row)
     moved = False
     if movement_change:
-        slot = _asset_import_slot_for_row(conn, row)
+        slot = _asset_import_get_or_create_slot_for_row(conn, row)
         if slot is None:
             raise ValueError(f"Row {row.row_number}: destination slot is unavailable.")
         if not _asset_import_slot_is_available_for(conn, slot_id=int(slot["id"]), asset_tag=row.asset_tag):
@@ -8514,7 +8537,7 @@ def _commit_asset_import_pending(*, submitted_token: str) -> tuple[dict, dict]:
                 summary["unchanged"] += 1
                 continue
             if preview_row.category == "new_asset":
-                slot = _asset_import_slot_for_row(conn, row)
+                slot = _asset_import_get_or_create_slot_for_row(conn, row)
                 if slot is None:
                     raise ValueError(f"Row {row.row_number}: requested slot is unavailable.")
                 _asset_import_create_new_asset(conn, row, now_iso=now_iso, actor=actor, slot=slot)

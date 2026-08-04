@@ -90,6 +90,7 @@ def _table_counts() -> dict[str, int]:
         return {
             "assets": int(conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0]),
             "asset_events": int(conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0]),
+            "slots": int(conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0]),
             "slot_occupancy": int(conn.execute("SELECT COUNT(*) FROM slot_occupancy;").fetchone()[0]),
         }
     finally:
@@ -1366,6 +1367,24 @@ def _slot_record(slot_id: int) -> sqlite3.Row:
         conn.close()
 
 
+def _slot_records_for_case(case_name: str) -> list[sqlite3.Row]:
+    conn = db.get_connection()
+    try:
+        return list(
+            conn.execute(
+                """
+                SELECT *
+                FROM slots
+                WHERE UPPER(case_name) = UPPER(?)
+                ORDER BY slot_position;
+                """,
+                (case_name,),
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+
 def _occupancy_asset_tags() -> dict[int, str]:
     conn = db.get_connection()
     try:
@@ -1381,6 +1400,227 @@ def _occupancy_asset_tags() -> dict[int, str]:
         }
     finally:
         conn.close()
+
+
+def test_asset_import_missing_requested_slot_previews_and_commits_created_storage(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,manufacturer,model,case_identifier,slot_identifier\n"
+        b"CREATE-SLOT-100,SER-CREATE-SLOT-100,laptop,Dell,Latitude,CASE-CREATE,12\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"Ready to commit" in response.data
+    assert b"New Asset: 1" in response.data
+    assert b"New Laptop asset with storage to create: CASE-CREATE / 12." in response.data
+    assert b"Missing storage will be created during commit." in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert b"Asset import committed." in commit_response.data
+    asset = _asset_record("CREATE-SLOT-100")
+    assert asset is not None
+    assert asset["case_number"] == "CASE-CREATE"
+    assert asset["slot_number"] == "12"
+    assert asset["home_slot_id"] is not None
+    created_slot = _slot_record(int(asset["home_slot_id"]))
+    assert created_slot["case_name"] == "CASE-CREATE"
+    assert int(created_slot["slot_position"]) == 12
+    assert created_slot["current_asset_tag"] == "CREATE-SLOT-100"
+    assert _occupancy_asset_tags()[int(created_slot["id"])] == "CREATE-SLOT-100"
+    assert [row["event_type"] for row in _asset_events("CREATE-SLOT-100")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+
+
+def test_asset_import_creates_multiple_missing_sequential_slots_in_one_case(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"SEQ-101,SER-SEQ-101,laptop,CASE-SEQ,1\n"
+        b"SEQ-102,SER-SEQ-102,laptop,CASE-SEQ,2\n"
+        b"SEQ-103,SER-SEQ-103,laptop,CASE-SEQ,3\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert response.data.count(b"Missing storage will be created during commit.") == 3
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    slots = _slot_records_for_case("CASE-SEQ")
+    assert [int(slot["slot_position"]) for slot in slots] == [1, 2, 3]
+    assert [slot["current_asset_tag"] for slot in slots] == ["SEQ-101", "SEQ-102", "SEQ-103"]
+    assert set(_occupancy_asset_tags().values()) == {"SEQ-101", "SEQ-102", "SEQ-103"}
+    for asset_tag in ("SEQ-101", "SEQ-102", "SEQ-103"):
+        assert [row["event_type"] for row in _asset_events(asset_tag)] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+
+
+def test_asset_import_creates_missing_slots_alongside_existing_slots(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=951, case_name="CASE-MIXED", slot_position=1)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"MIXED-EXISTING,SER-MIXED-EXISTING,laptop,CASE-MIXED,1\n"
+        b"MIXED-MISSING,SER-MIXED-MISSING,laptop,CASE-MIXED,2\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"New Laptop asset with available storage." in response.data
+    assert b"New Laptop asset with storage to create: CASE-MIXED / 2." in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    slots = _slot_records_for_case("CASE-MIXED")
+    assert [int(slot["slot_position"]) for slot in slots] == [1, 2]
+    assert slots[0]["id"] == 951
+    assert [slot["current_asset_tag"] for slot in slots] == ["MIXED-EXISTING", "MIXED-MISSING"]
+
+
+def test_asset_import_creates_missing_slots_for_multiple_new_cases(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"MULTICASE-A,SER-MULTICASE-A,laptop,CASE-MULTI-A,1\n"
+        b"MULTICASE-B,SER-MULTICASE-B,laptop,CASE-MULTI-B,1\n",
+        "assets.csv",
+    )
+
+    assert response.status_code == 200
+    assert b"CASE-MULTI-A / 1" in response.data
+    assert b"CASE-MULTI-B / 1" in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert _slot_records_for_case("CASE-MULTI-A")[0]["current_asset_tag"] == "MULTICASE-A"
+    assert _slot_records_for_case("CASE-MULTI-B")[0]["current_asset_tag"] == "MULTICASE-B"
+
+
+def test_asset_import_occupied_slot_remains_protected_during_commit(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=952, case_name="CASE-OCCUPIED", slot_position=1, current_asset_tag="OCCUPANT-100")
+    _insert_asset(asset_tag="OCCUPANT-100", home_slot_id=952, case_number="CASE-OCCUPIED", slot_number="1", slotted=True)
+
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"OCCUPIED-IMPORT,SER-OCCUPIED-IMPORT,laptop,CASE-OCCUPIED,1\n",
+        "assets.csv",
+        form={"acknowledge_unslotted": "1"},
+    )
+
+    assert response.status_code == 200
+    assert b"Slot Conflict Eligible For Unslotted Import: 1" in response.data
+    assert b"Existing slot occupants are never displaced." in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    imported = _asset_record("OCCUPIED-IMPORT")
+    assert imported is not None
+    assert imported["home_slot_id"] is None
+    assert _slot_record(952)["current_asset_tag"] == "OCCUPANT-100"
+    assert _occupancy_asset_tags()[952] == "OCCUPANT-100"
+    assert [row["event_type"] for row in _asset_events("OCCUPIED-IMPORT")] == ["ASSET_CREATED"]
+
+
+def test_repeated_asset_import_creates_no_duplicate_slots_or_occupancy(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    content = (
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"REPEAT-SLOT-100,SER-REPEAT-SLOT-100,laptop,CASE-REPEAT,1\n"
+    )
+    first_response = _post_file(client_with_temp_db, content, "assets.csv")
+    first_commit = _post_commit(client_with_temp_db, _preview_token(first_response))
+    assert first_commit.status_code == 200
+    after_first = _table_counts()
+
+    second_response = _post_file(client_with_temp_db, content, "assets.csv")
+    assert second_response.status_code == 200
+    assert b"Unchanged Exact Match: 1" in second_response.data
+    second_commit = _post_commit(client_with_temp_db, _preview_token(second_response))
+
+    assert second_commit.status_code == 200
+    assert _table_counts() == after_first
+    assert len(_slot_records_for_case("CASE-REPEAT")) == 1
+    assert list(_occupancy_asset_tags().values()).count("REPEAT-SLOT-100") == 1
+    assert [row["event_type"] for row in _asset_events("REPEAT-SLOT-100")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+
+
+def test_asset_import_analyze_and_preview_do_not_create_missing_storage(
+    client_with_temp_db,
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "assets.csv"
+    csv_path.write_text(
+        "asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        "PREVIEW-ONLY-100,SER-PREVIEW-ONLY-100,laptop,CASE-PREVIEW-ONLY,1\n",
+        encoding="utf-8",
+    )
+    before_analyze = _table_counts()
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+    after_analyze = _table_counts()
+
+    conn = db.get_connection()
+    try:
+        preview = build_asset_import_preview(conn, analysis)
+    finally:
+        conn.close()
+
+    assert after_analyze == before_analyze
+    assert _table_counts() == before_analyze
+    assert preview.rows[0].category == "new_asset"
+    assert preview.rows[0].message == "New Laptop asset with storage to create: CASE-PREVIEW-ONLY / 1."
+    assert _slot_records_for_case("CASE-PREVIEW-ONLY") == []
+
+
+def test_asset_import_acknowledged_blank_storage_commits_unslotted_without_slot_assignment(
+    client_with_temp_db,
+) -> None:
+    _login_admin(client_with_temp_db)
+    response = _post_file(
+        client_with_temp_db,
+        b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
+        b"BLANK-STORAGE-100,SER-BLANK-STORAGE-100,laptop,,\n",
+        "assets.csv",
+        form={"acknowledge_unslotted": "1"},
+    )
+
+    assert response.status_code == 200
+    assert b"Unslotted Import: 1" in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    asset = _asset_record("BLANK-STORAGE-100")
+    assert asset is not None
+    assert asset["home_slot_id"] is None
+    assert asset["case_number"] in (None, "")
+    assert asset["slot_number"] in (None, "")
+    assert _occupancy_asset_tags() == {}
+    assert [row["event_type"] for row in _asset_events("BLANK-STORAGE-100")] == ["ASSET_CREATED"]
 
 
 def test_asset_import_commit_writes_approved_safe_rows_atomically_and_leaves_blocked_rows(
@@ -1599,8 +1839,6 @@ def test_asset_import_commit_rolls_back_complete_batch_on_mid_batch_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _login_admin(client_with_temp_db)
-    _insert_slot(slot_id=941, case_name="CASE-ROLL", slot_position=1)
-    _insert_slot(slot_id=942, case_name="CASE-ROLL", slot_position=2)
     response = _post_file(
         client_with_temp_db,
         b"asset_tag,serial_number,equipment_type,case_identifier,slot_identifier\n"
@@ -1626,8 +1864,7 @@ def test_asset_import_commit_rolls_back_complete_batch_on_mid_batch_failure(
     assert _asset_events("ROLL-OK") == []
     assert _asset_events("ROLL-FAIL") == []
     assert _occupancy_asset_tags() == {}
-    assert _slot_record(941)["current_asset_tag"] is None
-    assert _slot_record(942)["current_asset_tag"] is None
+    assert _slot_records_for_case("CASE-ROLL") == []
 
 
 def test_asset_import_replacing_preview_removes_previous_pending_file(client_with_temp_db) -> None:
