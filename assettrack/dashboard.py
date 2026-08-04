@@ -82,7 +82,7 @@ def _building_label(value: object) -> str:
 
 def _domain_label(equipment_type: object) -> str:
     normalized = str(equipment_type or "").strip().lower()
-    if normalized in {"switch", "other network equipment", "voip"}:
+    if normalized in {"router", "switch", "other network equipment", "voip"}:
         return DOMAIN_NETWORK
     if normalized in {"laptop", "monitor", "peripheral"}:
         return DOMAIN_SYSADMINS
