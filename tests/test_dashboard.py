@@ -225,7 +225,12 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Building: HQ", response.data)
         self.assertIn(b"Operational Domain: SysAdmins", response.data)
         self.assertIn(b"Custody Holder:", response.data)
-        self.assertIn(b"Asset: <code>AT-CUST</code>", response.data)
+        self.assertIn(b'<a class="nav-link" href="/assets/search">Asset Search</a>', response.data)
+        self.assertIn(
+            b'<a class="nav-link" href="/assets/history?asset_tag=AT-CUST&amp;return_to=/dashboard"><code>AT-CUST</code></a>',
+            response.data,
+        )
+        self.assertNotIn(b"Asset: <code>AT-CUST</code>", response.data)
         self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
         self.assertIn(b'id="problems-panel"', response.data)
         self.assertIn(b'id="problems-panel" open', response.data)
@@ -732,7 +737,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Operational Domain: SysAdmins", response.data)
         self.assertIn(b"Operational Domain: Network", response.data)
         self.assertIn(b"Custody Holder:", response.data)
-        self.assertIn(b"Asset: <code>AT-LAPTOP</code>", response.data)
-        self.assertIn(b"Asset: <code>AT-SWITCH</code>", response.data)
+        self.assertIn(b'<a class="nav-link" href="/assets/search">Asset Search</a>', response.data)
+        self.assertIn(
+            b'<a class="nav-link" href="/assets/history?asset_tag=AT-LAPTOP&amp;return_to=/dashboard"><code>AT-LAPTOP</code></a>',
+            response.data,
+        )
+        self.assertIn(
+            b'<a class="nav-link" href="/assets/history?asset_tag=AT-SWITCH&amp;return_to=/dashboard"><code>AT-SWITCH</code></a>',
+            response.data,
+        )
         self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
         self.assertIn(b'class="custody-map-asset"', response.data)
