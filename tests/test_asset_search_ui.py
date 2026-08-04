@@ -181,6 +181,89 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b'href="/assets/history?asset_tag=AT-100', response.data)
         self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
 
+    def test_search_finds_hyphenated_asset_when_query_omits_hyphen(self) -> None:
+        self._insert_asset("ABC-123", serial_number="SER-HYPHEN", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=ABC123")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset Found", response.data)
+        self.assertIn(b"ABC-123", response.data)
+        self.assertIn(b"SER-HYPHEN", response.data)
+
+    def test_search_finds_unhyphenated_asset_when_query_includes_hyphen_without_rewriting_tag(self) -> None:
+        self._insert_asset("ABC123", serial_number="SER-NOHYPHEN", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=ABC-123")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset Found", response.data)
+        self.assertIn(b"ABC123", response.data)
+        self.assertIn(b"SER-NOHYPHEN", response.data)
+        row = self.conn.execute(
+            "SELECT asset_tag FROM assets WHERE serial_number = 'SER-NOHYPHEN';"
+        ).fetchone()
+        self.assertEqual(row["asset_tag"], "ABC123")
+
+    def test_search_finds_case_when_query_format_differs(self) -> None:
+        self._insert_slot(20, "CASE-12", 1)
+
+        response = self.client.get("/assets/search?asset_tag=case12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Case Found", response.data)
+        self.assertIn(b"1 case match shown.", response.data)
+        self.assertIn(b"<code>CASE-12</code>", response.data)
+        self.assertNotIn(b"No asset found", response.data)
+
+    def test_search_case_prefix_returns_matching_cases(self) -> None:
+        self._insert_slot(21, "CASE-12", 1)
+        self._insert_slot(22, "CASE-13", 1)
+        self._insert_slot(23, "KIT-1", 1)
+
+        response = self.client.get("/assets/search?asset_tag=CASE-")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Cases Found", response.data)
+        self.assertIn(b"2 case matches shown.", response.data)
+        self.assertIn(b"<code>CASE-12</code>", response.data)
+        self.assertIn(b"<code>CASE-13</code>", response.data)
+        self.assertNotIn(b"<code>KIT-1</code>", response.data)
+
+    def test_search_lowercase_case_prefix_returns_matching_cases(self) -> None:
+        self._insert_slot(24, "CASE-21", 1)
+        self._insert_slot(25, "CASE22", 1)
+
+        response = self.client.get("/assets/search?asset_tag=case")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Cases Found", response.data)
+        self.assertIn(b"<code>CASE-21</code>", response.data)
+        self.assertIn(b"<code>CASE22</code>", response.data)
+
+    def test_search_case_results_keep_stored_case_formatting(self) -> None:
+        self._insert_slot(26, "Case-Mixed-12", 1)
+
+        response = self.client.get("/assets/search?asset_tag=case-mixed-12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"<code>Case-Mixed-12</code>", response.data)
+        self.assertNotIn(b"<code>CASE-MIXED-12</code>", response.data)
+        row = self.conn.execute("SELECT case_name FROM slots WHERE id = 26;").fetchone()
+        self.assertEqual(row["case_name"], "Case-Mixed-12")
+
+    def test_search_exact_case_match_is_listed_before_prefix_matches(self) -> None:
+        self._insert_slot(27, "CASE-12", 1)
+        self._insert_slot(28, "CASE-123", 1)
+
+        response = self.client.get("/assets/search?asset_tag=CASE12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(
+            response.data.index(b"<code>CASE-12</code>"),
+            response.data.index(b"<code>CASE-123</code>"),
+        )
+
     def test_admin_search_links_asset_tag_to_admin_edit_asset(self) -> None:
         admin_user_id = create_test_user(username="admin-search", password="admin-pass", role="admin")
         login_session(self.client, admin_user_id)

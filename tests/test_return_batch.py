@@ -720,6 +720,20 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT200", "RT201"])
         self.assertIn(b"Case CASE-20 added 1 asset to queue. Skipped 1 already queued.", response.data)
 
+    def test_return_case_scan_with_dash_matches_case_stored_without_dash(self) -> None:
+        self._insert_slot(82, "CASE12", 1, None)
+        self._insert_asset("RT-202", location_type="IN_CUSTODY", holder_id=5, home_slot_id=82)
+
+        response = self.client.post(
+            "/",
+            data={"scan_text": "case-12", "return_to": "/return"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["RT202"])
+        self.assertIn(b"Case CASE12 added 1 asset to queue.", response.data)
+
     def test_return_case_scan_allows_selective_removal_before_preview(self) -> None:
         self._insert_slot(90, "CASE-30", 1, None)
         self._insert_slot(91, "CASE-30", 2, None)

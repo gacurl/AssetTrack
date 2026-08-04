@@ -270,6 +270,46 @@ def test_issue_case_scan_without_dash_also_expands_matching_case(client_with_tem
     assert b"Case CASE-2 added 2 assets to queue." in response.data
 
 
+def test_issue_case_scan_with_dash_matches_case_stored_without_dash(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db, "operator-case-stored-no-dash")
+
+    conn = db.get_connection()
+    _insert_slot(conn, 52, "CASE12", 1)
+    _insert_asset(conn, 502, "CI-502", home_slot_id=52)
+    _occupy_slot(conn, 52, 502)
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "case-12", "return_to": "/issue#queue-section"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["CI502"]
+    assert b"Case CASE12 added 1 asset to queue." in response.data
+
+
+def test_issue_asset_scan_accepts_hyphen_variant_without_rewriting_stored_tag(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db, "operator-asset-tag-variant")
+
+    conn = db.get_connection()
+    _insert_asset(conn, 503, "ABC123")
+    conn.commit()
+    conn.close()
+
+    response = client_with_temp_db.post(
+        "/",
+        data={"scan_text": "ABC-123", "return_to": "/issue#queue-section"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert [scan.asset_tag for scan in intake_app.SCAN_QUEUE] == ["ABC123"]
+    assert b"ABC123" in response.data
+
+
 def test_invalid_case_scan_does_not_enqueue_pseudo_asset(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db, "operator-invalid-case")
 

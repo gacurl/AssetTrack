@@ -364,6 +364,27 @@ def sanitize_scan(raw: str) -> str:
     return "".join(ch for ch in raw if ch.isalnum()).upper()
 
 
+def _identifier_lookup_key(value: object) -> str:
+    return str(value or "").strip().upper().replace("-", "")
+
+
+def _single_identifier_match(
+    rows: list[sqlite3.Row],
+    *,
+    label: str,
+    input_value: str,
+    row_key: str,
+) -> Optional[sqlite3.Row]:
+    if not rows:
+        return None
+
+    distinct_values = {str(row[row_key] or "") for row in rows}
+    if len(distinct_values) > 1:
+        raise ValueError(f"Ambiguous {label} match for scan '{input_value}'")
+
+    return rows[0]
+
+
 def _demo_page_context() -> dict[str, object]:
     demo_token = str(request.args.get("token") or "").strip()
     demo_send_enabled = _demo_token_is_valid(demo_token)
@@ -852,19 +873,27 @@ def _find_asset_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         SELECT *
         FROM assets
         WHERE UPPER(asset_tag) = UPPER(?)
-           OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
         LIMIT 2;
         """,
-        (t, t),
+        (t,),
     ).fetchall()
 
-    if not rows:
-        return None
+    row = _single_identifier_match(rows, label="asset_tag", input_value=t, row_key="asset_tag")
+    if row is not None:
+        return dict(row)
 
-    if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
-        raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM assets
+        WHERE REPLACE(UPPER(asset_tag), '-', '') = ?
+        LIMIT 2;
+        """,
+        (_identifier_lookup_key(t),),
+    ).fetchall()
 
-    return dict(rows[0])
+    row = _single_identifier_match(rows, label="asset_tag", input_value=t, row_key="asset_tag")
+    return None if row is None else dict(row)
 
 
 def _find_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
@@ -877,11 +906,20 @@ def _find_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         SELECT id, case_name, slot_position, current_asset_tag
         FROM slots
         WHERE UPPER(case_name) = UPPER(?)
-           OR REPLACE(UPPER(case_name), '-', '') = UPPER(?)
         ORDER BY slot_position ASC, id ASC;
         """,
-        (t, t),
+        (t,),
     ).fetchall()
+    if not slot_rows:
+        slot_rows = conn.execute(
+            """
+            SELECT id, case_name, slot_position, current_asset_tag
+            FROM slots
+            WHERE REPLACE(UPPER(case_name), '-', '') = ?
+            ORDER BY slot_position ASC, id ASC;
+            """,
+            (_identifier_lookup_key(t),),
+        ).fetchall()
     if not slot_rows:
         return None
 
@@ -947,11 +985,20 @@ def _find_return_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]
         SELECT id, case_name, slot_position
         FROM slots
         WHERE UPPER(case_name) = UPPER(?)
-           OR REPLACE(UPPER(case_name), '-', '') = UPPER(?)
         ORDER BY slot_position ASC, id ASC;
         """,
-        (t, t),
+        (t,),
     ).fetchall()
+    if not slot_rows:
+        slot_rows = conn.execute(
+            """
+            SELECT id, case_name, slot_position
+            FROM slots
+            WHERE REPLACE(UPPER(case_name), '-', '') = ?
+            ORDER BY slot_position ASC, id ASC;
+            """,
+            (_identifier_lookup_key(t),),
+        ).fetchall()
     if not slot_rows:
         return None
 
@@ -1521,6 +1568,7 @@ def _lookup_asset_for_verification(
     serial_number: str,
 ) -> tuple[list[dict], Optional[str], str]:
     asset_tag_clean = str(asset_tag or "").strip().upper()
+    asset_tag_key = _identifier_lookup_key(asset_tag_clean)
     serial_clean = str(serial_number or "").strip()
     has_asset_tag = bool(asset_tag_clean)
     has_serial_number = bool(serial_clean)
@@ -1541,15 +1589,20 @@ def _lookup_asset_for_verification(
             FROM assets a
             LEFT JOIN holders h
               ON h.id = a.current_holder_id
-            WHERE UPPER(a.asset_tag) LIKE UPPER(?)
+            WHERE (
+                UPPER(a.asset_tag) LIKE UPPER(?)
+                OR REPLACE(UPPER(a.asset_tag), '-', '') = ?
+            )
               AND TRIM(COALESCE(a.serial_number, '')) <> ''
               AND UPPER(a.serial_number) LIKE UPPER(?)
             ORDER BY
                 CASE
                     WHEN UPPER(a.asset_tag) = UPPER(?) AND UPPER(a.serial_number) = UPPER(?) THEN 0
-                    WHEN UPPER(a.asset_tag) = UPPER(?) THEN 1
-                    WHEN UPPER(a.serial_number) = UPPER(?) THEN 2
-                    ELSE 3
+                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? AND UPPER(a.serial_number) = UPPER(?) THEN 1
+                    WHEN UPPER(a.asset_tag) = UPPER(?) THEN 2
+                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? THEN 3
+                    WHEN UPPER(a.serial_number) = UPPER(?) THEN 4
+                    ELSE 5
                 END,
                 UPPER(a.asset_tag) ASC,
                 UPPER(a.serial_number) ASC,
@@ -1558,10 +1611,14 @@ def _lookup_asset_for_verification(
             """,
             (
                 f"%{asset_tag_clean}%",
+                asset_tag_key,
                 f"%{serial_clean}%",
                 asset_tag_clean,
                 serial_clean,
+                asset_tag_key,
+                serial_clean,
                 asset_tag_clean,
+                asset_tag_key,
                 serial_clean,
             ),
         ).fetchall()
@@ -1582,13 +1639,18 @@ def _lookup_asset_for_verification(
             LEFT JOIN holders h
               ON h.id = a.current_holder_id
             WHERE UPPER(a.asset_tag) LIKE UPPER(?)
+               OR REPLACE(UPPER(a.asset_tag), '-', '') = ?
             ORDER BY
-                CASE WHEN UPPER(a.asset_tag) = UPPER(?) THEN 0 ELSE 1 END,
+                CASE
+                    WHEN UPPER(a.asset_tag) = UPPER(?) THEN 0
+                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? THEN 1
+                    ELSE 2
+                END,
                 UPPER(a.asset_tag) ASC,
                 a.id ASC
             LIMIT 25;
             """,
-            (like_pattern, asset_tag_clean),
+            (like_pattern, asset_tag_key, asset_tag_clean, asset_tag_key),
         ).fetchall()
         if not rows:
             return [], "Asset not found.", lookup_mode
@@ -1669,6 +1731,40 @@ def _lookup_asset_for_verification(
         )
 
     return (results, None, lookup_mode)
+
+
+def _lookup_cases_for_asset_search(conn: sqlite3.Connection, query: str) -> list[dict[str, object]]:
+    query_clean = str(query or "").strip()
+    query_key = _identifier_lookup_key(query_clean)
+    if not query_key:
+        return []
+
+    rows = conn.execute(
+        """
+        SELECT
+            case_name,
+            COUNT(*) AS slot_count
+        FROM slots
+        WHERE REPLACE(UPPER(case_name), '-', '') LIKE ?
+        GROUP BY case_name
+        ORDER BY
+            CASE
+                WHEN UPPER(case_name) = UPPER(?) THEN 0
+                WHEN REPLACE(UPPER(case_name), '-', '') = ? THEN 1
+                ELSE 2
+            END,
+            UPPER(case_name) ASC;
+        """,
+        (f"{query_key}%", query_clean, query_key),
+    ).fetchall()
+
+    return [
+        {
+            "case_name": str(row["case_name"] or ""),
+            "slot_count": int(row["slot_count"] or 0),
+        }
+        for row in rows
+    ]
 
 
 def _asset_search_status_cue(*, location_type: str, holder_label: str, movement_proof: dict[str, object]) -> dict[str, str]:
@@ -3819,28 +3915,7 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
         blocking_issues.append(error)
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
-        t = (scan_tag or "").strip()
-        if not t:
-            return None
-
-        rows = conn.execute(
-            """
-            SELECT id, asset_tag, location_type, current_holder_id, building_room, home_slot_id
-            FROM assets
-            WHERE UPPER(asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
-            LIMIT 2;
-            """,
-            (t, t),
-        ).fetchall()
-
-        if not rows:
-            return None
-
-        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
-            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
-
-        return dict(rows[0])
+        return _find_asset_for_scan_tag(conn, scan_tag)
 
     conn = get_connection()
     try:
@@ -3958,28 +4033,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
         return {"assets": assets, "ready_count": 0, "blocking_issues": blocking_issues}
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
-        t = (scan_tag or "").strip()
-        if not t:
-            return None
-
-        rows = conn.execute(
-            """
-            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
-            FROM assets
-            WHERE UPPER(asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
-            LIMIT 2;
-            """,
-            (t, t),
-        ).fetchall()
-
-        if not rows:
-            return None
-
-        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
-            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
-
-        return dict(rows[0])
+        return _find_asset_for_scan_tag(conn, scan_tag)
 
     conn = get_connection()
     try:
@@ -4507,36 +4561,7 @@ def _issue_batch(
         raise ValueError("No assets in the queue to issue.")
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
-        """
-        Accept either:
-          - exact tag match
-          - match where dashes are removed from DB value (common label format)
-        Returns the canonical DB row (including canonical asset_tag).
-        Hard-stops if multiple distinct matches.
-        """
-        t = (scan_tag or "").strip()
-        if not t:
-            return None
-
-        rows = conn.execute(
-            """
-            SELECT id, asset_tag, location_type, building_room, home_slot_id
-            FROM assets
-            WHERE UPPER(asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
-            LIMIT 2;
-            """,
-            (t, t),
-        ).fetchall()
-
-        if not rows:
-            return None
-
-        # If we got 2 rows and the canonical tags differ, that's ambiguous.
-        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
-            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
-
-        return dict(rows[0])
+        return _find_asset_for_scan_tag(conn, scan_tag)
 
     conn = get_connection()
     try:
@@ -4715,28 +4740,7 @@ def _return_batch(
         raise ValueError("No assets in the queue to return")
 
     def _canon_asset_row_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
-        t = (scan_tag or "").strip()
-        if not t:
-            return None
-
-        rows = conn.execute(
-            """
-            SELECT id, asset_tag, location_type, current_holder_id, home_slot_id
-            FROM assets
-            WHERE UPPER(asset_tag) = UPPER(?)
-               OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
-            LIMIT 2;
-            """,
-            (t, t),
-        ).fetchall()
-
-        if not rows:
-            return None
-
-        if len(rows) > 1 and str(rows[0]["asset_tag"]) != str(rows[1]["asset_tag"]):
-            raise ValueError(f"Ambiguous asset_tag match for scan '{t}'")
-
-        return dict(rows[0])
+        return _find_asset_for_scan_tag(conn, scan_tag)
 
     conn = get_connection()
     try:
@@ -5470,6 +5474,7 @@ def asset_search():
         "serial_number": (request.args.get("serial_number") or "").strip(),
     }
     assets: list[dict] = []
+    case_matches: list[dict[str, object]] = []
     error_message: Optional[str] = None
     lookup_mode = "none"
 
@@ -5481,6 +5486,10 @@ def asset_search():
                 asset_tag=form_state["asset_tag"],
                 serial_number=form_state["serial_number"],
             )
+            if form_state["asset_tag"] and not form_state["serial_number"]:
+                case_matches = _lookup_cases_for_asset_search(conn, form_state["asset_tag"])
+                if case_matches:
+                    error_message = None
         finally:
             conn.close()
 
@@ -5497,6 +5506,7 @@ def asset_search():
         "asset_search.html",
         form=form_state,
         assets=assets,
+        case_matches=case_matches,
         error_message=error_message,
         lookup_mode=lookup_mode,
         return_to=return_to,

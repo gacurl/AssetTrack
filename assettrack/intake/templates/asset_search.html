@@ -267,17 +267,46 @@
         </tbody>
       </table>
     </div>
-  {% elif form.asset_tag or form.serial_number %}
-    <div class="card asset-search-no-results">
-      <h2>No asset found</h2>
-      <p class="muted">Check the asset tag or serial number and search again.</p>
-    </div>
-  {% else %}
+  {% endif %}
+
+  {% if case_matches %}
     <div class="card">
-      <h2>Ready to search</h2>
-      <p class="asset-search-empty">
-        Enter an asset tag or serial number to see custody status, holder, assigned location, and existing movement proof.
+      <h2>{% if case_matches|length == 1 %}Case Found{% else %}Cases Found{% endif %}</h2>
+      <p class="asset-results-count">
+        {% if case_matches|length == 1 %}1 case match shown.{% else %}{{ case_matches|length }} case matches shown.{% endif %}
       </p>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Slots</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for case_match in case_matches %}
+            <tr>
+              <td><code>{{ case_match.case_name }}</code></td>
+              <td>{{ case_match.slot_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+  {% endif %}
+
+  {% if not assets and not case_matches %}
+    {% if form.asset_tag or form.serial_number %}
+      <div class="card asset-search-no-results">
+        <h2>No asset found</h2>
+        <p class="muted">Check the asset tag or serial number and search again.</p>
+      </div>
+    {% else %}
+      <div class="card">
+        <h2>Ready to search</h2>
+        <p class="asset-search-empty">
+          Enter an asset tag or serial number to see custody status, holder, assigned location, and existing movement proof.
+        </p>
+      </div>
+    {% endif %}
   {% endif %}
 {% endblock %}
