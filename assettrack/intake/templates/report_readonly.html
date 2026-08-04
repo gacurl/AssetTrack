@@ -97,6 +97,90 @@
 
   <details class="report-section">
     <summary>
+      <span class="report-section-title">Current Custody</span>
+      <span class="report-section-hint">{{ current_custody|length }} assets out</span>
+    </summary>
+    <div class="report-section-body">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Holder</th>
+            <th>Organization</th>
+            <th>Asset Tag</th>
+            <th>Type</th>
+            <th>Current Location</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in current_custody %}
+            <tr>
+              <td>
+                {% if row.holder_detail_id %}
+                  <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
+                {% else %}
+                  {{ row.holder_name }}
+                {% endif %}
+              </td>
+              <td>{{ row.organization }}</td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td>{{ row.equipment_type }}</td>
+              <td>{{ row.current_location }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No assets are currently in custody.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    </div>
+  </details>
+
+  <details class="report-section">
+    <summary>
+      <span class="report-section-title">Last 10 Events</span>
+    </summary>
+    <div class="report-section-body">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>When</th>
+            <th>Asset Tag</th>
+            <th>Event Type</th>
+            <th>Holder</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent_active_events %}
+            <tr>
+              <td><code>{{ row.id }}</code></td>
+              <td>{{ row.event_date_display }}</td>
+              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
+              <td>{{ row.event_type }}</td>
+              <td>
+                {% if row.holder_name %}
+                  {% if row.holder_detail_id %}
+                    <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
+                  {% else %}
+                    {{ row.holder_name }}
+                  {% endif %}
+                  {% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No active events found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    </div>
+  </details>
+
+  <details class="report-section">
+    <summary>
       <span class="report-section-title">Assets</span>
       <span class="report-section-hint">
         {% if include_retired_assets %}
@@ -234,90 +318,6 @@
             </tr>
           {% else %}
             <tr><td colspan="2">No organization-to-building mappings found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    </div>
-  </details>
-
-  <details class="report-section">
-    <summary>
-      <span class="report-section-title">Current Custody</span>
-      <span class="report-section-hint">{{ current_custody|length }} assets out</span>
-    </summary>
-    <div class="report-section-body">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Holder</th>
-            <th>Organization</th>
-            <th>Asset Tag</th>
-            <th>Type</th>
-            <th>Current Location</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in current_custody %}
-            <tr>
-              <td>
-                {% if row.holder_detail_id %}
-                  <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
-                {% else %}
-                  {{ row.holder_name }}
-                {% endif %}
-              </td>
-              <td>{{ row.organization }}</td>
-              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
-              <td>{{ row.equipment_type }}</td>
-              <td>{{ row.current_location }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="5">No assets are currently in custody.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    </div>
-  </details>
-
-  <details class="report-section">
-    <summary>
-      <span class="report-section-title">Last 10 Events</span>
-    </summary>
-    <div class="report-section-body">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>When</th>
-            <th>Asset Tag</th>
-            <th>Event Type</th>
-            <th>Holder</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in recent_active_events %}
-            <tr>
-              <td><code>{{ row.id }}</code></td>
-              <td>{{ row.event_date_display }}</td>
-              <td><a class="nav-link report-drill-link" href="{{ url_for('asset_search', asset_tag=row.asset_tag, return_to=report_return_to) }}"><code>{{ row.asset_tag }}</code></a></td>
-              <td>{{ row.event_type }}</td>
-              <td>
-                {% if row.holder_name %}
-                  {% if row.holder_detail_id %}
-                    <a class="nav-link report-drill-link" href="{{ url_for('holder_detail', holder_id=row.holder_detail_id, return_to=report_return_to) }}">{{ row.holder_name }}</a>
-                  {% else %}
-                    {{ row.holder_name }}
-                  {% endif %}
-                  {% if row.holder_organization and row.holder_organization != row.holder_name %} ({{ row.holder_organization }}){% endif %}
-                {% endif %}
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="5">No active events found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
