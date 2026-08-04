@@ -8245,7 +8245,7 @@ def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | N
 def _asset_import_get_or_create_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | None:
     if row.storage_intent != "slotted":
         return None
-    slot = _asset_import_get_or_create_slot_for_row(conn, row)
+    slot = _asset_import_slot_for_row(conn, row)
     if slot is not None:
         return slot
     try:
@@ -8259,7 +8259,7 @@ def _asset_import_get_or_create_slot_for_row(conn: sqlite3.Connection, row) -> s
         """,
         (row.case_identifier, slot_position),
     )
-    slot = _asset_import_get_or_create_slot_for_row(conn, row)
+    slot = _asset_import_slot_for_row(conn, row)
     if slot is None:
         raise ValueError(f"Row {row.row_number}: requested slot could not be created.")
     return slot

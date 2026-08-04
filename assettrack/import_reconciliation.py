@@ -192,7 +192,9 @@ def _slot_for_row(
         slot_position = int(row.slot_identifier)
     except ValueError:
         return None, "slot_identifier must be numeric"
-    if context is not None:`r`n        slot = context.slots_by_case_position.get((row.case_identifier.upper(), slot_position))`r`n        return slot, None
+    if context is not None:
+        slot = context.slots_by_case_position.get((row.case_identifier.upper(), slot_position))
+        return slot, None
 
     slot = conn.execute(
         """
@@ -231,7 +233,10 @@ def _same_slot(asset: sqlite3.Row | None, slot: sqlite3.Row | None) -> bool:
 def _slot_label(slot: sqlite3.Row) -> str:
     return f"{_text(slot['case_name'])} / {_text(slot['slot_position'])}"
 
-`r`ndef _row_slot_label(row: AssetImportAnalysisRow) -> str:`r`n    return f"{row.case_identifier} / {row.slot_identifier}"`r`n`r`n
+def _row_slot_label(row: AssetImportAnalysisRow) -> str:
+    return f"{row.case_identifier} / {row.slot_identifier}"
+
+
 def _asset_home_slot_label(
     conn: sqlite3.Connection,
     asset: sqlite3.Row,
@@ -320,12 +325,47 @@ def _preview_row(
                 fields=("case_identifier", "slot_identifier"),
             )
 
-        if slot is not None:`r`n            occupant = _slot_occupant(conn, int(slot["id"]), context)`r`n            legacy_current_asset_tag = _text(slot["current_asset_tag"])`r`n            occupied_by_other = occupant is not None and _text(occupant["asset_tag"]).upper() != row.asset_tag.upper()`r`n            legacy_occupied_by_other = legacy_current_asset_tag and legacy_current_asset_tag.upper() != row.asset_tag.upper()`r`n            if occupied_by_other or legacy_occupied_by_other:`r`n                occupant_tag = _text(occupant["asset_tag"]) if occupant is not None else legacy_current_asset_tag`r`n                return AssetImportPreviewRow(`r`n                    row_number=row.row_number,`r`n                    asset_tag=row.asset_tag,`r`n                    asset_identifier=row.asset_tag,`r`n                    category="slot_conflict_unslotted",`r`n                    category_label=CATEGORY_LABELS["slot_conflict_unslotted"],`r`n                    message=f"Requested slot is occupied by {occupant_tag}; row can continue as Unslotted after acknowledgment.",`r`n                    warnings=("Existing slot occupants are never displaced.",),`r`n                    fields=("case_identifier", "slot_identifier"),`r`n                )
+        if slot is not None:
+            occupant = _slot_occupant(conn, int(slot["id"]), context)
+            legacy_current_asset_tag = _text(slot["current_asset_tag"])
+            occupied_by_other = occupant is not None and _text(occupant["asset_tag"]).upper() != row.asset_tag.upper()
+            legacy_occupied_by_other = legacy_current_asset_tag and legacy_current_asset_tag.upper() != row.asset_tag.upper()
+            if occupied_by_other or legacy_occupied_by_other:
+                occupant_tag = _text(occupant["asset_tag"]) if occupant is not None else legacy_current_asset_tag
+                return AssetImportPreviewRow(
+                    row_number=row.row_number,
+                    asset_tag=row.asset_tag,
+                    asset_identifier=row.asset_tag,
+                    category="slot_conflict_unslotted",
+                    category_label=CATEGORY_LABELS["slot_conflict_unslotted"],
+                    message=f"Requested slot is occupied by {occupant_tag}; row can continue as Unslotted after acknowledgment.",
+                    warnings=("Existing slot occupants are never displaced.",),
+                    fields=("case_identifier", "slot_identifier"),
+                )
 
-    if existing is None:`r`n        message = f"New {equipment_type_label(row.equipment_type)} asset with available storage."`r`n        if storage_requested and slot is None:`r`n            message = f"New {equipment_type_label(row.equipment_type)} asset with storage to create: {_row_slot_label(row)}."`r`n        return AssetImportPreviewRow(`r`n            row_number=row.row_number,`r`n            asset_tag=row.asset_tag,`r`n            asset_identifier=row.asset_tag,`r`n            category="new_asset",`r`n            category_label=CATEGORY_LABELS["new_asset"],`r`n            message=message,`r`n            warnings=("Missing storage will be created during commit.",) if storage_requested and slot is None else (),`r`n        )
+    if existing is None:
+        message = f"New {equipment_type_label(row.equipment_type)} asset with available storage."
+        if storage_requested and slot is None:
+            message = f"New {equipment_type_label(row.equipment_type)} asset with storage to create: {_row_slot_label(row)}."
+        return AssetImportPreviewRow(
+            row_number=row.row_number,
+            asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
+            category="new_asset",
+            category_label=CATEGORY_LABELS["new_asset"],
+            message=message,
+            warnings=("Missing storage will be created during commit.",) if storage_requested and slot is None else (),
+        )
 
     changes = list(_field_changes(existing, row))
-    if storage_requested and not _same_slot(existing, slot):`r`n        changes.append(`r`n            AssetImportFieldChange(`r`n                field="home_slot",`r`n                current=_asset_home_slot_label(conn, existing, context),`r`n                proposed=_slot_label(slot) if slot is not None else f"{_row_slot_label(row)} (will be created)",`r`n            )`r`n        )
+    if storage_requested and not _same_slot(existing, slot):
+        changes.append(
+            AssetImportFieldChange(
+                field="home_slot",
+                current=_asset_home_slot_label(conn, existing, context),
+                proposed=_slot_label(slot) if slot is not None else f"{_row_slot_label(row)} (will be created)",
+            )
+        )
     if changes:
         message = "Existing asset has proposed field updates."
         if len(changes) == 1 and changes[0].field == "home_slot":
