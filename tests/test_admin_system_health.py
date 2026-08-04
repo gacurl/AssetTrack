@@ -918,6 +918,18 @@ def test_operator_report_is_actionable_with_safe_drill_in_links(client_with_temp
     assert b"Search receipts" in response.data
     assert b"Include retired assets" in response.data
     assert response.data.count(b"<details class=\"report-section\"") >= 5
+    assert response.data.count(b"Current Custody") == 1
+    assert response.data.count(b"Last 10 Events") == 1
+    section_order = [
+        b'<span class="report-section-title">Current Custody</span>',
+        b'<span class="report-section-title">Last 10 Events</span>',
+        b'<span class="report-section-title">Assets</span>',
+        b'<span class="report-section-title">Holders</span>',
+        b'<span class="report-section-title">Organizations and Building Access</span>',
+        b'<span class="report-section-title">Location and Case Data</span>',
+    ]
+    section_positions = [response.data.index(section_title) for section_title in section_order]
+    assert section_positions == sorted(section_positions)
     assert b'href="/assets/search?return_to=/report"' not in response.data
     assert b'href="/dashboard/cases?return_to=/report"' not in response.data
     assert b'href="/dashboard/holders?return_to=/report"' not in response.data
