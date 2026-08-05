@@ -168,11 +168,14 @@ def list_case_summaries(conn: sqlite3.Connection) -> list[dict]:
         """
         SELECT
             s.case_name,
+            COALESCE(cm.case_size, '') AS case_size,
             COUNT(*) AS total_slots,
             COUNT(DISTINCT so.slot_id) AS occupied_slots
         FROM slots s
         LEFT JOIN slot_occupancy so
           ON so.slot_id = s.id
+        LEFT JOIN case_metadata cm
+          ON UPPER(cm.case_name) = UPPER(s.case_name)
         GROUP BY s.case_name
         ORDER BY occupied_slots DESC, s.case_name ASC;
         """
@@ -187,6 +190,7 @@ def list_case_summaries(conn: sqlite3.Connection) -> list[dict]:
         results.append(
             {
                 "case_name": str(row["case_name"]),
+                "case_size": str(row["case_size"] or ""),
                 "total_slots": total_slots,
                 "occupied_slots": occupied_slots,
                 "empty_slots": empty_slots,
@@ -254,6 +258,16 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
         (case_name,),
     ).fetchall()
 
+    metadata_row = conn.execute(
+        """
+        SELECT COALESCE(case_size, '') AS case_size
+        FROM case_metadata
+        WHERE UPPER(case_name) = UPPER(?)
+        LIMIT 1;
+        """,
+        (case_name,),
+    ).fetchone()
+
     return_candidate_rows = conn.execute(
         """
         SELECT
@@ -278,6 +292,7 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
 
     return {
         "case_name": case_name,
+        "case_size": "" if metadata_row is None else str(metadata_row["case_size"] or ""),
         "slots": [
             {
                 "slot_id": int(row["slot_id"]),
@@ -320,6 +335,15 @@ def get_case_inventory(conn: sqlite3.Connection, case_name: str) -> dict | None:
         return None
 
     canonical_case_name = str(case_row["case_name"])
+    metadata_row = conn.execute(
+        """
+        SELECT COALESCE(case_size, '') AS case_size
+        FROM case_metadata
+        WHERE UPPER(case_name) = UPPER(?)
+        LIMIT 1;
+        """,
+        (canonical_case_name,),
+    ).fetchone()
     rows = conn.execute(
         """
         SELECT
@@ -352,6 +376,7 @@ def get_case_inventory(conn: sqlite3.Connection, case_name: str) -> dict | None:
 
     return {
         "case_name": canonical_case_name,
+        "case_size": "" if metadata_row is None else str(metadata_row["case_size"] or ""),
         "asset_count": len(assets),
         "assets": assets,
     }

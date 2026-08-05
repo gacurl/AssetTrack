@@ -97,6 +97,7 @@
       <h2>Preview</h2>
       <div class="case-inventory-meta">
         <div><strong>Case number:</strong><br />{{ inventory.case_name }}</div>
+        <div><strong>Case Size:</strong><br />{{ inventory.case_size or "Not recorded" }}</div>
         <div><strong>Generated:</strong><br />{{ generated_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</div>
         <div><strong>Asset count:</strong><br />{{ inventory.asset_count }}</div>
       </div>

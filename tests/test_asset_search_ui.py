@@ -692,8 +692,18 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertNotIn(b"<form", response.data)
         self.assertEqual(dict(before_state), dict(after_state))
 
-    def test_asset_history_supports_switch_and_router_without_holder(self) -> None:
-        for equipment_type, asset_tag in [("switch", "HIST-SWITCH"), ("router", "HIST-ROUTER")]:
+    def test_asset_history_supports_all_approved_types_without_holder(self) -> None:
+        rows = [
+            ("laptop", "HIST-LAPTOP-TYPE", "Laptop"),
+            ("switch", "HIST-SWITCH", "Switch"),
+            ("router", "HIST-ROUTER", "Router"),
+            ("server", "HIST-SERVER", "Server"),
+            ("storage", "HIST-STORAGE", "Storage"),
+            ("firewall", "HIST-FIREWALL", "Firewall"),
+            ("ntp", "HIST-NTP", "NTP"),
+            ("kvm", "HIST-KVM", "KVM"),
+        ]
+        for equipment_type, asset_tag, expected_label in rows:
             with self.subTest(equipment_type=equipment_type):
                 self._insert_asset(
                     asset_tag,
@@ -716,7 +726,7 @@ class AssetSearchUiTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(asset_tag.encode("utf-8"), response.data)
-                self.assertIn(equipment_type.title().encode("utf-8"), response.data)
+                self.assertIn(expected_label.encode("utf-8"), response.data)
                 self.assertIn(b"Holder:</strong>", response.data)
                 self.assertIn(b"Not assigned", response.data)
                 self.assertIn(b"SLOT_MOVE", response.data)

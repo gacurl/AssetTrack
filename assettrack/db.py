@@ -8,6 +8,7 @@ from pathlib import Path
 REQUIRED_TABLES = {
     "app_settings",
     "assets",
+    "case_metadata",
     "holders",
     "organizations",
     "buildings",
@@ -433,6 +434,29 @@ def _create_schema(conn: sqlite3.Connection):
             slot_position INTEGER NOT NULL,
             current_asset_tag TEXT NULL,
             UNIQUE(case_name, slot_position)
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS case_metadata (
+            case_name TEXT PRIMARY KEY,
+            case_size TEXT NOT NULL DEFAULT '',
+            CHECK (
+                case_size IN (
+                    '',
+                    'Small Wheel',
+                    'Medium Wheel',
+                    'Large Wheel',
+                    '16 Rack Unit Wheel',
+                    '4 Rack Unit Wheel',
+                    '6 Rack Unit Wheel',
+                    '8 Rack Unit Wheel',
+                    'White Case',
+                    'SM-Case'
+                )
+            )
         );
         """
     )

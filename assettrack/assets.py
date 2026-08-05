@@ -14,12 +14,28 @@ No audit/state engine.
 No legacy integration.
 """
 
-APPROVED_NEW_EQUIPMENT_TYPES = ("laptop", "switch", "router")
-SUPPORTED_EQUIPMENT_TYPE_MESSAGE = "Supported asset types are Laptop, Switch, and Router."
+APPROVED_NEW_EQUIPMENT_TYPES = (
+    "laptop",
+    "switch",
+    "router",
+    "server",
+    "storage",
+    "firewall",
+    "ntp",
+    "kvm",
+)
+SUPPORTED_EQUIPMENT_TYPE_MESSAGE = (
+    "Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM."
+)
 EQUIPMENT_TYPE_LABELS = {
     "laptop": "Laptop",
     "switch": "Switch",
     "router": "Router",
+    "server": "Server",
+    "storage": "Storage",
+    "firewall": "Firewall",
+    "ntp": "NTP",
+    "kvm": "KVM",
     "monitor": "Monitor",
     "large tv": "Large TV",
     "other network equipment": "Other Network Equipment",

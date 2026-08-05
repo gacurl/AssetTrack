@@ -131,7 +131,7 @@
           <input type="checkbox" id="confirm_slot" name="confirm_slot" value="yes" {% if form.confirm_slot %}checked{% endif %} />
           <label for="confirm_slot">
             <strong>
-              I confirm the replacement laptop is going into Case {{ failed_asset.target_slot.case_name if failed_asset.target_slot else "?" }}
+              I confirm the replacement asset is going into Case {{ failed_asset.target_slot.case_name if failed_asset.target_slot else "?" }}
               Slot {{ failed_asset.target_slot.slot_position if failed_asset.target_slot else "?" }}.
             </strong>
           </label>

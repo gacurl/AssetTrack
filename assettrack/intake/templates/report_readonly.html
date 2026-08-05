@@ -336,6 +336,7 @@
         <thead>
           <tr>
             <th>Case</th>
+            <th>Case Size</th>
             <th>Total Slots</th>
             <th>Occupied Slots</th>
           </tr>
@@ -344,11 +345,12 @@
           {% for row in cases %}
             <tr>
               <td><a class="nav-link report-drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=report_return_to) }}">{{ row.case_name }}</a></td>
+              <td>{{ row.case_size or "" }}</td>
               <td>{{ row.total_slots }}</td>
               <td>{{ row.occupied_slots }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="3">No case or slot data found.</td></tr>
+            <tr><td colspan="4">No case or slot data found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
