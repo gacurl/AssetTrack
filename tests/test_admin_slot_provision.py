@@ -40,6 +40,27 @@ def _create_building(name: str) -> None:
         conn.close()
 
 
+def _create_unslotted_asset(
+    client_with_temp_db,
+    *,
+    asset_tag: str,
+    serial_number: str,
+    equipment_type: str = "laptop",
+) -> None:
+    response = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": asset_tag,
+            "serial_number": serial_number,
+            "manufacturer": "Dell",
+            "equipment_type": equipment_type,
+            "building": "HQ",
+            "room": "100",
+        },
+    )
+    assert response.status_code == 302
+
+
 def _insert_slot_move_fixture(
     *,
     asset_tag: str = "MOVE-100",
@@ -814,8 +835,47 @@ def test_assign_slot_page_lists_unslotted_storage_assets(client_with_temp_db) ->
     assert response.status_code == 200
     assert b"Unslotted Assets" in response.data
     assert b"AT-LIST-1" in response.data
+    assert b"SER-LIST-1" in response.data
+    assert b"laptop" in response.data
+    assert b'data-label="Asset tag"' in response.data
+    assert b'data-label="Serial number"' in response.data
+    assert b'data-label="Equipment type"' in response.data
+    assert b'data-label="Action"' in response.data
+    assert b"@media (max-width: 640px)" in response.data
+    assert b"width: 100%" in response.data
     assert b"Assign" in response.data
 
+
+def test_assign_slot_long_asset_list_collapses_and_keeps_selected_asset_visible(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    for index in range(13):
+        _create_unslotted_asset(
+            client_with_temp_db,
+            asset_tag=f"AT-LONG-{index:03d}",
+            serial_number=f"SER-LONG-{index:03d}",
+            equipment_type="router" if index == 5 else "laptop",
+        )
+
+    list_response = client_with_temp_db.get("/admin/assign-slot")
+    assert list_response.status_code == 200
+    assert b'class="assign-slot-list-details"' in list_response.data
+    assert b"Show 13 unslotted assets" in list_response.data
+    assert b"SER-LONG-005" in list_response.data
+    assert b"router" in list_response.data
+
+    selected_response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-LONG-005"},
+        follow_redirects=True,
+    )
+    assert selected_response.status_code == 200
+    assert b"Selected Asset" in selected_response.data
+    assert b"AT-LONG-005" in selected_response.data
+    assert b"SER-LONG-005" in selected_response.data
+    assert b"router" in selected_response.data
+    assert b'input type="hidden" name="asset_tag" value="AT-LONG-005"' in selected_response.data
+    assert b"Show 13 unslotted assets" in selected_response.data
 
 def test_assign_slot_page_hides_slotted_assets_from_unslotted_list(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
@@ -874,6 +934,8 @@ def test_assign_slot_page_can_select_unslotted_asset_from_list(client_with_temp_
     assert response.status_code == 200
     assert b"Asset AT-SELECT-1 is eligible for slot assignment." in response.data
     assert b'input type="hidden" name="asset_tag" value="AT-SELECT-1"' in response.data
+    assert b"SER-SELECT-1" in response.data
+    assert b"laptop" in response.data
     assert b'name="case_name"' in response.data
     assert b'name="slot_id"' in response.data
 

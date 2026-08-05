@@ -23,6 +23,15 @@
       font-size: 0.85rem;
       margin-top: 0.15rem;
     }
+    .assign-slot-list-details {
+      margin: 0;
+    }
+    .assign-slot-list-details summary {
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
     .compact-details {
       margin-top: 0.75rem;
     }
@@ -38,6 +47,49 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 0.4rem 0.9rem;
+    }
+    @media (max-width: 640px) {
+      .assign-slot-table,
+      .assign-slot-table thead,
+      .assign-slot-table tbody,
+      .assign-slot-table tr,
+      .assign-slot-table th,
+      .assign-slot-table td {
+        display: block;
+        width: 100%;
+      }
+      .assign-slot-table thead {
+        display: none;
+      }
+      .assign-slot-table tr {
+        border-top: 1px solid var(--color-border);
+        padding: 0.65rem 0;
+      }
+      .assign-slot-table tr:first-child {
+        border-top: 0;
+      }
+      .assign-slot-table td {
+        padding: 0.2rem 0;
+      }
+      .assign-slot-table td::before {
+        color: var(--color-text-muted);
+        content: attr(data-label);
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-bottom: 0.1rem;
+      }
+      .assign-slot-table td:last-child,
+      .assign-slot-table th:last-child {
+        text-align: left;
+        white-space: normal;
+      }
+      .assign-slot-table td:last-child form {
+        margin-top: 0.25rem;
+      }
+      .assign-slot-table td:last-child button {
+        width: 100%;
+      }
     }
   </style>
 {% endblock %}
@@ -58,37 +110,49 @@
   <div class="card">
     <h2>Unslotted Assets</h2>
     {% if unslotted_assets %}
-      <table class="assign-slot-table">
-        <thead>
-          <tr>
-            <th>Asset tag</th>
-            <th>Equipment type</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in unslotted_assets %}
+      {% set long_asset_list = unslotted_assets|length > 12 %}
+      <details class="assign-slot-list-details" {% if not long_asset_list %}open{% endif %}>
+        <summary>
+          {% if long_asset_list %}
+            Show {{ unslotted_assets|length }} unslotted assets
+          {% else %}
+            {{ unslotted_assets|length }} unslotted asset{% if unslotted_assets|length != 1 %}s{% endif %}
+          {% endif %}
+        </summary>
+        <table class="assign-slot-table">
+          <thead>
             <tr>
-              <td class="asset-tag-cell">
-                <code>{{ row.asset_tag }}</code>
-                {% if row.updated_date or row.created_date %}
-                  <div class="asset-meta">
-                    {% if row.updated_date %}Updated {{ row.updated_date }}{% elif row.created_date %}Created {{ row.created_date }}{% endif %}
-                  </div>
-                {% endif %}
-              </td>
-              <td>{{ row.equipment_type or "Unknown" }}</td>
-              <td>
-                <form method="post" action="{{ url_for('admin_assign_slot') }}">
-                  <input type="hidden" name="action" value="lookup" />
-                  <input type="hidden" name="asset_tag" value="{{ row.asset_tag }}" />
-                  <button type="submit">Assign</button>
-                </form>
-              </td>
+              <th>Asset tag</th>
+              <th>Serial number</th>
+              <th>Equipment type</th>
+              <th>Action</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in unslotted_assets %}
+              <tr>
+                <td class="asset-tag-cell" data-label="Asset tag">
+                  <code>{{ row.asset_tag }}</code>
+                  {% if row.updated_date or row.created_date %}
+                    <div class="asset-meta">
+                      {% if row.updated_date %}Updated {{ row.updated_date }}{% elif row.created_date %}Created {{ row.created_date }}{% endif %}
+                    </div>
+                  {% endif %}
+                </td>
+                <td data-label="Serial number">{{ row.serial_number or "Not recorded" }}</td>
+                <td data-label="Equipment type">{{ row.equipment_type or "Unknown" }}</td>
+                <td data-label="Action">
+                  <form method="post" action="{{ url_for('admin_assign_slot') }}">
+                    <input type="hidden" name="action" value="lookup" />
+                    <input type="hidden" name="asset_tag" value="{{ row.asset_tag }}" />
+                    <button type="submit">Assign</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
     {% else %}
       <p class="muted">No unslotted assets found.</p>
     {% endif %}
@@ -119,7 +183,8 @@
       <h2>Selected Asset</h2>
       <div class="asset-summary-row">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
-        <div><strong>equipment type:</strong> {{ asset.model or asset.manufacturer or "Unknown" }}</div>
+        <div><strong>serial_number:</strong> {{ asset.serial or "Not recorded" }}</div>
+        <div><strong>equipment type:</strong> {{ asset.equipment_type or "Unknown" }}</div>
         <div><strong>location_type:</strong> <code>{{ asset.location_type or "" }}</code></div>
       </div>
     </div>
