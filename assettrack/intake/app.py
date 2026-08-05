@@ -2094,6 +2094,7 @@ def _build_admin_assign_asset_view(conn, scan_tag: str) -> tuple[Optional[dict],
         "manufacturer": str(asset.get("manufacturer") or ""),
         "model": str(asset.get("model") or ""),
         "serial": str(asset.get("serial_number") or ""),
+        "equipment_type": str(asset.get("equipment_type") or ""),
         "location_type": str(asset.get("location_type") or ""),
         "current_holder": holder_label,
         "current_slot": current_slot,
@@ -2106,6 +2107,7 @@ def _list_unslotted_storage_assets(conn: sqlite3.Connection) -> list[dict]:
     asset_columns = get_asset_table_columns(conn)
     select_fields = [
         "a.asset_tag AS asset_tag",
+        "a.serial_number AS serial_number",
         "a.equipment_type AS equipment_type",
         "a.created_date AS created_date",
     ]
@@ -2129,6 +2131,7 @@ def _list_unslotted_storage_assets(conn: sqlite3.Connection) -> list[dict]:
     return [
         {
             "asset_tag": str(row["asset_tag"] or ""),
+            "serial_number": str(row["serial_number"] or ""),
             "equipment_type": str(row["equipment_type"] or ""),
             "created_date": str(row["created_date"] or ""),
             "updated_date": str(row["updated_date"] or ""),
