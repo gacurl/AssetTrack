@@ -1664,3 +1664,60 @@ def test_slot_move_commit_rejects_terminal_assets_without_partial_change(
     assert response.status_code == 200
     assert b"Asset is retired/disposed and cannot be moved." in response.data
     assert after == before
+
+def test_assign_slot_dropdowns_render_cases_and_slots_in_natural_numeric_order(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (?, ?, ?, NULL);
+            """,
+            [
+                (610, "CASE-10", 10),
+                (602, "CASE-2", 2),
+                (609, "CASE-9", 9),
+                (601, "CASE-1", 1),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    created = client_with_temp_db.post(
+        "/admin/assets/new",
+        data={
+            "asset_tag": "AT-NATURAL-SLOT",
+            "serial_number": "SER-NATURAL-SLOT",
+            "manufacturer": "Dell",
+            "equipment_type": "laptop",
+            "building": "HQ",
+            "room": "100",
+        },
+    )
+    assert created.status_code == 302
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-NATURAL-SLOT"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    rendered = response.data
+    case_positions = [
+        rendered.index(b'<option value="CASE-1"'),
+        rendered.index(b'<option value="CASE-2"'),
+        rendered.index(b'<option value="CASE-9"'),
+        rendered.index(b'<option value="CASE-10"'),
+    ]
+    slot_positions = [
+        rendered.index(b"CASE-1 / Slot 1"),
+        rendered.index(b"CASE-2 / Slot 2"),
+        rendered.index(b"CASE-9 / Slot 9"),
+        rendered.index(b"CASE-10 / Slot 10"),
+    ]
+    assert case_positions == sorted(case_positions)
+    assert slot_positions == sorted(slot_positions)

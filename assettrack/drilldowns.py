@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import re
 import sqlite3
 
 from assettrack.assets import get_asset_table_columns
 from assettrack.audit import ACTIVE_EVENTS_WHERE
 from assettrack.event_types import issue_event_type_values
+from assettrack.natural_sort import natural_identifier_sort_key
 
 
 def _parse_utc_timestamp(value: object) -> datetime | None:
@@ -194,15 +194,7 @@ def list_case_summaries(conn: sqlite3.Connection) -> list[dict]:
             }
         )
 
-    def _sort_key(item: tuple[int, dict]) -> tuple[int, int, int]:
-        original_index, case = item
-        case_name = str(case["case_name"] or "").strip().upper()
-        match = re.fullmatch(r"CASE-(\d+)", case_name)
-        if match:
-            return (0, int(match.group(1)), original_index)
-        return (1, original_index, 0)
-
-    return [case for _, case in sorted(enumerate(results), key=_sort_key)]
+    return sorted(results, key=lambda row: natural_identifier_sort_key(row["case_name"]))
 
 
 def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | None:

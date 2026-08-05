@@ -78,6 +78,7 @@ from assettrack.holder_import import (
 )
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
+from assettrack.natural_sort import natural_identifier_sort_key
 from assettrack.reference_data import (
     create_building,
     create_organization,
@@ -1294,7 +1295,7 @@ def _list_slot_options(conn) -> list[dict]:
         ORDER BY UPPER(s.case_name) ASC, s.slot_position ASC, s.id ASC;
         """
     ).fetchall()
-    return [
+    slot_options = [
         {
             "id": int(row["id"]),
             "case_name": str(row["case_name"] or ""),
@@ -1304,11 +1305,21 @@ def _list_slot_options(conn) -> list[dict]:
         }
         for row in rows
     ]
+    return sorted(
+        slot_options,
+        key=lambda row: (
+            natural_identifier_sort_key(row["case_name"]),
+            natural_identifier_sort_key(row["slot_position"]),
+            int(row["id"]),
+        ),
+    )
 
 
 def _slot_case_options(slot_options: list[dict]) -> list[str]:
-    return sorted({str(row["case_name"]) for row in slot_options if str(row["case_name"]).strip()})
-
+    return sorted(
+        {str(row["case_name"]) for row in slot_options if str(row["case_name"]).strip()},
+        key=natural_identifier_sort_key,
+    )
 
 def _resolve_slot_selection(
     conn: sqlite3.Connection,
@@ -1743,28 +1754,32 @@ def _lookup_cases_for_asset_search(conn: sqlite3.Connection, query: str) -> list
         """
         SELECT
             case_name,
-            COUNT(*) AS slot_count
-        FROM slots
-        WHERE REPLACE(UPPER(case_name), '-', '') LIKE ?
-        GROUP BY case_name
-        ORDER BY
+            COUNT(*) AS slot_count,
             CASE
                 WHEN UPPER(case_name) = UPPER(?) THEN 0
                 WHEN REPLACE(UPPER(case_name), '-', '') = ? THEN 1
                 ELSE 2
-            END,
-            UPPER(case_name) ASC;
+            END AS match_rank
+        FROM slots
+        WHERE REPLACE(UPPER(case_name), '-', '') LIKE ?
+        GROUP BY case_name
+        ORDER BY match_rank ASC, UPPER(case_name) ASC;
         """,
-        (f"{query_key}%", query_clean, query_key),
+        (query_clean, query_key, f"{query_key}%"),
     ).fetchall()
 
-    return [
+    case_matches = [
         {
             "case_name": str(row["case_name"] or ""),
             "slot_count": int(row["slot_count"] or 0),
+            "match_rank": int(row["match_rank"] or 0),
         }
         for row in rows
     ]
+    return sorted(
+        case_matches,
+        key=lambda row: (int(row["match_rank"]), natural_identifier_sort_key(row["case_name"])),
+    )
 
 
 def _asset_search_status_cue(*, location_type: str, holder_label: str, movement_proof: dict[str, object]) -> dict[str, str]:
