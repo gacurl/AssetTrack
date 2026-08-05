@@ -197,6 +197,18 @@ def list_case_summaries(conn: sqlite3.Connection) -> list[dict]:
     return sorted(results, key=lambda row: natural_identifier_sort_key(row["case_name"]))
 
 
+def _holder_label(name: object, organization: object, holder_id: object) -> str:
+    holder_name = str(name or "").strip()
+    holder_organization = str(organization or "").strip()
+    if holder_name and holder_organization:
+        return f"{holder_name} ({holder_organization})"
+    if holder_name:
+        return holder_name
+    if holder_id is not None:
+        return f"ID {holder_id}"
+    return ""
+
+
 def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | None:
     exists_row = conn.execute(
         """
@@ -216,7 +228,10 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
             s.id AS slot_id,
             s.slot_position,
             a.asset_tag,
-            a.location_type AS asset_location_type
+            a.location_type AS asset_location_type,
+            a.current_holder_id,
+            h.name AS holder_name,
+            h.organization AS holder_organization
         FROM slots s
         LEFT JOIN (
             SELECT so.slot_id, so.asset_id
@@ -231,6 +246,8 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
           ON chosen.slot_id = s.id
         LEFT JOIN assets a
           ON a.id = chosen.asset_id
+        LEFT JOIN holders h
+          ON h.id = a.current_holder_id
         WHERE s.case_name = ?
         ORDER BY s.slot_position ASC, s.id ASC;
         """,
@@ -242,10 +259,16 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
         SELECT
             a.asset_tag,
             a.location_type,
+            a.current_holder_id,
+            h.name AS holder_name,
+            h.organization AS holder_organization,
+            s.case_name,
             s.slot_position
         FROM assets a
         JOIN slots s
           ON s.id = a.home_slot_id
+        LEFT JOIN holders h
+          ON h.id = a.current_holder_id
         WHERE s.case_name = ?
           AND UPPER(COALESCE(a.location_type, '')) = 'IN_CUSTODY'
         ORDER BY s.slot_position ASC, UPPER(a.asset_tag) ASC, a.id ASC;
@@ -261,6 +284,7 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
                 "slot_position": int(row["slot_position"]),
                 "asset_tag": row["asset_tag"],
                 "asset_location_type": "" if row["asset_location_type"] is None else str(row["asset_location_type"]),
+                "holder_label": _holder_label(row["holder_name"], row["holder_organization"], row["current_holder_id"]),
             }
             for row in slot_rows
         ],
@@ -268,6 +292,8 @@ def get_case_slot_detail(conn: sqlite3.Connection, case_name: str) -> dict | Non
             {
                 "asset_tag": str(row["asset_tag"] or ""),
                 "location_type": str(row["location_type"] or ""),
+                "holder_label": _holder_label(row["holder_name"], row["holder_organization"], row["current_holder_id"]),
+                "case_name": str(row["case_name"] or case_name),
                 "slot_position": int(row["slot_position"]),
             }
             for row in return_candidate_rows
