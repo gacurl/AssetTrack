@@ -2158,25 +2158,25 @@ def _validate_assign_slot_location_form(form: dict[str, str]) -> tuple[dict[str,
     errors: list[str] = []
 
     building = normalized_form["building"]
-    room = normalized_form["room"]
     building_options = list(context["building_options"])
     building_name_map = {name.upper(): name for name in building_options}
 
-    if not building:
-        errors.append("Choose a building.")
-    elif building_name_map:
-        matched_name = building_name_map.get(building.upper())
-        if matched_name is None:
-            errors.append("Choose a valid building.")
+    if building:
+        if building_name_map:
+            matched_name = building_name_map.get(building.upper())
+            if matched_name is None:
+                errors.append("Choose a valid building.")
+            else:
+                normalized_form["building"] = matched_name
         else:
-            normalized_form["building"] = matched_name
-    else:
-        errors.append("No buildings are configured. Add a building in Admin Reference Data first.")
-
-    if not room:
-        errors.append("Enter room or area.")
+            errors.append("No buildings are configured. Add a building in Admin Reference Data first.")
 
     return normalized_form, errors, context
+
+
+def _assign_slot_building_room_label(building: object, room: object) -> str:
+    parts = [str(value or "").strip() for value in (building, room)]
+    return "/".join(part for part in parts if part)
 
 
 def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
@@ -10686,16 +10686,12 @@ def admin_assign_slot():
             elif action == "assign":
                 if not asset_tag:
                     flash("asset_tag is required.", "error")
-                if not building:
-                    flash("building is required.", "error")
-                if not room:
-                    flash("room/area is required.", "error")
                 if not case_name:
                     flash("case is required.", "error")
                 if not slot_id:
                     flash("slot is required.", "error")
 
-                if not asset_tag or not building or not room or not case_name or not slot_id:
+                if not asset_tag or not case_name or not slot_id:
                     return render_template(
                         "admin_assign_slot.html",
                         asset_tag=asset_tag,
@@ -10873,7 +10869,7 @@ def admin_assign_slot():
                     update_values.append(slot["id"])
                     if "building_room" in asset_columns:
                         update_clauses.append("building_room = ?")
-                        update_values.append(f"{building}/{room}")
+                        update_values.append(_assign_slot_building_room_label(building, room))
                     if "case_number" in asset_columns:
                         update_clauses.append("case_number = ?")
                         update_values.append(str(slot["case_name"]))
@@ -10892,7 +10888,7 @@ def admin_assign_slot():
 
                     payload = {
                         "slot_id": int(slot["id"]),
-                        "building_room": f"{building}/{room}",
+                        "building_room": _assign_slot_building_room_label(building, room),
                         "case_number": str(slot["case_name"]),
                         "slot_number": int(slot["slot_position"]),
                     }

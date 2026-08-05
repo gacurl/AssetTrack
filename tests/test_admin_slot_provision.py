@@ -1004,6 +1004,159 @@ def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -
     assert b"disabled" in lookup.data
 
 
+def test_assign_slot_allows_blank_building_and_room_without_default_location(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (720, 'CASE-BLANK-LOC', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _create_unslotted_asset(
+        client_with_temp_db,
+        asset_tag="AT-BLANK-LOC",
+        serial_number="SER-BLANK-LOC",
+    )
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "assign",
+            "asset_tag": "AT-BLANK-LOC",
+            "building": "",
+            "room": "",
+            "case_name": "CASE-BLANK-LOC",
+            "slot_id": "720",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Assigned asset AT-BLANK-LOC to CASE-BLANK-LOC slot 1." in response.data
+    assert b"building is required." not in response.data
+    assert b"room/area is required." not in response.data
+    assert b"Suffolk" not in response.data
+    assert b"Base" not in response.data
+    assert b"Unknown" not in response.data
+
+    verify_conn = db.get_connection()
+    try:
+        asset_row = verify_conn.execute(
+            "SELECT building_room, home_slot_id FROM assets WHERE asset_tag = 'AT-BLANK-LOC' LIMIT 1;"
+        ).fetchone()
+        event_row = verify_conn.execute(
+            "SELECT payload FROM asset_events WHERE asset_tag = 'AT-BLANK-LOC' AND event_type = 'SLOT_ASSIGN' LIMIT 1;"
+        ).fetchone()
+    finally:
+        verify_conn.close()
+
+    assert asset_row is not None
+    assert str(asset_row["building_room"] or "") == ""
+    assert int(asset_row["home_slot_id"]) == 720
+    assert event_row is not None
+    assert json.loads(str(event_row["payload"]))["building_room"] == ""
+
+
+def test_assign_slot_stores_explicit_building_and_room(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (721, 'CASE-EXPLICIT-LOC', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _create_unslotted_asset(
+        client_with_temp_db,
+        asset_tag="AT-EXPLICIT-LOC",
+        serial_number="SER-EXPLICIT-LOC",
+    )
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "assign",
+            "asset_tag": "AT-EXPLICIT-LOC",
+            "building": "HQ",
+            "room": "105",
+            "case_name": "CASE-EXPLICIT-LOC",
+            "slot_id": "721",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Assigned asset AT-EXPLICIT-LOC to CASE-EXPLICIT-LOC slot 1." in response.data
+
+    verify_conn = db.get_connection()
+    try:
+        asset_row = verify_conn.execute(
+            "SELECT building_room FROM assets WHERE asset_tag = 'AT-EXPLICIT-LOC' LIMIT 1;"
+        ).fetchone()
+        event_row = verify_conn.execute(
+            "SELECT payload FROM asset_events WHERE asset_tag = 'AT-EXPLICIT-LOC' AND event_type = 'SLOT_ASSIGN' LIMIT 1;"
+        ).fetchone()
+    finally:
+        verify_conn.close()
+
+    assert asset_row is not None
+    assert str(asset_row["building_room"] or "") == "HQ/105"
+    assert event_row is not None
+    assert json.loads(str(event_row["payload"]))["building_room"] == "HQ/105"
+
+
+def test_assign_slot_validation_error_preserves_submitted_location_values(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (722, 'CASE-RETAIN-LOC', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _create_unslotted_asset(
+        client_with_temp_db,
+        asset_tag="AT-RETAIN-LOC",
+        serial_number="SER-RETAIN-LOC",
+    )
+
+    response = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "assign",
+            "asset_tag": "AT-RETAIN-LOC",
+            "building": "Closed HQ",
+            "room": "105A",
+            "case_name": "CASE-RETAIN-LOC",
+            "slot_id": "722",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Choose a valid building." in response.data
+    assert b'<option value="Closed HQ" selected>Closed HQ</option>' in response.data
+    assert b'value="105A"' in response.data
+    assert b'value="CASE-RETAIN-LOC" selected' in response.data
+    assert b'value="722"' in response.data
+
+
 def test_assign_slot_page_shows_known_buildings_as_choices(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     _create_building("HQ North")
