@@ -196,9 +196,12 @@
         <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
 
         <div class="row">
-          <label for="building"><strong>building</strong> (required)</label><br />
-          <select id="building" name="building" required>
-            <option value="">Select building</option>
+          <label for="building"><strong>building</strong> (optional)</label><br />
+          <select id="building" name="building">
+            <option value="">No building entered</option>
+            {% if building and building not in building_options %}
+              <option value="{{ building }}" selected>{{ building }}</option>
+            {% endif %}
             {% for option in building_options %}
               <option value="{{ option }}" {% if building == option %}selected{% endif %}>{{ option }}</option>
             {% endfor %}
@@ -206,15 +209,14 @@
         </div>
 
         <div class="row">
-          <label for="room"><strong>room/area</strong> (required)</label><br />
+          <label for="room"><strong>room/area</strong> (optional)</label><br />
           <input
             type="text"
             id="room"
             name="room"
             value="{{ room or '' }}"
-            placeholder="e.g. 101"
+            placeholder="Optional room or area"
             autocomplete="off"
-            required
           />
         </div>
 

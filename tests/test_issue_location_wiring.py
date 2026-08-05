@@ -320,6 +320,20 @@ def test_issue_does_not_reuse_last_current_location_when_building_becomes_inacti
         assert sess["last_issue_room"] == "210"
 
 
+def test_issue_location_post_still_requires_building_and_room(client_with_temp_db) -> None:
+    _login_issue_operator(client_with_temp_db)
+
+    response = client_with_temp_db.post(
+        "/issue/location",
+        data={"building": "", "room": ""},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Choose the current building." in response.data
+    assert b"Enter the current room or area." in response.data
+
+
 def test_issue_location_post_rejects_inactive_building(client_with_temp_db) -> None:
     _login_issue_operator(client_with_temp_db)
     conn = db.get_connection()
