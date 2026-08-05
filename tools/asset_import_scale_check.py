@@ -74,8 +74,10 @@ class ScalePlan:
             "proposed_update": self.update_rows,
             "unslotted_import": 0,
             "slot_conflict_unslotted": self.slot_conflict_rows,
+            "blocked_conflict": 0,
             "identity_conflict": self.identity_conflict_rows,
             "invalid_duplicate_upload_row": self.duplicate_pairs + self.invalid_rows,
+            "case_over_capacity": 0,
         }
 
 
@@ -435,9 +437,18 @@ def run_scale_check(plan: ScalePlan, *, db_path: Path, progress: Callable[[str],
     progress = progress or (lambda _message: None)
     _validate_plan(plan)
     db.DB_PATH = db_path
+    previous_testing = intake_app.app.config.get("TESTING")
+    previous_propagate_exceptions = intake_app.app.config.get("PROPAGATE_EXCEPTIONS")
     intake_app.app.config["TESTING"] = True
     intake_app.app.config["PROPAGATE_EXCEPTIONS"] = False
+    try:
+        return _run_scale_check(plan, db_path=db_path, progress=progress)
+    finally:
+        intake_app.app.config["TESTING"] = previous_testing
+        intake_app.app.config["PROPAGATE_EXCEPTIONS"] = previous_propagate_exceptions
 
+
+def _run_scale_check(plan: ScalePlan, *, db_path: Path, progress: Callable[[str], None]) -> dict[str, object]:
     progress(f"initializing database at {db_path}")
     conn = db.get_connection()
     try:

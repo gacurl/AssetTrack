@@ -85,7 +85,7 @@
   </details>
 
   {% if result is not none %}
-    {% set blocked_rows = result.rows_by_category["identity_conflict"] + result.rows_by_category["invalid_duplicate_upload_row"] %}
+    {% set blocked_rows = result.rows_by_category["blocked_conflict"] + result.rows_by_category["identity_conflict"] + result.rows_by_category["invalid_duplicate_upload_row"] + result.rows_by_category["case_over_capacity"] %}
     <div class="card">
       <h2>Analysis Result</h2>
       <p class="import-summary">
@@ -94,6 +94,9 @@
         <strong>Type:</strong> {{ result.file_type }}
       </p>
       <p class="import-help">Preview generated successfully. No database changes were made.</p>
+      {% if result.ignored_rows %}
+        <p class="import-help">{{ result.ignored_rows }} blank or placeholder barcode row{% if result.ignored_rows != 1 %}s{% endif %} ignored.</p>
+      {% endif %}
       {% if result.warnings %}
         <p class="import-help"><strong>Warnings:</strong></p>
         <ul class="compact-list">
@@ -145,6 +148,10 @@
                   <td>
                     {% if row.category == "identity_conflict" %}
                       Use a unique asset tag and serial number, or update the existing asset outside this import.
+                    {% elif row.category == "blocked_conflict" %}
+                      Resolve the custody or storage conflict, then analyze the file again.
+                    {% elif row.category == "case_over_capacity" %}
+                      Reconcile the Name Cases quantity or workbook case rows, then analyze the file again.
                     {% else %}
                       Correct the upload row, then analyze the file again.
                     {% endif %}
@@ -199,6 +206,58 @@
               <li><code>{{ default.field }}</code>: {{ default.value }}</li>
             {% endfor %}
           </ul>
+          {% if result.case_plans %}
+            <h3>Case Plans</h3>
+            <div class="import-row-table-wrap" tabindex="0" aria-label="BQ26 case plans">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Case</th>
+                    <th>Case Size</th>
+                    <th>Quantity</th>
+                    <th>Barcoded Assets</th>
+                    <th>Warnings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for plan in result.case_plans %}
+                    <tr>
+                      <td><code>{{ plan.case_name }}</code></td>
+                      <td>{{ plan.case_size or "Not recorded" }}</td>
+                      <td>{{ plan.quantity }}</td>
+                      <td>{{ plan.assigned_count }}</td>
+                      <td>{{ plan.warnings|join("; ") }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+          {% if result.obsolete_assets %}
+            <h3>Active Network Assets Absent From Workbook</h3>
+            <div class="import-row-table-wrap" tabindex="0" aria-label="Obsolete network reconciliation">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Asset</th>
+                    <th>Serial</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for asset in result.obsolete_assets %}
+                    <tr>
+                      <td><code>{{ asset.asset_tag }}</code></td>
+                      <td>{{ asset.serial_number or "" }}</td>
+                      <td>{{ equipment_type_label(asset.equipment_type) }}</td>
+                      <td>{{ asset.location_type or "" }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
           <h3>Rows</h3>
           {% for category in result.category_order %}
             {% set category_rows = result.rows_by_category[category] %}

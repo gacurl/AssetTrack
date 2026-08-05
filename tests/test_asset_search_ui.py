@@ -188,6 +188,16 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"ABC-123", response.data)
         self.assertIn(b"SER-HYPHEN", response.data)
 
+    def test_search_finds_spaced_hyphenated_asset_when_query_omits_spacing(self) -> None:
+        self._insert_asset("BQ 26-1", serial_number="SER-BQ26-SEARCH", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=bq261")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Asset Found", response.data)
+        self.assertIn(b"BQ 26-1", response.data)
+        self.assertIn(b"SER-BQ26-SEARCH", response.data)
+
     def test_search_finds_unhyphenated_asset_when_query_includes_hyphen_without_rewriting_tag(self) -> None:
         self._insert_asset("ABC123", serial_number="SER-NOHYPHEN", location_type="STORAGE", home_slot_id=None)
 

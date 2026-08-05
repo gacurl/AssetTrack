@@ -46,6 +46,7 @@ from assettrack.assets import (
     normalize_equipment_type,
     validate_new_equipment_type,
 )
+from assettrack.barcodes import barcode_lookup_key
 from assettrack.cases import CASE_SIZE_OPTIONS, save_case_size
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
@@ -367,7 +368,7 @@ def sanitize_scan(raw: str) -> str:
 
 
 def _identifier_lookup_key(value: object) -> str:
-    return str(value or "").strip().upper().replace("-", "")
+    return barcode_lookup_key(value)
 
 
 def _single_identifier_match(
@@ -888,7 +889,7 @@ def _find_asset_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
         """
         SELECT *
         FROM assets
-        WHERE REPLACE(UPPER(asset_tag), '-', '') = ?
+        WHERE REPLACE(REPLACE(UPPER(asset_tag), '-', ''), ' ', '') = ?
         LIMIT 2;
         """,
         (_identifier_lookup_key(t),),
@@ -917,7 +918,7 @@ def _find_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]:
             """
             SELECT id, case_name, slot_position, current_asset_tag
             FROM slots
-            WHERE REPLACE(UPPER(case_name), '-', '') = ?
+            WHERE REPLACE(REPLACE(UPPER(case_name), '-', ''), ' ', '') = ?
             ORDER BY slot_position ASC, id ASC;
             """,
             (_identifier_lookup_key(t),),
@@ -996,7 +997,7 @@ def _find_return_case_assets_for_scan_tag(conn, scan_tag: str) -> Optional[dict]
             """
             SELECT id, case_name, slot_position
             FROM slots
-            WHERE REPLACE(UPPER(case_name), '-', '') = ?
+            WHERE REPLACE(REPLACE(UPPER(case_name), '-', ''), ' ', '') = ?
             ORDER BY slot_position ASC, id ASC;
             """,
             (_identifier_lookup_key(t),),
@@ -1096,7 +1097,7 @@ def _queue_case_detail_issue_selection(conn: sqlite3.Connection, case_name: str,
             WHERE s.case_name = ?
               AND (
                 UPPER(a.asset_tag) = UPPER(?)
-                OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(?)
+                OR REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = UPPER(?)
               )
             LIMIT 1;
             """,
@@ -1160,7 +1161,7 @@ def _queue_case_detail_return_selection(conn: sqlite3.Connection, case_name: str
             WHERE s.case_name = ?
               AND (
                 UPPER(a.asset_tag) = UPPER(?)
-                OR REPLACE(UPPER(a.asset_tag), '-', '') = UPPER(?)
+                OR REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = UPPER(?)
               )
             LIMIT 1;
             """,
@@ -1219,7 +1220,7 @@ def _asset_current_slot(conn, asset_id: int, asset_tag: str) -> Optional[dict]:
         SELECT id AS slot_id, case_name, slot_position
         FROM slots
         WHERE UPPER(current_asset_tag) = UPPER(?)
-           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+           OR REPLACE(REPLACE(UPPER(current_asset_tag), '-', ''), ' ', '') = UPPER(?)
         LIMIT 1;
         """,
         (asset_tag, asset_tag),
@@ -1603,16 +1604,16 @@ def _lookup_asset_for_verification(
               ON h.id = a.current_holder_id
             WHERE (
                 UPPER(a.asset_tag) LIKE UPPER(?)
-                OR REPLACE(UPPER(a.asset_tag), '-', '') = ?
+                OR REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = ?
             )
               AND TRIM(COALESCE(a.serial_number, '')) <> ''
               AND UPPER(a.serial_number) LIKE UPPER(?)
             ORDER BY
                 CASE
                     WHEN UPPER(a.asset_tag) = UPPER(?) AND UPPER(a.serial_number) = UPPER(?) THEN 0
-                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? AND UPPER(a.serial_number) = UPPER(?) THEN 1
+                    WHEN REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = ? AND UPPER(a.serial_number) = UPPER(?) THEN 1
                     WHEN UPPER(a.asset_tag) = UPPER(?) THEN 2
-                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? THEN 3
+                    WHEN REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = ? THEN 3
                     WHEN UPPER(a.serial_number) = UPPER(?) THEN 4
                     ELSE 5
                 END,
@@ -1651,11 +1652,11 @@ def _lookup_asset_for_verification(
             LEFT JOIN holders h
               ON h.id = a.current_holder_id
             WHERE UPPER(a.asset_tag) LIKE UPPER(?)
-               OR REPLACE(UPPER(a.asset_tag), '-', '') = ?
+               OR REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = ?
             ORDER BY
                 CASE
                     WHEN UPPER(a.asset_tag) = UPPER(?) THEN 0
-                    WHEN REPLACE(UPPER(a.asset_tag), '-', '') = ? THEN 1
+                    WHEN REPLACE(REPLACE(UPPER(a.asset_tag), '-', ''), ' ', '') = ? THEN 1
                     ELSE 2
                 END,
                 UPPER(a.asset_tag) ASC,
@@ -1758,11 +1759,11 @@ def _lookup_cases_for_asset_search(conn: sqlite3.Connection, query: str) -> list
             COUNT(*) AS slot_count,
             CASE
                 WHEN UPPER(case_name) = UPPER(?) THEN 0
-                WHEN REPLACE(UPPER(case_name), '-', '') = ? THEN 1
+                WHEN REPLACE(REPLACE(UPPER(case_name), '-', ''), ' ', '') = ? THEN 1
                 ELSE 2
             END AS match_rank
         FROM slots
-        WHERE REPLACE(UPPER(case_name), '-', '') LIKE ?
+        WHERE REPLACE(REPLACE(UPPER(case_name), '-', ''), ' ', '') LIKE ?
         GROUP BY case_name
         ORDER BY match_rank ASC, UPPER(case_name) ASC;
         """,
@@ -3683,7 +3684,7 @@ def _retire_admin_asset_in_tx(
         UPDATE slots
         SET current_asset_tag = NULL
         WHERE UPPER(current_asset_tag) = UPPER(?)
-           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?);
+           OR REPLACE(REPLACE(UPPER(current_asset_tag), '-', ''), ' ', '') = UPPER(?);
         """,
         (asset_tag, asset_tag),
     )
@@ -4350,7 +4351,7 @@ def _receipt_asset_row_snapshot(conn, asset_tag: str) -> Optional[sqlite3.Row]:
         SELECT id, asset_tag, serial_number, equipment_type, manufacturer, model, model_code, notes, building_room
         FROM assets
         WHERE UPPER(asset_tag) = UPPER(?)
-           OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?)
+           OR REPLACE(REPLACE(UPPER(asset_tag), '-', ''), ' ', '') = UPPER(?)
         LIMIT 1;
         """,
         (asset_tag, asset_tag),
@@ -4684,7 +4685,7 @@ def _issue_batch(
                     UPDATE assets
                     SET {', '.join(update_clauses)}
                     WHERE UPPER(asset_tag) = UPPER(?)
-                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
+                       OR REPLACE(REPLACE(UPPER(asset_tag), '-', ''), ' ', '') = UPPER(?);
                     """,
                     tuple(update_values),
                 )
@@ -4856,7 +4857,7 @@ def _return_batch(
                     UPDATE assets
                     SET location_type = ?, current_holder_id = NULL
                     WHERE UPPER(asset_tag) = UPPER(?)
-                       OR REPLACE(UPPER(asset_tag), '-', '') = UPPER(?);
+                       OR REPLACE(REPLACE(UPPER(asset_tag), '-', ''), ' ', '') = UPPER(?);
                     """,
                     ("STORAGE", canon_tag, canon_tag),
                 )
@@ -8296,7 +8297,7 @@ def _asset_import_existing_asset(conn: sqlite3.Connection, asset_tag: str) -> sq
     ).fetchone()
     if exact is not None:
         return exact
-    return conn.execute(
+    case_match = conn.execute(
         """
         SELECT *
         FROM assets
@@ -8305,6 +8306,15 @@ def _asset_import_existing_asset(conn: sqlite3.Connection, asset_tag: str) -> sq
         """,
         (asset_tag,),
     ).fetchone()
+    if case_match is not None:
+        return case_match
+    lookup_key = barcode_lookup_key(asset_tag)
+    if not lookup_key:
+        return None
+    for row in conn.execute("SELECT * FROM assets;").fetchall():
+        if barcode_lookup_key(row["asset_tag"]) == lookup_key:
+            return row
+    return None
 
 
 def _asset_import_slot_for_row(conn: sqlite3.Connection, row) -> sqlite3.Row | None:
@@ -8357,6 +8367,27 @@ def _asset_import_get_or_create_slot_for_row(conn: sqlite3.Connection, row) -> s
         raise ValueError(f"Row {row.row_number}: requested slot could not be created.")
     return slot
 
+
+def _asset_import_provision_case_plans(conn: sqlite3.Connection, case_plans: tuple[dict[str, object], ...]) -> None:
+    for plan in case_plans:
+        case_name = str(plan.get("case_name") or "").strip().upper()
+        if not case_name:
+            continue
+        quantity = int(plan.get("quantity") or 0)
+        assigned_count = int(plan.get("assigned_count") or 0)
+        if assigned_count > quantity:
+            continue
+        save_case_size(conn, case_name, plan.get("case_size") or "")
+        for slot_position in range(1, quantity + 1):
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO slots (case_name, slot_position, current_asset_tag)
+                VALUES (?, ?, NULL);
+                """,
+                (case_name, slot_position),
+            )
+
+
 def _asset_import_slot_is_available_for(conn: sqlite3.Connection, *, slot_id: int, asset_tag: str) -> bool:
 
     occupant = conn.execute(
@@ -8369,11 +8400,11 @@ def _asset_import_slot_is_available_for(conn: sqlite3.Connection, *, slot_id: in
         """,
         (slot_id,),
     ).fetchone()
-    if occupant is not None and str(occupant["asset_tag"] or "").strip().upper() != asset_tag.upper():
+    if occupant is not None and barcode_lookup_key(occupant["asset_tag"]) != barcode_lookup_key(asset_tag):
         return False
     slot = conn.execute("SELECT current_asset_tag FROM slots WHERE id = ? LIMIT 1;", (slot_id,)).fetchone()
     current_tag = str(slot["current_asset_tag"] or "").strip() if slot else ""
-    return not current_tag or current_tag.upper() == asset_tag.upper()
+    return not current_tag or barcode_lookup_key(current_tag) == barcode_lookup_key(asset_tag)
 
 
 def _asset_import_new_asset_values(conn: sqlite3.Connection, row, *, now_iso: str, slot: sqlite3.Row | None) -> dict[str, object]:
@@ -8524,6 +8555,83 @@ def _asset_import_apply_metadata_update(
     return True
 
 
+def _asset_import_move_existing_asset_to_slot(
+    conn: sqlite3.Connection,
+    *,
+    asset: sqlite3.Row,
+    source_slot_id: int,
+    destination_slot: sqlite3.Row,
+    row,
+    now_iso: str,
+    actor: str,
+) -> None:
+    destination_slot_id = int(destination_slot["id"])
+    source_slot = conn.execute(
+        """
+        SELECT id, case_name, slot_position
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (source_slot_id,),
+    ).fetchone()
+    if source_slot is None:
+        raise ValueError(f"Row {row.row_number}: source slot is missing.")
+    delete_source = conn.execute(
+        """
+        DELETE FROM slot_occupancy
+        WHERE slot_id = ? AND asset_id = ?;
+        """,
+        (source_slot_id, int(asset["id"])),
+    )
+    if delete_source.rowcount != 1:
+        raise ValueError(f"Row {row.row_number}: source slot is missing or empty.")
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (?, ?, ?);
+        """,
+        (destination_slot_id, int(asset["id"]), now_iso),
+    )
+    conn.execute("UPDATE slots SET current_asset_tag = NULL WHERE id = ?;", (source_slot_id,))
+    conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", (str(asset["asset_tag"]), destination_slot_id))
+    update_values: dict[str, object] = {
+        "home_slot_id": destination_slot_id,
+        "case_number": str(destination_slot["case_name"]),
+        "slot_number": str(destination_slot["slot_position"]),
+        "location_type": "STORAGE",
+        "updated_date": now_iso,
+    }
+    asset_columns = get_asset_table_columns(conn)
+    filtered = {field: value for field, value in update_values.items() if field in asset_columns}
+    if filtered:
+        conn.execute(
+            f"UPDATE assets SET {', '.join(f'{field} = ?' for field in filtered)} WHERE id = ?;",
+            [filtered[field] for field in filtered] + [int(asset["id"])],
+        )
+    _asset_import_append_event(
+        conn,
+        asset_tag=str(asset["asset_tag"]),
+        event_type="SLOT_MOVE",
+        event_date=now_iso,
+        actor=actor,
+        notes="Asset import slot move",
+        payload={
+            "from_slot": {
+                "slot_id": source_slot_id,
+                "case_number": str(source_slot["case_name"]),
+                "slot_number": int(source_slot["slot_position"]),
+            },
+            "to_slot": {
+                "slot_id": destination_slot_id,
+                "case_number": str(destination_slot["case_name"]),
+                "slot_number": int(destination_slot["slot_position"]),
+            },
+            "row_number": row.row_number,
+        },
+    )
+
+
 def _asset_import_apply_existing_update(conn: sqlite3.Connection, row, preview_row, *, now_iso: str, actor: str) -> tuple[bool, bool]:
     asset = _asset_import_existing_asset(conn, row.asset_tag)
     if asset is None:
@@ -8539,16 +8647,52 @@ def _asset_import_apply_existing_update(conn: sqlite3.Connection, row, preview_r
             raise ValueError(f"Row {row.row_number}: requested slot is no longer available.")
         source_slot_id = asset["home_slot_id"]
         if source_slot_id is None:
-            raise ValueError(f"Row {row.row_number}: asset is not currently slotted.")
-        building_room = row.building_room or str(asset["building_room"] or "")
-        move_preview = _build_admin_slot_move_preview(
-            conn,
-            source_slot_id=int(source_slot_id),
-            building_room=building_room,
-            case_number=str(slot["case_name"]),
-            slot_number=str(slot["slot_position"]),
-        )
-        move_asset_between_slots_in_tx(conn, move_preview=move_preview, notes="Asset import slot move", actor=actor, event_date=now_iso)
+            conn.execute(
+                """
+                INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+                VALUES (?, ?, ?);
+                """,
+                (int(slot["id"]), int(asset["id"]), now_iso),
+            )
+            conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", (row.asset_tag, int(slot["id"])))
+            update_values: dict[str, object] = {
+                "home_slot_id": int(slot["id"]),
+                "case_number": str(slot["case_name"]),
+                "slot_number": str(slot["slot_position"]),
+                "location_type": "STORAGE",
+                "updated_date": now_iso,
+            }
+            asset_columns = get_asset_table_columns(conn)
+            filtered = {field: value for field, value in update_values.items() if field in asset_columns}
+            conn.execute(
+                f"UPDATE assets SET {', '.join(f'{field} = ?' for field in filtered)} WHERE id = ?;",
+                [filtered[field] for field in filtered] + [int(asset["id"])],
+            )
+            _asset_import_append_event(
+                conn,
+                asset_tag=str(asset["asset_tag"]),
+                event_type="SLOT_ASSIGN",
+                event_date=now_iso,
+                actor=actor,
+                payload={
+                    "slot": {
+                        "slot_id": int(slot["id"]),
+                        "case_number": str(slot["case_name"]),
+                        "slot_number": int(slot["slot_position"]),
+                    },
+                    "row_number": row.row_number,
+                },
+            )
+        else:
+            _asset_import_move_existing_asset_to_slot(
+                conn,
+                asset=asset,
+                source_slot_id=int(source_slot_id),
+                destination_slot=slot,
+                row=row,
+                now_iso=now_iso,
+                actor=actor,
+            )
         moved = True
         asset = _asset_import_existing_asset(conn, row.asset_tag)
         if asset is None:
@@ -8620,6 +8764,7 @@ def _commit_asset_import_pending(*, submitted_token: str) -> tuple[dict, dict]:
             "blocked": 0,
             "committed_rows": 0,
         }
+        _asset_import_provision_case_plans(conn, analysis.case_plans)
         safe_unslotted_categories = {"unslotted_import", "slot_conflict_unslotted"}
         for preview_row in preview.rows:
             row = rows_by_number.get(int(preview_row.row_number))
@@ -8702,6 +8847,19 @@ def _asset_import_reconciliation_csv_response() -> object:
                 "; ".join(row.warnings),
             ]
         )
+    if preview.obsolete_assets:
+        writer.writerow([])
+        writer.writerow(["active_network_assets_absent_from_workbook"])
+        writer.writerow(["asset_tag", "serial_number", "equipment_type", "location_type"])
+        for asset in preview.obsolete_assets:
+            writer.writerow(
+                [
+                    asset["asset_tag"],
+                    asset["serial_number"],
+                    asset["equipment_type"],
+                    asset["location_type"],
+                ]
+            )
     wrapper.flush()
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv; charset=utf-8"
@@ -10875,7 +11033,7 @@ def admin_assign_slot():
                         SELECT 1
                         FROM slots
                         WHERE UPPER(current_asset_tag) = UPPER(?)
-                           OR REPLACE(UPPER(current_asset_tag), '-', '') = UPPER(?)
+                           OR REPLACE(REPLACE(UPPER(current_asset_tag), '-', ''), ' ', '') = UPPER(?)
                         LIMIT 1;
                         """,
                         (asset_row["asset_tag"], asset_row["asset_tag"]),
