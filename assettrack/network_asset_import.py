@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from assettrack.assets import APPROVED_NEW_EQUIPMENT_TYPES, SUPPORTED_EQUIPMENT_TYPE_MESSAGE
 from assettrack.db import bootstrap_db
 from assettrack.ingest.committer import BatchCommitError, commit_batch
 
@@ -35,7 +36,7 @@ REJECTED_CMDB_COLUMNS = {
     "running_configuration",
     "device_configuration",
 }
-ALLOWED_EQUIPMENT_TYPES = {"switch", "router"}
+ALLOWED_EQUIPMENT_TYPES = set(APPROVED_NEW_EQUIPMENT_TYPES)
 LEGACY_NETWORK_CSV_CLI_WARNING = (
     "Warning: assettrack.network_asset_import is a legacy internal maintenance utility. "
     "It is not the supported operator workflow. Normal administrators must use "
@@ -159,7 +160,7 @@ def _load_rows(csv_path: str | Path, conn: sqlite3.Connection) -> NetworkAssetIm
             if not asset_tag:
                 errors.append(f"Row {line_number}: asset_tag is required; barcode may be used when asset_tag is blank.")
             if equipment_type not in ALLOWED_EQUIPMENT_TYPES:
-                errors.append(f"Row {line_number}: equipment_type must be switch or router.")
+                errors.append(f"Row {line_number}: {SUPPORTED_EQUIPMENT_TYPE_MESSAGE}")
 
             previous_asset_row = seen_asset_tags.get(asset_tag)
             if asset_tag and previous_asset_row is not None:
@@ -276,7 +277,7 @@ def import_network_assets_csv(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="assettrack.network_asset_import")
-    parser.add_argument("csv_path", help="Path to reviewed network switch/router staging CSV")
+    parser.add_argument("csv_path", help="Path to reviewed network asset staging CSV")
     parser.add_argument("--db", required=True, help="Path to SQLite DB")
     parser.add_argument("--actor", required=True, help="Operator performing the import")
     args = parser.parse_args(argv)

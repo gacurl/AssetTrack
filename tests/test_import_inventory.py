@@ -211,7 +211,7 @@ def test_inventory_xlsx_import_rejects_unsupported_equipment_type_before_writes(
     with pytest.raises(import_inventory.ImportStopError) as excinfo:
         import_inventory.load_rows()
 
-    assert "Supported asset types are Laptop, Switch, and Router." in str(excinfo.value)
+    assert "Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM." in str(excinfo.value)
     conn = sqlite3.connect(db_path)
     try:
         assert conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0] == 0

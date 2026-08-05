@@ -131,9 +131,8 @@ class AdminReplaceAssetTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'<option value="laptop"', response.data)
-        self.assertIn(b'<option value="switch"', response.data)
-        self.assertIn(b'<option value="router"', response.data)
+        for equipment_type in [b"laptop", b"switch", b"router", b"server", b"storage", b"firewall", b"ntp", b"kvm"]:
+            self.assertIn(b'<option value="' + equipment_type + b'"', response.data)
         self.assertNotIn(b'<option value="monitor"', response.data)
         self.assertIn(b"<strong>manufacturer</strong> (optional)", response.data)
         self.assertNotIn(b'id="replacement_manufacturer" name="replacement_manufacturer" value="" required', response.data)
@@ -504,7 +503,7 @@ class AdminReplaceAssetTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
+        self.assertIn(b"Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM.", response.data)
         failed = self.conn.execute(
             "SELECT location_type, home_slot_id FROM assets WHERE id = ?;",
             (failed_id,),

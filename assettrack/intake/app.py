@@ -46,6 +46,7 @@ from assettrack.assets import (
     normalize_equipment_type,
     validate_new_equipment_type,
 )
+from assettrack.cases import CASE_SIZE_OPTIONS, save_case_size
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
@@ -2777,6 +2778,14 @@ def _commit_case_correction(
             """,
             (new_case, *slot_ids),
         )
+        conn.execute(
+            """
+            UPDATE case_metadata
+            SET case_name = ?
+            WHERE UPPER(case_name) = UPPER(?);
+            """,
+            (new_case, old_case),
+        )
     else:
         conn.execute(
             f"""
@@ -2784,6 +2793,13 @@ def _commit_case_correction(
             WHERE id IN ({_slot_id_placeholders(slot_ids)});
             """,
             tuple(slot_ids),
+        )
+        conn.execute(
+            """
+            DELETE FROM case_metadata
+            WHERE UPPER(case_name) = UPPER(?);
+            """,
+            (old_case,),
         )
 
     conn.execute(
@@ -5413,8 +5429,50 @@ def dashboard_case_detail(case_name: str):
     return render_template(
         "dashboard_case_detail.html",
         case_detail=detail,
+        case_size_options=CASE_SIZE_OPTIONS,
         return_to=return_to,
     )
+
+
+@app.post("/admin/cases/<case_name>/case-size")
+@require_login
+@require_role("admin")
+def admin_case_size_update(case_name: str):
+    guard_result = _require_admin_for_route()
+    if guard_result:
+        return guard_result
+
+    return_to = _safe_local_return_to(request.form.get("return_to") or "")
+    conn = get_connection()
+    try:
+        with conn:
+            exists_row = conn.execute(
+                """
+                SELECT case_name
+                FROM slots
+                WHERE UPPER(case_name) = UPPER(?)
+                ORDER BY case_name COLLATE NOCASE ASC
+                LIMIT 1;
+                """,
+                (case_name,),
+            ).fetchone()
+            if exists_row is None:
+                abort(404)
+            canonical_case = str(exists_row["case_name"] or case_name)
+            saved_size = save_case_size(conn, canonical_case, request.form.get("case_size"))
+    except ValueError as exc:
+        flash(str(exc), "error")
+        canonical_case = case_name
+    finally:
+        conn.close()
+
+    if saved_size:
+        flash(f"Saved Case Size for {canonical_case}: {saved_size}.", "success")
+    elif "saved_size" in locals():
+        flash(f"Cleared Case Size for {canonical_case}.", "success")
+    if return_to:
+        return redirect(url_for("dashboard_case_detail", case_name=canonical_case, return_to=return_to))
+    return redirect(url_for("dashboard_case_detail", case_name=canonical_case))
 
 
 @app.post("/dashboard/cases/<case_name>/queue")
@@ -7752,26 +7810,28 @@ def admin_slot_provision():
 
     case_number = ""
     slot_count = ""
+    case_size = ""
     if request.method == "POST":
         case_number = (request.form.get("case_number") or "").strip().upper()
         slot_count = (request.form.get("slot_count") or "").strip()
+        case_size = (request.form.get("case_size") or "").strip()
 
         if not case_number:
             flash("case_number is required.", "error")
         if not slot_count:
             flash("slot_count is required.", "error")
         if not case_number or not slot_count:
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
 
         try:
             parsed_slot_count = int(slot_count)
         except ValueError:
             flash("slot_count must be an integer.", "error")
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
 
         if parsed_slot_count <= 0:
             flash("slot_count must be greater than 0.", "error")
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
 
         conn = get_connection()
         try:
@@ -7797,11 +7857,16 @@ def admin_slot_provision():
                     """,
                     rows,
                 )
+                save_case_size(conn, case_number, case_size)
                 conn.commit()
+            except ValueError as e:
+                conn.rollback()
+                flash(str(e), "error")
+                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
             except sqlite3.IntegrityError as e:
                 conn.rollback()
                 flash(f"Could not create empty slots: {e}", "error")
-                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
             except Exception:
                 conn.rollback()
                 raise
@@ -7815,7 +7880,7 @@ def admin_slot_provision():
         )
         return redirect(url_for("admin_slot_provision"))
 
-    return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count)
+    return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
 
 
 @app.route("/admin/case-corrections", methods=["GET", "POST"])
@@ -8905,11 +8970,14 @@ def _load_admin_human_report_data(resolved_db_path: Path, *, include_retired_ass
                 """
                 SELECT
                     s.case_name,
+                    COALESCE(cm.case_size, '') AS case_size,
                     COUNT(*) AS total_slots,
                     COUNT(DISTINCT so.slot_id) AS occupied_slots
                 FROM slots s
                 LEFT JOIN slot_occupancy so
                   ON so.slot_id = s.id
+                LEFT JOIN case_metadata cm
+                  ON UPPER(cm.case_name) = UPPER(s.case_name)
                 GROUP BY s.case_name
                 ORDER BY s.case_name COLLATE NOCASE ASC;
                 """
@@ -9102,13 +9170,13 @@ def _build_admin_human_report_pdf(report_data: dict, db_path: str) -> bytes:
         Paragraph("Location and Case Data", section_heading),
         Spacer(1, 0.08 * inch),
         _render_table(
-            ["Case", "Total Slots", "Occupied Slots"],
+            ["Case", "Case Size", "Total Slots", "Occupied Slots"],
             [
-                [row["case_name"], row["total_slots"], row["occupied_slots"]]
+                [row["case_name"], row["case_size"] or "", row["total_slots"], row["occupied_slots"]]
                 for row in report_data["cases"]
             ]
-            or [["No case or slot data found.", "", ""]],
-            [3.5 * inch, 1.5 * inch, 1.5 * inch],
+            or [["No case or slot data found.", "", "", ""]],
+            [2.5 * inch, 2.0 * inch, 1.0 * inch, 1.0 * inch],
         ),
     ]
 
@@ -9186,6 +9254,7 @@ def _build_case_inventory_pdf(inventory: dict, generated_at: datetime) -> bytes:
         Paragraph("Case Inventory", title),
         Spacer(1, 0.15 * inch),
         Paragraph(f"Case number: {inventory['case_name']}", heading),
+        Paragraph(f"Case Size: {inventory['case_size'] or 'Not recorded'}", body),
         Paragraph(f"Generated: {generated_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", body),
         Paragraph(f"Asset count: {inventory['asset_count']}", body),
         Spacer(1, 0.15 * inch),

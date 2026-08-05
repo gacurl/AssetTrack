@@ -136,7 +136,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert b"Retire Asset" in response.data
     assert b"Replace Asset" in response.data
     assert b"Import Assets" in response.data
-    assert b"CSV/XLSX; Laptop, Switch, Router" in response.data
+    assert b"CSV/XLSX; Laptop, Switch, Router, Server, Storage, Firewall, NTP, KVM" in response.data
     assert response.data.count(b'href="/admin/assets/import"') == 1
     assert b"Import Switch/Router CSV" not in response.data
     assert b'href="/admin/network-assets/import"' not in response.data
@@ -285,13 +285,13 @@ def test_admin_network_asset_import_page_is_deprecated_and_points_to_import_asse
     assert b"Deprecated Switch/Router CSV Import" in response.data
     assert b"deprecated for operator use" in response.data
     assert b'href="/admin/assets/import"' in response.data
-    assert b"Import Assets supports CSV and XLSX files for Laptop, Switch, and Router" in response.data
+    assert b"Import Assets supports CSV and XLSX files for supported asset records" in response.data
     assert b"Download Import Assets CSV template" in response.data
     assert b"python scripts/import_network_assets_csv.py" in response.data
     assert b"network_switch_router_staging_template_v1.csv" in response.data
     assert b'href="/admin/network-assets/import/template.csv"' in response.data
     assert b"Duplicate asset tags and serial numbers are rejected" in response.data
-    assert b"switch</code> or <code>router" in response.data
+    assert b"Laptop, Switch, Router, Server, Storage, Firewall, NTP, or KVM" in response.data
     assert b"No upload page is provided here" in response.data
     assert b"IP address" in response.data
     assert b"CMDB relationship" in response.data

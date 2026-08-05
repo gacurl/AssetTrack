@@ -535,7 +535,7 @@ class AdminEditAssetUiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
+        self.assertIn(b"Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM.", response.data)
 
     def test_edit_in_custody_asset_updates_home_slot_without_occupancy(self) -> None:
         self._insert_slot(301, "CASE-C", 3)

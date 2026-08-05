@@ -31,6 +31,15 @@
           <label for="slot_count"><strong>slot_count</strong> (required)</label><br />
           <input type="text" id="slot_count" name="slot_count" value="{{ slot_count or '' }}" autocomplete="off" required />
         </div>
+        <div class="row">
+          <label for="case_size"><strong>Case Size</strong></label><br />
+          <select id="case_size" name="case_size">
+            <option value="" {% if not case_size %}selected{% endif %}>Not recorded</option>
+            {% for option in case_size_options %}
+              <option value="{{ option }}" {% if case_size == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <button type="submit">Create empty slots</button>
     </form>

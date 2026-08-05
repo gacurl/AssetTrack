@@ -84,6 +84,34 @@ def test_canonical_asset_import_template_supports_laptop_switch_and_router_rows(
     assert analysis.warnings == ()
 
 
+def test_canonical_asset_import_accepts_all_approved_equipment_types(tmp_path: Path) -> None:
+    csv_path = tmp_path / "assets.csv"
+    approved_types = ["Laptop", "Switch", "Router", "Server", "Storage", "Firewall", "NTP", "KVM"]
+    csv_path.write_text(
+        ",".join(ASSET_IMPORT_TEMPLATE_HEADERS)
+        + "\n"
+        + "\n".join(
+            f"{equipment_type},TYPE-{index},,SER-TYPE-{index},Make,Model,,HQ 101,,,Ready"
+            for index, equipment_type in enumerate(approved_types, start=1)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_asset_import_csv(csv_path, filename="assets.csv")
+
+    assert [row.equipment_type for row in analysis.rows] == [
+        "laptop",
+        "switch",
+        "router",
+        "server",
+        "storage",
+        "firewall",
+        "ntp",
+        "kvm",
+    ]
+
+
 def _table_counts() -> dict[str, int]:
     conn = db.get_connection()
     try:
@@ -421,7 +449,7 @@ def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
     assert b".xlsx" in response.data
     assert b"Required column: <code>equipment_type</code>" in response.data
     assert b"Required identity: <code>asset_tag</code> or <code>barcode</code>" in response.data
-    assert b"Supported equipment types: Laptop, Switch, Router." in response.data
+    assert b"Supported equipment types: Laptop, Switch, Router, Server, Storage, Firewall, NTP, KVM." in response.data
     assert b"Extra columns are ignored and reported." in response.data
     assert b"clean_asset_tag" not in response.data
     assert b"python scripts/" not in response.data
@@ -1134,7 +1162,7 @@ def test_unsupported_equipment_type_is_rejected_without_database_writes(client_w
     )
 
     assert response.status_code == 200
-    assert b"Supported asset types are Laptop, Switch, and Router." in response.data
+    assert b"Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM." in response.data
 
 
 def test_csv_upload_ignores_unknown_and_cmdb_style_columns_with_warning_without_database_writes(

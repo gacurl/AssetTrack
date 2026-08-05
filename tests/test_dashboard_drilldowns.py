@@ -673,6 +673,33 @@ def test_case_summaries_sort_case_numbers_naturally(app_client) -> None:
     assert [row["case_name"] for row in cases] == ["CASE-1", "CASE-2", "CASE-13", "CASE-16", "CASE-111"]
 
 
+def test_case_size_metadata_appears_in_case_views_and_inventory_report(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 40, "CASE-SIZE-REPORT", 1)
+    conn.execute(
+        """
+        INSERT INTO case_metadata (case_name, case_size)
+        VALUES ('CASE-SIZE-REPORT', 'Medium Wheel');
+        """
+    )
+    conn.commit()
+
+    cases = list_case_summaries(conn)
+    target = next(row for row in cases if row["case_name"] == "CASE-SIZE-REPORT")
+    assert target["case_size"] == "Medium Wheel"
+
+    cases_response = client.get("/dashboard/cases")
+    detail_response = client.get("/dashboard/cases/CASE-SIZE-REPORT")
+    inventory_response = client.get("/report/case-inventory/preview?case_name=CASE-SIZE-REPORT")
+
+    assert cases_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert inventory_response.status_code == 200
+    assert b"Medium Wheel" in cases_response.data
+    assert b"Case Size:</strong> Medium Wheel" in detail_response.data
+    assert b"Case Size:</strong><br />Medium Wheel" in inventory_response.data
+
+
 def test_holder_detail_uses_most_recent_issue_event_and_unknown_when_missing(app_client) -> None:
     conn, _ = app_client
     _insert_holder(conn, 1, "Holder", organization="Operations")

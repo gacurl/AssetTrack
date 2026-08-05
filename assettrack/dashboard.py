@@ -82,7 +82,7 @@ def _building_label(value: object) -> str:
 
 def _domain_label(equipment_type: object) -> str:
     normalized = str(equipment_type or "").strip().lower()
-    if normalized in {"router", "switch", "other network equipment", "voip"}:
+    if normalized in {"router", "switch", "server", "storage", "firewall", "ntp", "kvm", "other network equipment", "voip"}:
         return DOMAIN_NETWORK
     if normalized in {"laptop", "monitor", "peripheral"}:
         return DOMAIN_SYSADMINS
@@ -304,11 +304,14 @@ def _dashboard_case_utilization(conn: sqlite3.Connection) -> list[dict]:
         """
         SELECT
             s.case_name,
+            COALESCE(cm.case_size, '') AS case_size,
             COUNT(*) AS total_slots,
             COUNT(DISTINCT so.slot_id) AS occupied_slots
         FROM slots s
         LEFT JOIN slot_occupancy so
           ON so.slot_id = s.id
+        LEFT JOIN case_metadata cm
+          ON UPPER(cm.case_name) = UPPER(s.case_name)
         GROUP BY s.case_name
         ORDER BY s.case_name ASC;
         """,
@@ -323,6 +326,7 @@ def _dashboard_case_utilization(conn: sqlite3.Connection) -> list[dict]:
         results.append(
             {
                 "case_name": str(row["case_name"]),
+                "case_size": str(row["case_size"] or ""),
                 "total_slots": total_slots,
                 "occupied_slots": occupied_slots,
                 "empty_slots": empty_slots,

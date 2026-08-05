@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 import assettrack.db as db
+from assettrack.cases import CASE_SIZE_OPTIONS
 from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
 
@@ -371,6 +372,106 @@ def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_
         ("CASE-P", 2, None),
         ("CASE-P", 3, None),
     ]
+
+
+def test_admin_slot_provision_stores_case_size_without_changing_slot_count(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={"case_number": "CASE-SIZE", "slot_count": "2", "case_size": "16 Rack Unit Wheel"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    conn = db.get_connection()
+    try:
+        slot_count = conn.execute("SELECT COUNT(*) FROM slots WHERE case_name = 'CASE-SIZE';").fetchone()[0]
+        metadata = conn.execute("SELECT case_size FROM case_metadata WHERE case_name = 'CASE-SIZE';").fetchone()
+    finally:
+        conn.close()
+
+    assert slot_count == 2
+    assert metadata["case_size"] == "16 Rack Unit Wheel"
+
+
+def test_existing_case_may_remain_blank_case_size(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (30, 'CASE-BLANK-SIZE', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.get("/dashboard/cases/CASE-BLANK-SIZE")
+
+    assert response.status_code == 200
+    assert b"Case Size:</strong> Not recorded" in response.data
+
+
+def test_admin_case_size_update_accepts_every_menu_choice(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (31, 'CASE-EDIT-SIZE', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    for option in CASE_SIZE_OPTIONS:
+        response = client_with_temp_db.post(
+            "/admin/cases/CASE-EDIT-SIZE/case-size",
+            data={"case_size": option},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert option.encode() in response.data
+
+    verify_conn = db.get_connection()
+    try:
+        metadata = verify_conn.execute(
+            "SELECT case_size FROM case_metadata WHERE case_name = 'CASE-EDIT-SIZE';"
+        ).fetchone()
+        slot_count = verify_conn.execute("SELECT COUNT(*) FROM slots WHERE case_name = 'CASE-EDIT-SIZE';").fetchone()[0]
+    finally:
+        verify_conn.close()
+
+    assert metadata["case_size"] == CASE_SIZE_OPTIONS[-1]
+    assert slot_count == 1
+
+
+def test_operator_cannot_edit_case_size(client_with_temp_db) -> None:
+    operator_id = create_test_user(username="operator-case-size", password="operator-pass", role="operator")
+    login_session(client_with_temp_db, operator_id)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (32, 'CASE-ROLE-SIZE', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/cases/CASE-ROLE-SIZE/case-size",
+        data={"case_size": "Small Wheel"},
+    )
+
+    assert response.status_code == 403
 
 
 def test_admin_slot_provision_appends_slots_for_existing_case(client_with_temp_db) -> None:

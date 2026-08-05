@@ -30,12 +30,17 @@ Supported `equipment_type` values:
 - Laptop
 - Switch
 - Router
+- Server
+- Storage
+- Firewall
+- NTP
+- KVM
 
 ## Template Columns
 
 | Column | Use |
 | --- | --- |
-| `equipment_type` | Required asset type. Use Laptop, Switch, or Router. |
+| `equipment_type` | Required asset type. Use Laptop, Switch, Router, Server, Storage, Firewall, NTP, or KVM. |
 | `asset_tag` | AssetTrack asset tag when assigned. Required when `barcode` is blank. |
 | `barcode` | Scannable custody barcode. Required when `asset_tag` is blank. |
 | `serial_number` | Manufacturer serial number when available. |

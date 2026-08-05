@@ -198,7 +198,38 @@ class NetworkAssetImportTests(unittest.TestCase):
         )
 
         self.assertEqual(report.summary(), {"processed": 1, "imported": 0, "errors": 1})
-        self.assertIn("equipment_type must be switch or router", report.errors[0])
+        self.assertIn("Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM.", report.errors[0])
+
+    def test_import_accepts_all_approved_equipment_types(self) -> None:
+        report = self._import(
+            "asset_tag,equipment_type\n"
+            "TYPE-LAP,laptop\n"
+            "TYPE-SW,switch\n"
+            "TYPE-RTR,router\n"
+            "TYPE-SRV,server\n"
+            "TYPE-STOR,storage\n"
+            "TYPE-FW,firewall\n"
+            "TYPE-NTP,ntp\n"
+            "TYPE-KVM,kvm\n"
+        )
+
+        self.assertEqual(report.summary(), {"processed": 8, "imported": 8, "errors": 0})
+        conn = self._connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT equipment_type
+                FROM assets
+                WHERE asset_tag LIKE 'TYPE-%'
+                ORDER BY asset_tag ASC;
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(
+            sorted(row["equipment_type"] for row in rows),
+            ["firewall", "kvm", "laptop", "ntp", "router", "server", "storage", "switch"],
+        )
 
     def test_script_entrypoint_runs_end_to_end(self) -> None:
         csv_path = self._write_csv(

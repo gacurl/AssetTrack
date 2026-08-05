@@ -75,6 +75,7 @@
       <thead>
         <tr>
           <th>Case Name</th>
+          <th>Case Size</th>
           <th>Status</th>
           <th>Total Slots</th>
           <th>Occupied Slots</th>
@@ -87,6 +88,7 @@
           {% set status = case_status_summary(row.total_slots, row.occupied_slots) %}
           <tr>
             <td><a class="nav-link drill-link" href="{{ url_for('dashboard_case_detail', case_name=row.case_name, return_to=return_to) }}">{{ row.case_name }}</a></td>
+            <td>{{ row.case_size or "Not recorded" }}</td>
             <td class="status-cell">
               <span class="status-badge">
                 <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
@@ -100,7 +102,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="6">{% if case_query %}No cases match that search.{% else %}None{% endif %}</td>
+            <td colspan="7">{% if case_query %}No cases match that search.{% else %}None{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

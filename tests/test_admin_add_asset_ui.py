@@ -93,9 +93,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin: Add Asset", response.data)
         self.assertIn(b"Asset type", response.data)
-        self.assertIn(b'<option value="laptop"', response.data)
-        self.assertIn(b'<option value="switch"', response.data)
-        self.assertIn(b'<option value="router"', response.data)
+        for equipment_type in [b"laptop", b"switch", b"router", b"server", b"storage", b"firewall", b"ntp", b"kvm"]:
+            self.assertIn(b'<option value="' + equipment_type + b'"', response.data)
         self.assertNotIn(b'<option value="monitor"', response.data)
         self.assertNotIn(b'<option value="other network equipment"', response.data)
         self.assertNotIn(b'<option value="voip"', response.data)
@@ -594,7 +593,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertIn(b"Enter an asset tag.", response.data)
         self.assertIn(b"Enter a serial number.", response.data)
         self.assertNotIn(b"Enter a manufacturer.", response.data)
-        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
+        self.assertIn(b"Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM.", response.data)
         self.assertNotIn(b"Enter the building.", response.data)
         self.assertNotIn(b"Enter the room.", response.data)
         self.assertIn(b"Choose both a case and a slot, or leave both blank.", response.data)
@@ -702,7 +701,7 @@ class AdminAddAssetUiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Supported asset types are Laptop, Switch, and Router.", response.data)
+        self.assertIn(b"Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM.", response.data)
         self.assertEqual(len(intake_app.SCAN_QUEUE), 0)
 
     def test_add_assets_route_hides_legacy_session_equipment_type_from_dropdown(self) -> None:

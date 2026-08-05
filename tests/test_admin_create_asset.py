@@ -235,7 +235,7 @@ class AdminCreateAssetTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json["ok"])
         self.assertIn("equipment_type is required", response.json["error"])
-        self.assertIn("Supported asset types are Laptop, Switch, and Router", response.json["error"])
+        self.assertIn("Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM", response.json["error"])
 
         asset_row = self.conn.execute(
             "SELECT equipment_type FROM assets WHERE asset_tag = ?;",
@@ -265,13 +265,37 @@ class AdminCreateAssetTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json["ok"])
-        self.assertIn("Supported asset types are Laptop, Switch, and Router", response.json["error"])
+        self.assertIn("Supported asset types are Laptop, Switch, Router, Server, Storage, Firewall, NTP, and KVM", response.json["error"])
 
         asset_row = self.conn.execute(
             "SELECT 1 FROM assets WHERE asset_tag = ?;",
             ("AT-102",),
         ).fetchone()
         self.assertIsNone(asset_row)
+
+    def test_create_asset_accepts_all_approved_equipment_types(self) -> None:
+        approved_types = ("laptop", "switch", "router", "server", "storage", "firewall", "ntp", "kvm")
+        for index, equipment_type in enumerate(approved_types, start=1):
+            response = self.client.post(
+                "/admin/assets/create",
+                json={
+                    "asset_tag": f"AT-TYPE-{index}",
+                    "actor": "admin-user",
+                    "equipment_type": equipment_type,
+                },
+            )
+            self.assertEqual(response.status_code, 200, equipment_type)
+            self.assertTrue(response.json["ok"])
+
+        rows = self.conn.execute(
+            """
+            SELECT equipment_type
+            FROM assets
+            WHERE asset_tag LIKE 'AT-TYPE-%'
+            ORDER BY asset_tag ASC;
+            """
+        ).fetchall()
+        self.assertEqual([row["equipment_type"] for row in rows], list(approved_types))
 
     def test_create_asset_with_home_slot_success(self) -> None:
         self._insert_slot(11)

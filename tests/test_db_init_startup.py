@@ -178,8 +178,58 @@ def test_get_connection_bootstraps_missing_db(monkeypatch: pytest.MonkeyPatch, t
 
     assert "assets" in tables
     assert "asset_events" in tables
+    assert "case_metadata" in tables
     assert "receipt_queue" in tables
     assert "app_settings" in tables
+
+
+def test_bootstrap_db_adds_case_metadata_without_touching_existing_records(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DROP TABLE case_metadata;")
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (1, 'CASE-KEEP', 1, NULL);
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO assets (asset_tag, equipment_type)
+            VALUES ('KEEP-100', 'switch');
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload)
+            VALUES ('KEEP-100', 'created', '2026-01-01T00:00:00Z', 'system', NULL, '{}');
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    initialized = db.bootstrap_db(db_path)
+
+    assert initialized is False
+    verify_conn = sqlite3.connect(db_path)
+    try:
+        tables = {row[0] for row in verify_conn.execute("SELECT name FROM sqlite_master WHERE type = 'table';")}
+        counts = {
+            "slots": verify_conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0],
+            "assets": verify_conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0],
+            "asset_events": verify_conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0],
+            "case_metadata": verify_conn.execute("SELECT COUNT(*) FROM case_metadata;").fetchone()[0],
+        }
+        case_size = verify_conn.execute("SELECT case_size FROM case_metadata WHERE case_name = 'CASE-KEEP';").fetchone()
+    finally:
+        verify_conn.close()
+
+    assert "case_metadata" in tables
+    assert counts == {"slots": 1, "assets": 1, "asset_events": 1, "case_metadata": 0}
+    assert case_size is None
 
 
 def test_bootstrap_db_adds_app_settings_table_to_existing_db(tmp_path: Path) -> None:
