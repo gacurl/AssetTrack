@@ -344,8 +344,8 @@ class AdminAddAssetUiTests(unittest.TestCase):
 
         search = self.client.get("/assets/search?asset_tag=AT-500")
         self.assertEqual(search.status_code, 200)
-        self.assertIn(b"Case: Unslotted", search.data)
-        self.assertIn(b"Slot: Unslotted", search.data)
+        self.assertIn(b"Unslotted", search.data)
+        self.assertNotIn(b"unassigned slot", search.data.lower())
 
         history = self.client.get("/assets/history?asset_tag=AT-500")
         self.assertEqual(history.status_code, 200)
