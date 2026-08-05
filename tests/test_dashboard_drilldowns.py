@@ -600,7 +600,7 @@ def test_holders_and_cases_deterministic_ordering(app_client) -> None:
     assert [row["holder_name"] for row in holders] == ["Alpha", "Bravo"]
 
     cases = list_case_summaries(conn)
-    assert [row["case_name"] for row in cases] == ["CASE-B", "CASE-A"]
+    assert [row["case_name"] for row in cases] == ["CASE-A", "CASE-B"]
 
 
 def test_case_summaries_sort_case_numbers_naturally(app_client) -> None:
@@ -687,3 +687,55 @@ def test_dashboard_holder_detail_shows_organization_and_outstanding_count(app_cl
     assert b"Outstanding Assets:</strong> 2" in response.data
     assert b"AT-100" in response.data
     assert b"AT-101" in response.data
+
+def _assert_rendered_order(rendered: bytes, *needles: bytes) -> None:
+    positions = [rendered.index(needle) for needle in needles]
+    assert positions == sorted(positions)
+
+
+def test_dashboard_case_list_renders_cases_in_natural_numeric_order(app_client) -> None:
+    conn, client = app_client
+    for slot_id, case_name in enumerate(["CASE-10", "CASE-2", "CASE-9", "CASE-1"], start=1000):
+        _insert_slot(conn, slot_id, case_name, 1)
+    conn.commit()
+
+    response = client.get("/dashboard/cases")
+
+    assert response.status_code == 200
+    _assert_rendered_order(
+        response.data,
+        b'href="/dashboard/cases/CASE-1"',
+        b'href="/dashboard/cases/CASE-2"',
+        b'href="/dashboard/cases/CASE-9"',
+        b'href="/dashboard/cases/CASE-10"',
+    )
+
+
+def test_case_inventory_dropdown_renders_cases_in_natural_numeric_order(app_client) -> None:
+    conn, client = app_client
+    for slot_id, case_name in enumerate(["CASE-10", "CASE-2", "CASE-9", "CASE-1"], start=1100):
+        _insert_slot(conn, slot_id, case_name, 1)
+    conn.commit()
+
+    response = client.get("/report/case-inventory")
+
+    assert response.status_code == 200
+    _assert_rendered_order(
+        response.data,
+        b'<option value="CASE-1"',
+        b'<option value="CASE-2"',
+        b'<option value="CASE-9"',
+        b'<option value="CASE-10"',
+    )
+
+
+def test_dashboard_case_detail_renders_slots_in_numeric_order(app_client) -> None:
+    conn, client = app_client
+    for slot_id, slot_position in [(1201, 10), (1202, 2), (1203, 9), (1204, 1)]:
+        _insert_slot(conn, slot_id, "CASE-SLOTS", slot_position)
+    conn.commit()
+
+    response = client.get("/dashboard/cases/CASE-SLOTS")
+
+    assert response.status_code == 200
+    _assert_rendered_order(response.data, b">1</td>", b">2</td>", b">9</td>", b">10</td>")

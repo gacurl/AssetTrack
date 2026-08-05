@@ -230,6 +230,29 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"<code>CASE-13</code>", response.data)
         self.assertNotIn(b"<code>KIT-1</code>", response.data)
 
+    def test_search_case_prefix_renders_case_results_in_natural_numeric_order(self) -> None:
+        for slot_id, case_name in [
+            (120, "CASE-1"),
+            (121, "CASE-10"),
+            (122, "CASE-2"),
+            (123, "CASE-20"),
+            (124, "CASE-9"),
+        ]:
+            self._insert_slot(slot_id, case_name, 1)
+
+        response = self.client.get("/assets/search?asset_tag=CASE-")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Cases Found", response.data)
+        positions = [
+            response.data.index(b"<code>CASE-1</code>"),
+            response.data.index(b"<code>CASE-2</code>"),
+            response.data.index(b"<code>CASE-9</code>"),
+            response.data.index(b"<code>CASE-10</code>"),
+            response.data.index(b"<code>CASE-20</code>"),
+        ]
+        self.assertEqual(positions, sorted(positions))
+
     def test_search_lowercase_case_prefix_returns_matching_cases(self) -> None:
         self._insert_slot(24, "CASE-21", 1)
         self._insert_slot(25, "CASE22", 1)

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from assettrack.audit import ACTIVE_EVENTS_WHERE
 from assettrack.event_types import issue_event_type_values, normalize_event_type
+from assettrack.natural_sort import natural_identifier_sort_key
 
 from datetime import datetime, timezone
-import re
 import sqlite3
 
 MAX_DASHBOARD_TOP_HOLDERS = 5
@@ -289,12 +289,6 @@ def _top_custody_holders(conn: sqlite3.Connection, limit: int) -> list[dict]:
     ]
 
 
-def _case_name_natural_sort_key(case_name: object) -> tuple[int, int, str]:
-    label = str(case_name or "").strip()
-    match = re.fullmatch(r"CASE-(\d+)", label.upper())
-    if match:
-        return (0, int(match.group(1)), label.upper())
-    return (1, 0, label.upper())
 
 
 def _case_space_status_flag(available_slots: int) -> tuple[str, str]:
@@ -337,7 +331,7 @@ def _dashboard_case_utilization(conn: sqlite3.Connection) -> list[dict]:
             }
         )
 
-    results.sort(key=lambda row: _case_name_natural_sort_key(row["case_name"]))
+    results.sort(key=lambda row: natural_identifier_sort_key(row["case_name"]))
     return results
 
 
