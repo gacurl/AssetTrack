@@ -126,11 +126,12 @@
 {% endblock %}
 
 {% block content %}
-  {% if return_to and return_to.startswith('/report') %}
-    <nav class="actions nav-row" aria-label="Asset search navigation">
+  <nav class="actions nav-row" aria-label="Asset search navigation">
+    {% if return_to and return_to.startswith('/report') %}
       <a class="nav-link" href="{{ return_to }}">Back to Report</a>
-    </nav>
-  {% endif %}
+    {% endif %}
+    <a class="nav-link" href="{{ url_for('dashboard_cases') }}">Cases</a>
+  </nav>
 
   {% if error_message %}
     <div class="flash error">{{ error_message }}</div>
@@ -209,25 +210,42 @@
                 <span class="asset-type-badge">{{ asset.equipment_type_label or "Type not recorded" }}</span>
               </td>
               <td>
-                <div class="status-cue" data-tone="{{ status.tone }}">
-                  <span class="status-cue-label">{{ status.label }}</span>
-                  <span class="state-badge{% if asset_is_terminal(asset.location_type) %} terminal{% endif %}">{{ asset_state_label(asset.location_type) }}</span>
-                  {% if status.detail %}
-                    <span class="status-cue-detail">{{ status.detail }}</span>
+                {% set has_home_slot = asset.home_case_name and asset.home_slot_position is not none %}
+                {% set is_issued = asset.holder_label %}
+                {% if is_issued %}
+                  {% set search_status_tone = "issued" %}
+                {% elif has_home_slot %}
+                  {% set search_status_tone = "stored" %}
+                {% elif asset_is_terminal(asset.location_type) %}
+                  {% set search_status_tone = "terminal" %}
+                {% else %}
+                  {% set search_status_tone = "problem" %}
+                {% endif %}
+                <div class="status-cue" data-tone="{{ search_status_tone }}">
+                  {% if is_issued %}
+                    <span class="status-cue-label">Issued to {{ asset.holder_label }}</span>
+                  {% elif has_home_slot %}
+                    <span class="status-cue-label">Stored in {{ asset.home_case_name }}, Slot {{ asset.home_slot_position }}</span>
+                  {% elif asset_is_terminal(asset.location_type) %}
+                    <span class="status-cue-label">{{ asset_state_label(asset.location_type) }}</span>
+                    <span class="status-cue-detail">Retired or not in service.</span>
+                  {% else %}
+                    <span class="status-cue-label">Unslotted</span>
                   {% endif %}
                 </div>
               </td>
               <td>{{ asset.holder_label or "Not assigned" }}</td>
               <td>
                 <div class="asset-location">
-                  <span>Case: {{ asset.home_case_name or "Unslotted" }}</span>
-                  <span>
-                    {% if asset.home_slot_position is not none %}
-                      Slot: {{ asset.home_slot_position }}
-                    {% else %}
-                      Slot: Unslotted
-                    {% endif %}
-                  </span>
+                  {% if asset.holder_label and has_home_slot %}
+                    <span>Home slot: {{ asset.home_case_name }}, Slot {{ asset.home_slot_position }}</span>
+                  {% elif asset.holder_label %}
+                    <span>Unslotted</span>
+                  {% elif has_home_slot %}
+                    <span>Stored in {{ asset.home_case_name }}, Slot {{ asset.home_slot_position }}</span>
+                  {% else %}
+                    <span>Unslotted</span>
+                  {% endif %}
                 </div>
               </td>
               <td>

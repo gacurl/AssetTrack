@@ -171,12 +171,9 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"AT-100", response.data)
         self.assertIn(b"SER-100", response.data)
         self.assertIn(b"Laptop", response.data)
-        self.assertIn(b"In storage", response.data)
+        self.assertIn(b"Issued to Alex Holder (Field Ops)", response.data)
         self.assertIn(b"Alex Holder (Field Ops)", response.data)
-        self.assertIn(b"Case: CASE-A", response.data)
-        self.assertIn(b"Slot: 4", response.data)
-        self.assertIn(b"Problem: holder still assigned", response.data)
-        self.assertIn(b"Current state says stored, but a holder is still assigned.", response.data)
+        self.assertIn(b"Home slot: CASE-A, Slot 4", response.data)
         self.assertIn(b"No movement proof recorded", response.data)
         self.assertIn(b'href="/assets/history?asset_tag=AT-100', response.data)
         self.assertNotIn(b'href="/admin/assets/edit?asset_tag=AT-100"', response.data)
@@ -307,12 +304,10 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertNotIn(b"Matched by serial number.", response.data)
         self.assertIn(b"AT-200", response.data)
         self.assertIn(b"SER-200", response.data)
-        self.assertIn(b"In custody", response.data)
+        self.assertIn(b"Unslotted", response.data)
         self.assertIn(b"Assigned holder", response.data)
         self.assertIn(b"Not assigned", response.data)
         self.assertIn(b"Not assigned", response.data)
-        self.assertIn(b"Problem: holder not recorded", response.data)
-        self.assertIn(b"Current state says in custody, but no holder is assigned.", response.data)
 
     def test_search_keeps_supported_asset_types_readable(self) -> None:
         self._insert_asset("TYPE-LAPTOP", serial_number="SER-LAPTOP", location_type="STORAGE", home_slot_id=None)
@@ -359,8 +354,8 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search?asset_tag=AT-STORED-1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Stored / returned", response.data)
-        self.assertIn(b"Current state is storage.", response.data)
+        self.assertIn(b"Unslotted", response.data)
+        self.assertNotIn(b"Stored / returned", response.data)
 
     def test_search_shows_out_with_holder_status_cue_for_issued_asset(self) -> None:
         self._insert_holder(2, "Jamie Holder", "Field Ops")
@@ -375,8 +370,67 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search?asset_tag=AT-OUT-1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Out with holder", response.data)
-        self.assertIn(b"Assigned to Jamie Holder (Field Ops).", response.data)
+        self.assertIn(b"Issued to Jamie Holder (Field Ops)", response.data)
+        self.assertNotIn(b"Out with holder", response.data)
+
+    def test_search_shows_stored_wording_for_asset_in_case_slot(self) -> None:
+        self._insert_slot(41, "CASE-12", 4)
+        self._insert_asset("AT-STORED-WORD", serial_number="SER-STORED-WORD", location_type="STORAGE", home_slot_id=41)
+
+        response = self.client.get("/assets/search?asset_tag=AT-STORED-WORD")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Stored in CASE-12, Slot 4", response.data)
+        self.assertNotIn(b"unassigned slot", response.data.lower())
+
+    def test_search_shows_unslotted_wording_for_asset_without_slot(self) -> None:
+        self._insert_asset("AT-UNSLOTTED-WORD", serial_number="SER-UNSLOTTED-WORD", location_type="STORAGE", home_slot_id=None)
+
+        response = self.client.get("/assets/search?asset_tag=AT-UNSLOTTED-WORD")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Unslotted", response.data)
+        self.assertNotIn(b"unassigned slot", response.data.lower())
+
+    def test_search_shows_issued_wording_with_holder(self) -> None:
+        self._insert_holder(42, "Jamie Holder", "Field Ops")
+        self._insert_asset(
+            "AT-ISSUED-WORD",
+            serial_number="SER-ISSUED-WORD",
+            location_type="IN_CUSTODY",
+            home_slot_id=None,
+            current_holder_id=42,
+        )
+
+        response = self.client.get("/assets/search?asset_tag=AT-ISSUED-WORD")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Issued to Jamie Holder (Field Ops)", response.data)
+
+    def test_search_issued_asset_with_home_slot_remains_issued(self) -> None:
+        self._insert_holder(43, "Case Holder", "Ops")
+        self._insert_slot(43, "CASE-12", 4)
+        self._insert_asset(
+            "AT-ISSUED-HOME",
+            serial_number="SER-ISSUED-HOME",
+            location_type="IN_CUSTODY",
+            home_slot_id=43,
+            current_holder_id=43,
+        )
+
+        response = self.client.get("/assets/search?asset_tag=AT-ISSUED-HOME")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Issued to Case Holder (Ops)", response.data)
+        self.assertIn(b"Home slot: CASE-12, Slot 4", response.data)
+        self.assertNotIn(b"Stored in CASE-12, Slot 4", response.data)
+
+    def test_search_includes_cases_link_to_existing_case_list(self) -> None:
+        response = self.client.get("/assets/search")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/dashboard/cases"', response.data)
+        self.assertIn(b">Cases</a>", response.data)
 
     def test_search_marks_retired_assets_with_clear_terminal_label(self) -> None:
         self._insert_asset("AT-RET-1", serial_number="SER-RET-1", location_type="DISPOSED", home_slot_id=None)
@@ -385,8 +439,6 @@ class AssetSearchUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"RETIRED \xe2\x80\x94 Not in service", response.data)
-        self.assertIn(b"state-badge terminal", response.data)
-        self.assertIn(b"Unavailable", response.data)
         self.assertIn(b"Retired or not in service.", response.data)
         self.assertNotIn(b"Retired / disposed", response.data)
 
@@ -396,8 +448,7 @@ class AssetSearchUiTests(unittest.TestCase):
         response = self.client.get("/assets/search?asset_tag=AT-UNKNOWN-1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"No known custody/status proof", response.data)
-        self.assertIn(b"No current state or movement proof is recorded.", response.data)
+        self.assertIn(b"Unslotted", response.data)
         self.assertIn(b"No movement proof recorded", response.data)
 
     def test_search_shows_latest_movement_event_proof(self) -> None:
