@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from assettrack.assets import equipment_type_label
+from assettrack.barcodes import barcode_lookup_key
 from assettrack.import_analysis import AssetImportAnalysis, AssetImportAnalysisRow
 
 DEFAULTS_BEFORE_COMMIT = (
@@ -32,15 +33,19 @@ CATEGORY_LABELS = {
     "proposed_update": "Proposed Update",
     "unslotted_import": "Unslotted Import",
     "slot_conflict_unslotted": "Slot Conflict Eligible For Unslotted Import",
+    "blocked_conflict": "Blocked Conflict",
     "identity_conflict": "Identity Conflict",
     "invalid_duplicate_upload_row": "Invalid Or Duplicate Upload Row",
+    "case_over_capacity": "Case Over Capacity",
 }
 CATEGORY_ORDER = tuple(CATEGORY_LABELS)
 ATTENTION_CATEGORIES = (
     "proposed_update",
     "slot_conflict_unslotted",
+    "blocked_conflict",
     "identity_conflict",
     "invalid_duplicate_upload_row",
+    "case_over_capacity",
 )
 
 
@@ -67,6 +72,7 @@ class AssetImportPreviewRow:
 @dataclass(frozen=True)
 class AssetImportPreviewContext:
     assets_by_tag: dict[str, sqlite3.Row]
+    assets_by_barcode_key: dict[str, sqlite3.Row]
     assets_by_serial: dict[str, sqlite3.Row]
     slots_by_case_position: dict[tuple[str, int], sqlite3.Row]
     occupants_by_slot_id: dict[int, sqlite3.Row]
@@ -81,6 +87,9 @@ class AssetImportPreview:
     warnings: tuple[str, ...]
     defaults: tuple[tuple[str, str], ...]
     unslotted_acknowledged: bool
+    case_plans: tuple[dict[str, object], ...] = ()
+    obsolete_assets: tuple[dict[str, str], ...] = ()
+    ignored_rows: int = 0
 
     @property
     def totals(self) -> dict[str, int]:
@@ -138,6 +147,9 @@ class AssetImportPreview:
             "unslotted_acknowledged": self.unslotted_acknowledged,
             "requires_unslotted_acknowledgment": self.requires_unslotted_acknowledgment,
             "blocks_without_unslotted_acknowledgment": self.blocks_without_unslotted_acknowledgment,
+            "case_plans": list(self.case_plans),
+            "obsolete_assets": list(self.obsolete_assets),
+            "ignored_rows": self.ignored_rows,
         }
 
 
@@ -152,7 +164,10 @@ def _chunked(values: list[str], size: int = 900):
 
 def _asset_by_tag(conn: sqlite3.Connection, asset_tag: str, context: AssetImportPreviewContext | None = None) -> sqlite3.Row | None:
     if context is not None:
-        return context.assets_by_tag.get(asset_tag.upper())
+        exact = context.assets_by_tag.get(asset_tag.upper())
+        if exact is not None:
+            return exact
+        return context.assets_by_barcode_key.get(barcode_lookup_key(asset_tag))
     return conn.execute(
         """
         SELECT *
@@ -287,7 +302,19 @@ def _preview_row(
 ) -> AssetImportPreviewRow:
     existing = _asset_by_tag(conn, row.asset_tag, context)
     serial_match = _asset_by_serial(conn, row.serial_number, context)
-    if serial_match is not None and _text(serial_match["asset_tag"]).upper() != row.asset_tag.upper():
+    row_warnings = tuple(getattr(row, "warnings", ()) or ())
+    if existing is not None and row.serial_number and _text(existing["serial_number"]) and _text(existing["serial_number"]).upper() != row.serial_number.upper():
+        return AssetImportPreviewRow(
+            row_number=row.row_number,
+            asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
+            category="identity_conflict",
+            category_label=CATEGORY_LABELS["identity_conflict"],
+            message=f"normalized barcode matches existing asset {existing['asset_tag']} but serial differs: {_text(existing['serial_number'])} -> {row.serial_number}",
+            warnings=row_warnings,
+            fields=("barcode", "serial_number"),
+        )
+    if serial_match is not None and barcode_lookup_key(serial_match["asset_tag"]) != barcode_lookup_key(row.asset_tag):
         return AssetImportPreviewRow(
             row_number=row.row_number,
             asset_tag=row.asset_tag,
@@ -295,6 +322,7 @@ def _preview_row(
             category="identity_conflict",
             category_label=CATEGORY_LABELS["identity_conflict"],
             message=f"serial_number matches existing asset {serial_match['asset_tag']}",
+            warnings=row_warnings,
             fields=("serial_number",),
         )
 
@@ -307,7 +335,7 @@ def _preview_row(
             category="unslotted_import",
             category_label=CATEGORY_LABELS["unslotted_import"],
             message="No storage case and slot supplied; row can continue as Unslotted after acknowledgment.",
-            warnings=("Storage will remain Unslotted.",),
+            warnings=row_warnings + ("Storage will remain Unslotted.",),
         )
 
     slot = None
@@ -321,17 +349,28 @@ def _preview_row(
                 category="slot_conflict_unslotted",
                 category_label=CATEGORY_LABELS["slot_conflict_unslotted"],
                 message=f"{slot_error}; row can continue as Unslotted after acknowledgment.",
-                warnings=("Requested storage is unavailable.",),
+                warnings=row_warnings + ("Requested storage is unavailable.",),
                 fields=("case_identifier", "slot_identifier"),
             )
 
         if slot is not None:
             occupant = _slot_occupant(conn, int(slot["id"]), context)
             legacy_current_asset_tag = _text(slot["current_asset_tag"])
-            occupied_by_other = occupant is not None and _text(occupant["asset_tag"]).upper() != row.asset_tag.upper()
-            legacy_occupied_by_other = legacy_current_asset_tag and legacy_current_asset_tag.upper() != row.asset_tag.upper()
+            occupied_by_other = occupant is not None and barcode_lookup_key(occupant["asset_tag"]) != barcode_lookup_key(row.asset_tag)
+            legacy_occupied_by_other = legacy_current_asset_tag and barcode_lookup_key(legacy_current_asset_tag) != barcode_lookup_key(row.asset_tag)
             if occupied_by_other or legacy_occupied_by_other:
                 occupant_tag = _text(occupant["asset_tag"]) if occupant is not None else legacy_current_asset_tag
+                if row.source_workbook == "BQ26":
+                    return AssetImportPreviewRow(
+                        row_number=row.row_number,
+                        asset_tag=row.asset_tag,
+                        asset_identifier=row.asset_tag,
+                        category="blocked_conflict",
+                        category_label=CATEGORY_LABELS["blocked_conflict"],
+                        message=f"Destination slot {_slot_label(slot)} is occupied by {occupant_tag}.",
+                        warnings=row_warnings + ("Existing slot occupants are never displaced.",),
+                        fields=("case_identifier", "slot_identifier"),
+                    )
                 return AssetImportPreviewRow(
                     row_number=row.row_number,
                     asset_tag=row.asset_tag,
@@ -339,7 +378,7 @@ def _preview_row(
                     category="slot_conflict_unslotted",
                     category_label=CATEGORY_LABELS["slot_conflict_unslotted"],
                     message=f"Requested slot is occupied by {occupant_tag}; row can continue as Unslotted after acknowledgment.",
-                    warnings=("Existing slot occupants are never displaced.",),
+                    warnings=row_warnings + ("Existing slot occupants are never displaced.",),
                     fields=("case_identifier", "slot_identifier"),
                 )
 
@@ -354,10 +393,21 @@ def _preview_row(
             category="new_asset",
             category_label=CATEGORY_LABELS["new_asset"],
             message=message,
-            warnings=("Missing storage will be created during commit.",) if storage_requested and slot is None else (),
+            warnings=row_warnings + (("Missing storage will be created during commit.",) if storage_requested and slot is None else ()),
         )
 
     changes = list(_field_changes(existing, row))
+    if row.source_workbook == "BQ26" and _text(existing["location_type"]).upper() == "IN_CUSTODY":
+        return AssetImportPreviewRow(
+            row_number=row.row_number,
+            asset_tag=row.asset_tag,
+            asset_identifier=row.asset_tag,
+            category="blocked_conflict",
+            category_label=CATEGORY_LABELS["blocked_conflict"],
+            message="Workbook assigns this asset to storage, but AssetTrack shows it issued.",
+            warnings=row_warnings + ("Issued assets are never silently returned by import.",),
+            fields=("location_type",),
+        )
     if storage_requested and not _same_slot(existing, slot):
         changes.append(
             AssetImportFieldChange(
@@ -378,6 +428,7 @@ def _preview_row(
             category_label=CATEGORY_LABELS["proposed_update"],
             message=message,
             changed_fields=tuple(changes),
+            warnings=row_warnings,
         )
 
     return AssetImportPreviewRow(
@@ -387,12 +438,15 @@ def _preview_row(
         category="unchanged_exact_match",
         category_label=CATEGORY_LABELS["unchanged_exact_match"],
         message="Upload row matches current asset data exactly.",
+        warnings=row_warnings,
     )
 
 def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnalysisRow, ...]) -> AssetImportPreviewContext:
     asset_tags = {row.asset_tag.upper() for row in rows if row.asset_tag}
+    barcode_keys = {barcode_lookup_key(row.asset_tag) for row in rows if row.asset_tag}
     serial_numbers = {row.serial_number.upper() for row in rows if row.serial_number}
     assets_by_tag: dict[str, sqlite3.Row] = {}
+    assets_by_barcode_key: dict[str, sqlite3.Row] = {}
     assets_by_serial: dict[str, sqlite3.Row] = {}
     home_slot_ids: set[int] = set()
 
@@ -408,6 +462,9 @@ def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnal
         ).fetchall():
             normalized_tag = _text(asset["asset_tag"]).upper()
             assets_by_tag.setdefault(normalized_tag, asset)
+            key = barcode_lookup_key(asset["asset_tag"])
+            if key:
+                assets_by_barcode_key.setdefault(key, asset)
             if asset["home_slot_id"] is not None:
                 home_slot_ids.add(int(asset["home_slot_id"]))
 
@@ -415,12 +472,15 @@ def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnal
     if unmatched_asset_tags or serial_numbers:
         for asset in conn.execute("SELECT * FROM assets;").fetchall():
             normalized_tag = _text(asset["asset_tag"]).upper()
+            key = barcode_lookup_key(asset["asset_tag"])
             normalized_serial = _text(asset["serial_number"]).upper()
-            if normalized_tag in unmatched_asset_tags:
+            if normalized_tag in unmatched_asset_tags or key in barcode_keys:
                 assets_by_tag.setdefault(normalized_tag, asset)
+                if key:
+                    assets_by_barcode_key.setdefault(key, asset)
             if normalized_serial and normalized_serial in serial_numbers:
                 assets_by_serial.setdefault(normalized_serial, asset)
-            if (normalized_tag in unmatched_asset_tags or normalized_serial in serial_numbers) and asset["home_slot_id"] is not None:
+            if (normalized_tag in unmatched_asset_tags or key in barcode_keys or normalized_serial in serial_numbers) and asset["home_slot_id"] is not None:
                 home_slot_ids.add(int(asset["home_slot_id"]))
 
     requested_cases: set[str] = set()
@@ -483,6 +543,7 @@ def _build_preview_context(conn: sqlite3.Connection, rows: tuple[AssetImportAnal
 
     return AssetImportPreviewContext(
         assets_by_tag=assets_by_tag,
+        assets_by_barcode_key=assets_by_barcode_key,
         assets_by_serial=assets_by_serial,
         slots_by_case_position=slots_by_case_position,
         occupants_by_slot_id=occupants_by_slot_id,
@@ -497,13 +558,16 @@ def build_asset_import_preview(
     unslotted_acknowledged: bool = False,
 ) -> AssetImportPreview:
     context = _build_preview_context(conn, analysis.rows)
+    def _issue_preview_category(category: str) -> str:
+        return category if category in CATEGORY_LABELS else "invalid_duplicate_upload_row"
+
     rows: list[AssetImportPreviewRow] = [
         AssetImportPreviewRow(
             row_number=issue.row_number,
             asset_tag="",
             asset_identifier=issue.asset_identifier,
-            category="invalid_duplicate_upload_row",
-            category_label=CATEGORY_LABELS["invalid_duplicate_upload_row"],
+            category=_issue_preview_category(issue.category),
+            category_label=CATEGORY_LABELS[_issue_preview_category(issue.category)],
             message=issue.message,
             fields=issue.fields,
         )
@@ -518,4 +582,38 @@ def build_asset_import_preview(
         warnings=analysis.warnings,
         defaults=DEFAULTS_BEFORE_COMMIT,
         unslotted_acknowledged=unslotted_acknowledged,
+        case_plans=analysis.case_plans,
+        obsolete_assets=_obsolete_network_assets(conn, analysis),
+        ignored_rows=analysis.ignored_rows,
     )
+
+
+def _obsolete_network_assets(conn: sqlite3.Connection, analysis: AssetImportAnalysis) -> tuple[dict[str, str], ...]:
+    if not analysis.barcode_keys:
+        return ()
+    network_types = {"laptop", "switch", "router", "server", "storage", "firewall", "ntp", "kvm"}
+    workbook_keys = set(analysis.barcode_keys)
+    rows = conn.execute(
+        """
+        SELECT asset_tag, serial_number, equipment_type, location_type
+        FROM assets
+        WHERE COALESCE(location_type, '') NOT IN ('DISPOSED', 'RETIRED')
+        ORDER BY UPPER(asset_tag) ASC, id ASC;
+        """
+    ).fetchall()
+    obsolete: list[dict[str, str]] = []
+    for row in rows:
+        equipment_type = _text(row["equipment_type"]).lower()
+        if equipment_type not in network_types:
+            continue
+        if barcode_lookup_key(row["asset_tag"]) in workbook_keys:
+            continue
+        obsolete.append(
+            {
+                "asset_tag": _text(row["asset_tag"]),
+                "serial_number": _text(row["serial_number"]),
+                "equipment_type": equipment_type,
+                "location_type": _text(row["location_type"]),
+            }
+        )
+    return tuple(obsolete)

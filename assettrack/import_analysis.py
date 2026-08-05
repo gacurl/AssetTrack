@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -12,6 +13,8 @@ from assettrack.assets import (
     equipment_type_label,
     validate_new_equipment_type,
 )
+from assettrack.barcodes import barcode_lookup_key
+from assettrack.cases import normalize_case_size
 
 IDENTITY_COLUMNS = ("asset_tag", "barcode", "clean_asset_tag")
 REQUIRED_COLUMNS = {"equipment_type"}
@@ -31,6 +34,27 @@ ALLOWED_COLUMNS = {
     "case_number",
     "slot_number",
     "notes_comments",
+}
+BQ26_PLACEHOLDER_BARCODES = {"", "--"}
+BQ26_TYPE_CORRECTIONS = {
+    "swtich": "switch",
+    "cisco 4331": "router",
+    "cisco 4431": "router",
+    "dell poweredge r640": "server",
+    "3560cx_12": "switch",
+    "3560cx-12": "switch",
+    "cisco 3560cx_12": "switch",
+    "cisco 3560cx-12": "switch",
+    "server monitor kvm": "kvm",
+}
+BQ26_KNOWN_MANUFACTURERS = {
+    "apc",
+    "cisco",
+    "dell",
+    "dkx3-832",
+    "microsemi",
+    "rairtan",
+    "synology",
 }
 REJECTED_CMDB_COLUMNS = {
     "ip_address",
@@ -60,6 +84,9 @@ class AssetImportAnalysisRow:
     slot_identifier: str
     notes: str
     source_fields: frozenset[str] = frozenset()
+    barcode_key: str = ""
+    source_workbook: str = ""
+    warnings: tuple[str, ...] = ()
 
     @property
     def storage_intent(self) -> str:
@@ -85,6 +112,9 @@ class AssetImportAnalysis:
     rows: tuple[AssetImportAnalysisRow, ...]
     warnings: tuple[str, ...] = ()
     issues: tuple[AssetImportAnalysisIssue, ...] = ()
+    case_plans: tuple[dict[str, object], ...] = ()
+    ignored_rows: int = 0
+    barcode_keys: tuple[str, ...] = ()
 
     @property
     def equipment_types(self) -> list[str]:
@@ -98,6 +128,8 @@ class AssetImportAnalysis:
             "equipment_types": self.equipment_types,
             "warnings": list(self.warnings),
             "issues": [issue.__dict__ for issue in self.issues],
+            "case_plans": list(self.case_plans),
+            "ignored_rows": self.ignored_rows,
         }
 
 
@@ -139,6 +171,446 @@ def _normalize_slot_identifier(value: object) -> str:
 def _first_line(value: object) -> str:
     text = str(value or "").strip()
     return text.splitlines()[0] if text else ""
+
+
+def _type_source_key(value: object) -> str:
+    text = _normalize_bq26_text(value).lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _normalize_bq26_text(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, bool):
+        return str(value).strip()
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        numeric_value = Decimal(text)
+    except InvalidOperation:
+        return text
+    if numeric_value.is_finite() and numeric_value == numeric_value.to_integral_value():
+        return str(int(numeric_value))
+    return text
+
+
+def _normalize_bq26_type(value: object, *, make: object = "", model: object = "") -> str:
+    source_key = _type_source_key(value)
+    make_model_key = _type_source_key(f"{_normalize_bq26_text(make)} {_normalize_bq26_text(model)}")
+    if make_model_key in BQ26_TYPE_CORRECTIONS:
+        return validate_new_equipment_type(BQ26_TYPE_CORRECTIONS[make_model_key])
+    if source_key in BQ26_TYPE_CORRECTIONS:
+        return validate_new_equipment_type(BQ26_TYPE_CORRECTIONS[source_key])
+    try:
+        return validate_new_equipment_type(value)
+    except ValueError:
+        if make_model_key:
+            return validate_new_equipment_type(make_model_key)
+        raise
+
+
+def normalize_bq26_case_name(value: object) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return ""
+    text = re.split(r"\s+-\s+", text, maxsplit=1)[0]
+    text = re.split(r"\s+[A-Za-z]{3,9}-\d{1,2}\b", text, maxsplit=1)[0]
+    text = re.sub(r"\s+", "", text).upper()
+    match = re.fullmatch(r"(\d+)RU-?(\d+)", text)
+    if match:
+        return f"{int(match.group(1))}RU-{int(match.group(2)):02d}"
+    return text
+
+
+def _case_size_from_source(value: object) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return ""
+    lowered = re.sub(r"\s+", " ", text).strip().lower()
+    aliases = {
+        "small wheel": "Small Wheel",
+        "medium wheel": "Medium Wheel",
+        "large wheel": "Large Wheel",
+        "16ru": "16 Rack Unit Wheel",
+        "16 ru": "16 Rack Unit Wheel",
+        "16 rack unit wheel": "16 Rack Unit Wheel",
+        "4ru": "4 Rack Unit Wheel",
+        "4 ru": "4 Rack Unit Wheel",
+        "4 rack unit wheel": "4 Rack Unit Wheel",
+        "6ru": "6 Rack Unit Wheel",
+        "6 ru": "6 Rack Unit Wheel",
+        "6 rack unit wheel": "6 Rack Unit Wheel",
+        "8ru": "8 Rack Unit Wheel",
+        "8 ru": "8 Rack Unit Wheel",
+        "8 rack unit wheel": "8 Rack Unit Wheel",
+        "white case": "White Case",
+        "white cases": "White Case",
+        "sm-case": "SM-Case",
+        "sm case": "SM-Case",
+    }
+    return normalize_case_size(aliases.get(lowered, text))
+
+
+def _is_placeholder_barcode(value: object) -> bool:
+    text = _normalize_bq26_text(value).lower()
+    return text in BQ26_PLACEHOLDER_BARCODES or bool(re.fullmatch(r"-{2,}", text))
+
+
+def _normalize_bq26_header(value: object) -> str:
+    text = _normalize_bq26_text(value).lower()
+    text = text.replace("\\", " ")
+    text = re.sub(r"\([^)]*\)", "", text)
+    text = text.replace("#", "_#")
+    text = re.sub(r"[^a-z0-9#]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    aliases = {
+        "case_#": "case_#",
+        "commnet": "commnet",
+        "make_model": "make_model",
+        "seriel": "serial",
+        "product": "equipment_type",
+    }
+    return aliases.get(text, text)
+
+
+def _bq26_raw_rows(dataframe: pd.DataFrame) -> list[list[object]]:
+    return [
+        [row[index] for index in range(len(row))]
+        for row in dataframe.itertuples(index=False, name=None)
+    ]
+
+
+def _bq26_header_map(values: list[object]) -> dict[str, int]:
+    header: dict[str, int] = {}
+    for index, value in enumerate(values):
+        key = _normalize_bq26_header(value)
+        if key:
+            header.setdefault(key, index)
+    return header
+
+
+def _bq26_cell(row: list[object], index: int | None) -> object:
+    if index is None or index >= len(row):
+        return ""
+    return row[index]
+
+
+def _split_bq26_make_model(make: object, model: object, make_model: object) -> tuple[str, str]:
+    make_text = _normalize_bq26_text(make)
+    model_text = _normalize_bq26_text(model)
+    make_model_text = _normalize_bq26_text(make_model)
+    if make_text or model_text or not make_model_text:
+        return make_text, model_text or make_model_text
+    parts = make_model_text.split(maxsplit=1)
+    if len(parts) == 2 and parts[0].lower() in BQ26_KNOWN_MANUFACTURERS:
+        return parts[0], parts[1]
+    return "", make_model_text
+
+
+def _read_bq26_case_plans(dataframe: pd.DataFrame) -> tuple[dict[str, dict[str, object]], tuple[str, ...]]:
+    raw_rows = _bq26_raw_rows(dataframe)
+    warnings: list[str] = []
+    plans: dict[str, dict[str, object]] = {}
+    for header_index, values in enumerate(raw_rows):
+        header = _bq26_header_map(values)
+        if "name_cases" in header and "quantity" in header:
+            case_column = header["name_cases"]
+            quantity_column = header["quantity"]
+            case_size_column = header.get("case_size")
+            case_number_column = header.get("case_#")
+            for row in raw_rows[header_index + 1 :]:
+                raw_case = _bq26_cell(row, case_column) or _bq26_cell(row, case_number_column)
+                case_name = normalize_bq26_case_name(raw_case)
+                if not case_name:
+                    continue
+                try:
+                    quantity = int(Decimal(_normalize_slot_identifier(_bq26_cell(row, quantity_column))))
+                except (InvalidOperation, ValueError) as exc:
+                    raise ValueError(f"Name Cases row for {case_name}: quantity must be a whole number.") from exc
+                if quantity < 0:
+                    raise ValueError(f"Name Cases row for {case_name}: quantity cannot be negative.")
+                case_size = _case_size_from_source(_bq26_cell(row, case_size_column)) if case_size_column is not None else ""
+                if case_name in plans:
+                    warnings.append(f"Duplicate Name Cases entry for {case_name}; first entry was used.")
+                    continue
+                plans[case_name] = {
+                    "case_name": case_name,
+                    "case_size": case_size,
+                    "quantity": quantity,
+                    "assigned_count": 0,
+                    "warnings": [],
+                }
+            break
+        quantity_pairs = [
+            (index, index + 1)
+            for index, value in enumerate(values[:-1])
+            if _normalize_bq26_text(value) and _normalize_bq26_header(values[index + 1]).startswith("qty")
+        ]
+        if quantity_pairs:
+            for case_column, quantity_column in quantity_pairs:
+                case_size = _case_size_from_source(values[case_column])
+                for row in raw_rows[header_index + 1 :]:
+                    case_name = normalize_bq26_case_name(_bq26_cell(row, case_column))
+                    if not case_name:
+                        continue
+                    try:
+                        quantity = int(Decimal(_normalize_slot_identifier(_bq26_cell(row, quantity_column))))
+                    except (InvalidOperation, ValueError) as exc:
+                        raise ValueError(f"Name Cases row for {case_name}: quantity must be a whole number.") from exc
+                    if quantity < 0:
+                        raise ValueError(f"Name Cases row for {case_name}: quantity cannot be negative.")
+                    if case_name in plans:
+                        warnings.append(f"Duplicate Name Cases entry for {case_name}; first entry was used.")
+                        continue
+                    plans[case_name] = {
+                        "case_name": case_name,
+                        "case_size": case_size,
+                        "quantity": quantity,
+                        "assigned_count": 0,
+                        "warnings": [],
+                    }
+            break
+    if not plans:
+        raise ValueError("Malformed BQ26 workbook. Name Cases contains no valid cases.")
+    return plans, tuple(warnings)
+
+
+def _bq26_asset_sheet_names(sheets: dict[str, pd.DataFrame]) -> tuple[str, ...]:
+    sheet_names: list[str] = []
+    for sheet_name, dataframe in sheets.items():
+        if sheet_name.strip().lower() == "name cases":
+            continue
+        for values in _bq26_raw_rows(dataframe):
+            header = _bq26_header_map(values)
+            if "barcode" in header and "case_#" in header:
+                sheet_names.append(sheet_name)
+                break
+    if not sheet_names:
+        raise ValueError("Malformed BQ26 workbook. No asset worksheet with Barcode and Case # columns was found.")
+    return tuple(sheet_names)
+
+
+def _bq26_row_value(raw_row: dict[str, object], *names: str) -> object:
+    for name in names:
+        if name in raw_row:
+            return raw_row.get(name)
+    return ""
+
+
+def _iter_bq26_asset_rows(sheets: dict[str, pd.DataFrame]):
+    logical_row_number = 1
+    for sheet_name, dataframe in sheets.items():
+        if sheet_name.strip().lower() == "name cases":
+            continue
+        header: dict[str, int] | None = None
+        for values in _bq26_raw_rows(dataframe):
+            candidate = _bq26_header_map(values)
+            if "barcode" in candidate and "case_#" in candidate:
+                header = candidate
+                continue
+            if "barcode" in candidate:
+                continue
+            if header is None:
+                continue
+            barcode = _bq26_cell(values, header.get("barcode"))
+            if not _normalize_bq26_text(barcode) and not any(_normalize_bq26_text(value) for value in values):
+                continue
+            logical_row_number += 1
+            make, model = _split_bq26_make_model(
+                _bq26_cell(values, header.get("make")),
+                _bq26_cell(values, header.get("model")),
+                _bq26_cell(values, header.get("make_model")),
+            )
+            yield (
+                logical_row_number,
+                sheet_name,
+                {
+                    "barcode": barcode,
+                    "serial": _bq26_cell(values, header.get("serial")),
+                    "equipment_type": _bq26_cell(values, header.get("equipment_type")),
+                    "make": make,
+                    "model": model,
+                    "case_#": _bq26_cell(values, header.get("case_#")),
+                    "commnet": _bq26_cell(values, header.get("commnet")),
+                },
+            )
+
+
+def _analyze_bq26_workbook(
+    sheets: dict[str, pd.DataFrame],
+    *,
+    filename: str,
+) -> AssetImportAnalysis:
+    case_sheet = next(
+        (dataframe for sheet_name, dataframe in sheets.items() if sheet_name.strip().lower() == "name cases"),
+        None,
+    )
+    if case_sheet is None:
+        raise ValueError("Malformed BQ26 workbook. Name Cases worksheet is required.")
+    case_plans, case_warnings = _read_bq26_case_plans(case_sheet)
+    asset_sheet_names = _bq26_asset_sheet_names(sheets)
+    warnings = list(case_warnings)
+    if any(sheet_name.strip().lower() not in {"network", "network inventory", "bq26 network"} for sheet_name in asset_sheet_names):
+        warnings.append("Asset worksheet names are descriptive only and were accepted.")
+
+    rows: list[AssetImportAnalysisRow] = []
+    issues: list[AssetImportAnalysisIssue] = []
+    case_asset_ordinals: dict[str, int] = {}
+    ignored_rows = 0
+    seen_barcodes: dict[str, int] = {}
+    seen_serials: dict[str, int] = {}
+
+    for offset, _sheet_name, raw in _iter_bq26_asset_rows(sheets):
+        raw_barcode = _normalize_bq26_text(_bq26_row_value(raw, "barcode"))
+        if _is_placeholder_barcode(raw_barcode):
+            ignored_rows += 1
+            continue
+        barcode_key = barcode_lookup_key(raw_barcode)
+        if not barcode_key:
+            ignored_rows += 1
+            continue
+        case_name = normalize_bq26_case_name(_bq26_row_value(raw, "case_#"))
+        if not case_name or case_name not in case_plans:
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=offset,
+                    category="invalid_upload_row",
+                    message=f"Case # does not match Name Cases: {_normalize_text(_bq26_row_value(raw, 'case_#')) or 'blank'}.",
+                    fields=("case_#",),
+                    asset_identifier=raw_barcode,
+                )
+            )
+            continue
+        previous_barcode_row = seen_barcodes.get(barcode_key)
+        if previous_barcode_row is not None:
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=offset,
+                    category="duplicate_upload_row",
+                    message=f"duplicate normalized barcode matches row {previous_barcode_row}: {raw_barcode}.",
+                    fields=("barcode",),
+                    asset_identifier=raw_barcode,
+                )
+            )
+            continue
+        seen_barcodes[barcode_key] = offset
+
+        serial = _normalize_text(_bq26_row_value(raw, "serial"))
+        normalized_serial = serial.upper()
+        if normalized_serial:
+            previous_serial_row = seen_serials.get(normalized_serial)
+            if previous_serial_row is not None:
+                issues.append(
+                    AssetImportAnalysisIssue(
+                        row_number=offset,
+                        category="duplicate_upload_row",
+                        message=f"duplicate serial matches row {previous_serial_row}: {serial}.",
+                        fields=("serial",),
+                        asset_identifier=raw_barcode,
+                    )
+                )
+                continue
+            seen_serials[normalized_serial] = offset
+
+        try:
+            equipment_type = _normalize_bq26_type(
+                _bq26_row_value(raw, "equipment_type", "type"),
+                make=_bq26_row_value(raw, "make"),
+                model=_bq26_row_value(raw, "model"),
+            )
+        except ValueError as exc:
+            message = _first_line(exc) or SUPPORTED_EQUIPMENT_TYPE_MESSAGE
+            issues.append(
+                AssetImportAnalysisIssue(
+                    row_number=offset,
+                    category="invalid_upload_row",
+                    message=message,
+                    fields=("equipment_type", "make", "model"),
+                    asset_identifier=raw_barcode,
+                )
+            )
+            continue
+
+        case_asset_ordinals[case_name] = case_asset_ordinals.get(case_name, 0) + 1
+        ordinal = case_asset_ordinals[case_name]
+        notes = _normalize_text(_bq26_row_value(raw, "commnet", "notes", "comment"))
+        row_warnings: list[str] = []
+        if not serial:
+            row_warnings.append("Missing serial number.")
+        rows.append(
+            AssetImportAnalysisRow(
+                row_number=offset,
+                asset_tag=raw_barcode,
+                serial_number=serial,
+                equipment_type=equipment_type,
+                manufacturer=_normalize_text(_bq26_row_value(raw, "make")),
+                model=_normalize_bq26_text(_bq26_row_value(raw, "model")),
+                model_code="",
+                building_room="",
+                location_building="",
+                case_identifier=case_name,
+                slot_identifier=str(ordinal),
+                notes=notes,
+                source_fields=frozenset(
+                    {
+                        "asset_tag",
+                        "barcode",
+                        "serial_number",
+                        "equipment_type",
+                        "manufacturer",
+                        "model",
+                        "notes_comments",
+                        "case_identifier",
+                        "slot_identifier",
+                    }
+                ),
+                barcode_key=barcode_key,
+                source_workbook="BQ26",
+                warnings=tuple(row_warnings),
+            )
+        )
+
+    for case_name, plan in case_plans.items():
+        assigned_count = int(case_asset_ordinals.get(case_name, 0))
+        quantity = int(plan["quantity"])
+        plan["assigned_count"] = assigned_count
+        plan_warnings = list(plan.get("warnings") or [])
+        if assigned_count < quantity:
+            plan_warnings.append(f"{case_name} has {assigned_count} barcoded assets for {quantity} provisioned slots.")
+        plan["warnings"] = plan_warnings
+        if assigned_count > quantity:
+            for row in rows:
+                if row.case_identifier == case_name:
+                    issues.append(
+                        AssetImportAnalysisIssue(
+                            row_number=row.row_number,
+                            category="case_over_capacity",
+                            message=f"{case_name} has {assigned_count} barcoded assets but Name Cases quantity is {quantity}.",
+                            fields=("case_#", "quantity"),
+                            asset_identifier=row.asset_tag,
+                        )
+                    )
+
+    over_capacity_rows = {issue.row_number for issue in issues if issue.category == "case_over_capacity"}
+    if over_capacity_rows:
+        rows = [row for row in rows if row.row_number not in over_capacity_rows]
+
+    warnings.extend(
+        warning
+        for plan in case_plans.values()
+        for warning in (plan.get("warnings") or [])
+    )
+    return AssetImportAnalysis(
+        filename=filename,
+        file_type="BQ26 XLSX",
+        rows=tuple(rows),
+        warnings=tuple(warnings),
+        issues=tuple(issues),
+        case_plans=tuple(case_plans[case_name] for case_name in sorted(case_plans)),
+        ignored_rows=ignored_rows,
+        barcode_keys=tuple(sorted(seen_barcodes)),
+    )
 
 
 def _validate_headers(headers: list[str], *, file_type: str) -> tuple[str, ...]:
@@ -374,12 +846,18 @@ def analyze_asset_import_xlsx(
         with path.open("rb") as handle:
             if handle.read(2) != b"PK":
                 raise ValueError("Malformed XLSX file. Upload a valid .xlsx workbook.")
-        dataframe = pd.read_excel(path, engine="openpyxl")
+        sheets = pd.read_excel(path, engine="openpyxl", sheet_name=None)
     except ValueError:
         raise
     except Exception as exc:
         raise ValueError("Malformed XLSX file. Upload a valid .xlsx workbook.") from exc
 
+    normalized_sheet_names = {sheet_name.strip().lower() for sheet_name in sheets}
+    if "name cases" in normalized_sheet_names:
+        raw_sheets = pd.read_excel(path, engine="openpyxl", sheet_name=None, header=None)
+        return _analyze_bq26_workbook(raw_sheets, filename=filename)
+
+    dataframe = next(iter(sheets.values()))
     headers = [_normalize_header(header) for header in dataframe.columns]
     raw_rows = [
         {str(column): row[column] for column in dataframe.columns}

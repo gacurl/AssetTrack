@@ -284,6 +284,61 @@ def _xlsx_bytes(rows: list[dict[str, object]] | None = None) -> bytes:
     return buffer.getvalue()
 
 
+def _bq26_xlsx_bytes(
+    *,
+    asset_rows: list[dict[str, object]],
+    case_rows: list[dict[str, object]],
+    asset_sheet_name: str = "Network",
+) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pd.DataFrame(asset_rows).to_excel(writer, index=False, sheet_name=asset_sheet_name)
+        pd.DataFrame(case_rows).to_excel(writer, index=False, sheet_name="Name Cases")
+    return buffer.getvalue()
+
+
+def _bq26_real_shape_xlsx_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pd.DataFrame(
+            [
+                ["Large Wheel", "qty", "16 Rack Unit wheel", "qty 2", "White Cases", "qty 6"],
+                ["LG-WHE-01", 1, "16RU-01", 2, "AAA-16", 1],
+                ["", "", "16RU-02", 1, "AAA-30", 1],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="Name Cases")
+        pd.DataFrame(
+            [
+                ["", "2026-08-05", "", "", "", "", "", ""],
+                ["", "Product", "Make\\Model", "Barcode", "Serial", "Case #", "Quantity", "Commnet"],
+                ["", "Switch", "Cisco 9300", "BQ26-SAFE-1", "SER-BQ26-SAFE-1", "16RU-1", 1, "Front"],
+                ["", "Router", "Cisco 4331", "BQ26-SAFE-2", "SER-BQ26-SAFE-2", "16RU-1", 1, "Router correction"],
+                ["", "PDU", "Rairtan", "----", "SER-IGNORED", "16RU-1", 1, "placeholder"],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="Network Box (16RU-1)-BQMN")
+        pd.DataFrame(
+            [
+                ["", "Product", "Make", "Model", "Barcode", "Seriel", "Case #", "Quantity", "Commnet (F/B)"],
+                ["", "Switch", "Cisco", "3560CX-12", "BQ26-SAFE-3", "SER-BQ26-SAFE-3", "AAA-16", 1, "typo serial"],
+                ["", "", "", "3560CX-12", "BQ26-SAFE-4", "SER-BQ26-SAFE-4", "AAA-30", 1, "model-only type correction"],
+                ["", "Product", "Make", "Model", "Barcode", "Serial", "Quantity", "Quantity", "Commnet"],
+                ["", "Cable", "---", "---", "----", "---", "LG-WHE-01", "---", "---"],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="White-Cases")
+    return buffer.getvalue()
+
+
+def _case_metadata(case_name: str) -> sqlite3.Row | None:
+    conn = db.get_connection()
+    try:
+        return conn.execute(
+            "SELECT case_name, case_size FROM case_metadata WHERE case_name = ?;",
+            (case_name,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def test_csv_and_xlsx_use_equivalent_canonical_analysis_rows(tmp_path: Path) -> None:
     csv_path = tmp_path / "assets.csv"
     csv_path.write_text(
@@ -435,6 +490,295 @@ def test_xlsx_numeric_slot_identifier_reaches_available_slot_classification(
     assert analysis.rows[0].case_identifier == "CASE-2912-SMOKE"
     assert analysis.rows[0].slot_identifier == "4"
     assert preview.rows[0].category == "new_asset"
+
+
+def test_bq26_xlsx_normalizes_barcodes_cases_types_and_warnings(tmp_path: Path) -> None:
+    xlsx_path = tmp_path / "BQ26_network_mod (1).xlsx"
+    xlsx_path.write_bytes(
+        _bq26_xlsx_bytes(
+            asset_rows=[
+                {"Barcode": " sw-1 ", "Serial": "", "Commnet": "needs serial", "Make": "", "Model": "", "Equipment Type": "Swtich", "Case #": "6Ru-1"},
+                {"Barcode": "--", "Serial": "IGNORED-1", "Equipment Type": "Switch", "Case #": "6Ru-1"},
+                {"Barcode": "", "Serial": "IGNORED-2", "Equipment Type": "Router", "Case #": "6Ru-1"},
+                {"Barcode": "RTR-1", "Serial": "SER-RTR-1", "Commnet": "router note", "Make": "Cisco", "Model": "4331", "Equipment Type": "", "Case #": "4RU-5 Aug-12"},
+                {"Barcode": "SRV-1", "Serial": "SER-SRV-1", "Make": "Dell", "Model": "PowerEdge R640", "Equipment Type": "", "Case #": "8RU-2"},
+            ],
+            case_rows=[
+                {"Name Cases": "6Ru-1", "Case Size": "6RU", "Quantity": 2},
+                {"Name Cases": "4RU-05 - need Shipped", "Case Size": "4 Rack Unit Wheel", "Quantity": 1},
+                {"Name Cases": "8RU-2", "Case Size": "8RU", "Quantity": 1},
+            ],
+            asset_sheet_name="Network workbook",
+        )
+    )
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="BQ26_network_mod (1).xlsx", collect_row_errors=True)
+
+    assert analysis.file_type == "BQ26 XLSX"
+    assert analysis.ignored_rows == 2
+    assert [row.asset_tag for row in analysis.rows] == ["sw-1", "RTR-1", "SRV-1"]
+    assert [row.barcode_key for row in analysis.rows] == ["SW1", "RTR1", "SRV1"]
+    assert [row.equipment_type for row in analysis.rows] == ["switch", "router", "server"]
+    assert [row.case_identifier for row in analysis.rows] == ["6RU-01", "4RU-05", "8RU-02"]
+    assert [row.slot_identifier for row in analysis.rows] == ["1", "1", "1"]
+    assert analysis.rows[0].warnings == ("Missing serial number.",)
+    assert "6RU-01 has 1 barcoded assets for 2 provisioned slots." in analysis.warnings
+    assert any("descriptive only" in warning for warning in analysis.warnings)
+
+
+def test_bq26_xlsx_recognizes_real_workbook_shape_without_deployment_data(tmp_path: Path) -> None:
+    xlsx_path = tmp_path / "BQ26_network_mod.xlsx"
+    xlsx_path.write_bytes(_bq26_real_shape_xlsx_bytes())
+
+    analysis = analyze_asset_import_xlsx(xlsx_path, filename="BQ26_network_mod.xlsx", collect_row_errors=True)
+
+    assert analysis.file_type == "BQ26 XLSX"
+    assert len(analysis.case_plans) == 5
+    assert [(plan["case_name"], plan["case_size"], plan["quantity"], plan["assigned_count"]) for plan in analysis.case_plans] == [
+        ("16RU-01", "16 Rack Unit Wheel", 2, 2),
+        ("16RU-02", "16 Rack Unit Wheel", 1, 0),
+        ("AAA-16", "White Case", 1, 1),
+        ("AAA-30", "White Case", 1, 1),
+        ("LG-WHE-01", "Large Wheel", 1, 0),
+    ]
+    assert analysis.ignored_rows == 2
+    assert analysis.issues == ()
+    assert [row.asset_tag for row in analysis.rows] == ["BQ26-SAFE-1", "BQ26-SAFE-2", "BQ26-SAFE-3", "BQ26-SAFE-4"]
+    assert [row.equipment_type for row in analysis.rows] == ["switch", "router", "switch", "switch"]
+    assert [row.case_identifier for row in analysis.rows] == ["16RU-01", "16RU-01", "AAA-16", "AAA-30"]
+    assert [row.slot_identifier for row in analysis.rows] == ["1", "2", "1", "1"]
+    assert "16RU-02 has 0 barcoded assets for 1 provisioned slots." in analysis.warnings
+    assert "LG-WHE-01 has 0 barcoded assets for 1 provisioned slots." in analysis.warnings
+
+
+def test_bq26_preview_and_commit_provisions_quantity_slots_and_ordinal_assignments(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "BQ-1", "Serial": "SER-BQ-1", "Commnet": "first", "Make": "Cisco", "Model": "3560CX-12", "Equipment Type": "", "Case #": "16RU-1"},
+            {"Barcode": "BQ-2", "Serial": "SER-BQ-2", "Commnet": "second", "Make": "", "Model": "", "Equipment Type": "Server Monitor KVM", "Case #": "16RU-1"},
+        ],
+        case_rows=[
+            {"Name Cases": "16RU-1", "Case Size": "16RU", "Quantity": 3},
+            {"Name Cases": "WHITE-1", "Case Size": "White Case", "Quantity": 0},
+        ],
+    )
+
+    response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+
+    assert response.status_code == 200
+    assert b"BQ26 XLSX" in response.data
+    assert b"16RU-01 has 2 barcoded assets for 3 provisioned slots." in response.data
+    assert b"Case Plans" in response.data
+    assert b"16RU-01" in response.data
+    assert b"16 Rack Unit Wheel" in response.data
+    assert b"WHITE-1" in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert b"Asset import committed." in commit_response.data
+    slots = _slot_records_for_case("16RU-01")
+    assert [int(slot["slot_position"]) for slot in slots] == [1, 2, 3]
+    assert [slot["current_asset_tag"] for slot in slots] == ["BQ-1", "BQ-2", None]
+    assert _slot_records_for_case("WHITE-1") == []
+    assert _case_metadata("16RU-01")["case_size"] == "16 Rack Unit Wheel"
+    assert _case_metadata("WHITE-1")["case_size"] == "White Case"
+    assert _asset_record("BQ-1")["equipment_type"] == "switch"
+    assert _asset_record("BQ-2")["equipment_type"] == "kvm"
+    assert [row["event_type"] for row in _asset_events("BQ-1")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+    assert [row["event_type"] for row in _asset_events("BQ-2")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+
+
+def test_bq26_over_capacity_case_blocks_affected_rows_without_writes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "OVER-1", "Serial": "SER-OVER-1", "Equipment Type": "Switch", "Case #": "8RU-2"},
+            {"Barcode": "OVER-2", "Serial": "SER-OVER-2", "Equipment Type": "Router", "Case #": "8RU-2"},
+        ],
+        case_rows=[{"Name Cases": "8RU-2", "Case Size": "8RU", "Quantity": 1}],
+    )
+
+    response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+
+    assert response.status_code == 200
+    assert b"Case Over Capacity: 2" in response.data
+    assert b"8RU-02 has 2 barcoded assets but Name Cases quantity is 1." in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert _asset_record("OVER-1") is None
+    assert _asset_record("OVER-2") is None
+    assert _slot_records_for_case("8RU-02") == []
+    assert _case_metadata("8RU-02") is None
+
+
+def test_bq26_reuses_normalized_barcode_match_and_moves_existing_asset(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=551, case_name="OLD-BQ26", slot_position=1, current_asset_tag="BQ 26-1")
+    _insert_asset(
+        asset_tag="BQ 26-1",
+        serial_number="SER-BQ26-1",
+        equipment_type="switch",
+        manufacturer="Old Maker",
+        model="Old Model",
+        case_number="OLD-BQ26",
+        slot_number="1",
+        home_slot_id=551,
+        slotted=True,
+    )
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "bq-26 1", "Serial": "SER-BQ26-1", "Make": "Cisco", "Model": "3560CX-12", "Equipment Type": "", "Case #": "16RU-1"},
+        ],
+        case_rows=[{"Name Cases": "16RU-1", "Case Size": "16RU", "Quantity": 1}],
+    )
+
+    response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+
+    assert response.status_code == 200
+    assert b"Proposed Update: 1" in response.data
+    assert b"home_slot</code>: OLD-BQ26 / 1 -> 16RU-01 / 1" in response.data
+    assert b"New Asset: 0" in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert _asset_record("bq-26 1") is None
+    asset = _asset_record("BQ 26-1")
+    assert asset is not None
+    assert asset["case_number"] == "16RU-01"
+    assert asset["slot_number"] == "1"
+    assert asset["manufacturer"] == "Cisco"
+    assert asset["model"] == "3560CX-12"
+    assert _slot_records_for_case("OLD-BQ26")[0]["current_asset_tag"] is None
+    assert _slot_records_for_case("16RU-01")[0]["current_asset_tag"] == "BQ 26-1"
+    assert [row["event_type"] for row in _asset_events("BQ 26-1")] == ["SLOT_MOVE", "ASSET_UPDATED"]
+
+
+def test_bq26_blocks_conflicts_but_commits_unrelated_safe_rows(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_slot(slot_id=552, case_name="6RU-01", slot_position=1, current_asset_tag="BQ26-OCCUPANT")
+    _insert_asset(asset_tag="BQ26-OCCUPANT", equipment_type="router", home_slot_id=552, case_number="6RU-01", slot_number="1", slotted=True)
+    _insert_asset(asset_tag="ISSUED-1", serial_number="SER-ISSUED-1", equipment_type="switch")
+    _insert_asset(asset_tag="SERIAL-OWNER-BQ26", serial_number="SER-BQ26-CONFLICT", equipment_type="server")
+    _insert_asset(asset_tag="BAR CODE-1", serial_number="SER-OLD-BARCODE", equipment_type="firewall")
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE assets SET location_type = 'IN_CUSTODY' WHERE asset_tag = 'ISSUED-1';")
+        conn.commit()
+    finally:
+        conn.close()
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "ISSUED-1", "Serial": "SER-ISSUED-1", "Equipment Type": "Switch", "Case #": "16RU-1"},
+            {"Barcode": "OCCUPIED-1", "Serial": "SER-OCCUPIED-1", "Equipment Type": "Router", "Case #": "6Ru-1"},
+            {"Barcode": "NEW-CONFLICT", "Serial": "SER-BQ26-CONFLICT", "Equipment Type": "Server", "Case #": "8RU-2"},
+            {"Barcode": "barcode1", "Serial": "SER-NEW-BARCODE", "Equipment Type": "Firewall", "Case #": "4RU-5 Aug-12"},
+            {"Barcode": "SAFE-BQ26", "Serial": "SER-SAFE-BQ26", "Equipment Type": "NTP", "Case #": "SAFE-1"},
+        ],
+        case_rows=[
+            {"Name Cases": "16RU-1", "Case Size": "16RU", "Quantity": 1},
+            {"Name Cases": "6Ru-1", "Case Size": "6RU", "Quantity": 1},
+            {"Name Cases": "8RU-2", "Case Size": "8RU", "Quantity": 1},
+            {"Name Cases": "4RU-05 - need Shipped", "Case Size": "4 Rack Unit Wheel", "Quantity": 1},
+            {"Name Cases": "SAFE-1", "Case Size": "Small Wheel", "Quantity": 1},
+        ],
+    )
+
+    response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+
+    assert response.status_code == 200
+    assert b"Blocked Conflict: 2" in response.data
+    assert b"Identity Conflict: 2" in response.data
+    assert b"New Asset: 1" in response.data
+    assert b"AssetTrack shows it issued" in response.data
+    assert b"Destination slot 6RU-01 / 1 is occupied by BQ26-OCCUPANT" in response.data
+    assert b"serial_number matches existing asset SERIAL-OWNER-BQ26" in response.data
+    assert b"normalized barcode matches existing asset BAR CODE-1" in response.data
+
+    commit_response = _post_commit(client_with_temp_db, _preview_token(response))
+
+    assert commit_response.status_code == 200
+    assert b"1 row committed. 4 blocked rows left unchanged." in commit_response.data
+    assert _asset_record("SAFE-BQ26") is not None
+    assert _asset_record("OCCUPIED-1") is None
+    assert _asset_record("NEW-CONFLICT") is None
+    assert _asset_record("barcode1") is None
+    assert _asset_record("ISSUED-1")["location_type"] == "IN_CUSTODY"
+    assert _slot_records_for_case("6RU-01")[0]["current_asset_tag"] == "BQ26-OCCUPANT"
+    assert [row["event_type"] for row in _asset_events("SAFE-BQ26")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+
+
+def test_bq26_commit_rolls_back_case_metadata_slots_assets_and_events_on_failure(
+    client_with_temp_db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _login_admin(client_with_temp_db)
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "ROLL-BQ26-1", "Serial": "SER-ROLL-BQ26-1", "Equipment Type": "Switch", "Case #": "16RU-1"},
+            {"Barcode": "ROLL-BQ26-2", "Serial": "SER-ROLL-BQ26-2", "Equipment Type": "Router", "Case #": "16RU-1"},
+        ],
+        case_rows=[{"Name Cases": "16RU-1", "Case Size": "16RU", "Quantity": 2}],
+    )
+    response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+    token = _preview_token(response)
+    original_append_event = intake_app._asset_import_append_event
+
+    def fail_second_created(*args, **kwargs):
+        if kwargs.get("asset_tag") == "ROLL-BQ26-2" and kwargs.get("event_type") == "ASSET_CREATED":
+            raise RuntimeError("forced bq26 import failure")
+        return original_append_event(*args, **kwargs)
+
+    monkeypatch.setattr(intake_app, "_asset_import_append_event", fail_second_created)
+
+    with pytest.raises(RuntimeError, match="forced bq26 import failure"):
+        _post_commit(client_with_temp_db, token)
+
+    assert _asset_record("ROLL-BQ26-1") is None
+    assert _asset_record("ROLL-BQ26-2") is None
+    assert _asset_events("ROLL-BQ26-1") == []
+    assert _asset_events("ROLL-BQ26-2") == []
+    assert _slot_records_for_case("16RU-01") == []
+    assert _case_metadata("16RU-01") is None
+
+
+def test_bq26_repeat_import_is_safe_and_reports_absent_active_inventory(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _insert_asset(asset_tag="ABSENT-BQ26", serial_number="SER-ABSENT-BQ26", equipment_type="laptop")
+    workbook = _bq26_xlsx_bytes(
+        asset_rows=[
+            {"Barcode": "REPEAT-BQ26", "Serial": "SER-REPEAT-BQ26", "Equipment Type": "Storage", "Case #": "16RU-1"},
+        ],
+        case_rows=[{"Name Cases": "16RU-1", "Case Size": "16RU", "Quantity": 1}],
+    )
+
+    first_response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+    assert first_response.status_code == 200
+    assert b"Active Network Assets Absent From Workbook" in first_response.data
+    assert b"ABSENT-BQ26" in first_response.data
+    csv_response = client_with_temp_db.get("/admin/assets/import/reconciliation.csv")
+    assert csv_response.status_code == 200
+    assert b"active_network_assets_absent_from_workbook" in csv_response.data
+    assert b"ABSENT-BQ26" in csv_response.data
+    first_commit = _post_commit(client_with_temp_db, _preview_token(first_response))
+    assert first_commit.status_code == 200
+    assert _asset_record("ABSENT-BQ26")["location_type"] == "STORAGE"
+    after_first = _table_counts()
+
+    second_response = _post_file(client_with_temp_db, workbook, "BQ26_network_mod (1).xlsx")
+    assert second_response.status_code == 200
+    assert b"Unchanged Exact Match: 1" in second_response.data
+    second_commit = _post_commit(client_with_temp_db, _preview_token(second_response))
+
+    assert second_commit.status_code == 200
+    assert _table_counts() == after_first
+    assert len(_slot_records_for_case("16RU-01")) == 1
+    assert [row["event_type"] for row in _asset_events("REPEAT-BQ26")] == ["ASSET_CREATED", "SLOT_ASSIGN"]
+    assert _asset_events("ABSENT-BQ26") == []
 
 
 def test_admin_can_open_asset_import_upload_page(client_with_temp_db) -> None:
