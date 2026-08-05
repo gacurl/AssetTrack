@@ -265,6 +265,62 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     assert b"Empty" in response.data
 
 
+def test_dashboard_case_detail_asset_tags_link_to_asset_history(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 20, "CASE-LINK", 1)
+    asset_id = _insert_asset(conn, "AT-LINK-1", location_type="STORAGE")
+    _occupy_slot(conn, 20, asset_id)
+    conn.commit()
+
+    response = client.get("/dashboard/cases/CASE-LINK")
+
+    assert response.status_code == 200
+    assert b'href="/assets/history?asset_tag=AT-LINK-1' in response.data
+    assert b">AT-LINK-1</a>" in response.data
+
+
+def test_dashboard_case_detail_shows_stored_asset_wording(app_client) -> None:
+    conn, client = app_client
+    _insert_slot(conn, 21, "CASE-12", 4)
+    asset_id = _insert_asset(conn, "AT-STORED-1", location_type="STORAGE")
+    _occupy_slot(conn, 21, asset_id)
+    conn.commit()
+
+    response = client.get("/dashboard/cases/CASE-12")
+
+    assert response.status_code == 200
+    assert b"Stored in CASE-12, Slot 4" in response.data
+
+
+def test_dashboard_case_detail_shows_issued_asset_holder(app_client) -> None:
+    conn, client = app_client
+    _insert_holder(conn, 22, "Jamie Holder", organization="Field Ops")
+    _insert_slot(conn, 22, "CASE-ISSUED", 4)
+    _insert_asset(conn, "AT-ISSUED-1", location_type="IN_CUSTODY", holder_id=22, home_slot_id=22)
+    conn.commit()
+
+    response = client.get("/dashboard/cases/CASE-ISSUED")
+
+    assert response.status_code == 200
+    assert b"Issued to Jamie Holder (Field Ops)" in response.data
+
+
+def test_dashboard_case_detail_issued_asset_with_home_slot_is_not_stored(app_client) -> None:
+    conn, client = app_client
+    _insert_holder(conn, 23, "Case Holder", organization="Ops")
+    _insert_slot(conn, 23, "CASE-12", 4)
+    _insert_asset(conn, "AT-OUT-HOME", location_type="IN_CUSTODY", holder_id=23, home_slot_id=23)
+    conn.commit()
+
+    response = client.get("/dashboard/cases/CASE-12")
+
+    assert response.status_code == 200
+    assert b"AT-OUT-HOME" in response.data
+    assert b"Issued to Case Holder (Ops)" in response.data
+    assert b"Home slot: CASE-12, Slot 4" in response.data
+    assert b"Stored in CASE-12, Slot 4" not in response.data
+
+
 def test_case_inventory_preview_supports_mixed_case_and_is_read_only(app_client) -> None:
     conn, client = app_client
     _insert_slot(conn, 101, "CASE-PRINT", 1)

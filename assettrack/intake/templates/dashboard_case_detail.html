@@ -108,6 +108,7 @@
             <th class="select-cell">Issue</th>
             <th>Slot Position</th>
             <th>Asset Tag</th>
+            <th>Current Status</th>
           </tr>
         </thead>
         <tbody>
@@ -122,11 +123,27 @@
                 {% endif %}
               </td>
               <td>{{ row.slot_position }}</td>
-              <td class="mono">{{ row.asset_tag if row.asset_tag else "Empty" }}</td>
+              <td class="mono">
+                {% if row.asset_tag %}
+                  <a class="nav-link drill-link" href="{{ url_for('asset_history', asset_tag=row.asset_tag, return_to=request.full_path.rstrip('?')) }}">{{ row.asset_tag }}</a>
+                {% else %}
+                  Empty
+                {% endif %}
+              </td>
+              <td>
+                {% if row.asset_tag and row.asset_location_type|upper == "IN_CUSTODY" and row.holder_label %}
+                  Issued to {{ row.holder_label }}<br />
+                  <span class="muted">Home slot: {{ case_detail.case_name }}, Slot {{ row.slot_position }}</span>
+                {% elif row.asset_tag %}
+                  Stored in {{ case_detail.case_name }}, Slot {{ row.slot_position }}
+                {% else %}
+                  Empty Slot
+                {% endif %}
+              </td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="3">None</td>
+              <td colspan="4">None</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -156,6 +173,7 @@
             <th class="select-cell">Return</th>
             <th>Home Slot</th>
             <th>Asset Tag</th>
+            <th>Current Status</th>
           </tr>
         </thead>
         <tbody>
@@ -164,12 +182,13 @@
               <td class="select-cell">
                 <input type="checkbox" name="asset_tag" value="{{ row.asset_tag }}" aria-label="Select {{ row.asset_tag }} for return" data-eligible-asset="return" />
               </td>
-              <td>{{ row.slot_position }}</td>
-              <td class="mono">{{ row.asset_tag }}</td>
+              <td>Home slot: {{ row.case_name }}, Slot {{ row.slot_position }}</td>
+              <td class="mono"><a class="nav-link drill-link" href="{{ url_for('asset_history', asset_tag=row.asset_tag, return_to=request.full_path.rstrip('?')) }}">{{ row.asset_tag }}</a></td>
+              <td>Issued to {{ row.holder_label }}</td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="3">No assets currently out from this case.</td>
+              <td colspan="4">No assets currently out from this case.</td>
             </tr>
           {% endfor %}
         </tbody>
