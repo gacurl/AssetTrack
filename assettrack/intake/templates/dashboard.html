@@ -311,7 +311,7 @@
   {% set exception_total = overview.attention_count %}
   {% set custody_map = dashboard.snapshots.custody_map %}
   <div class="dashboard-intro">
-    <p class="dashboard-note">Custody map is read-only.</p>
+    <p class="dashboard-note">Asset location map is read-only.</p>
   </div>
 
   {% if show_first_run_guide %}
@@ -377,44 +377,44 @@
   </div>
 
   <details class="disclosure-section dashboard-map-card">
-    <summary aria-label="Custody map">
+    <summary aria-label="Asset location map">
       <span class="dashboard-map-heading">
-        <span class="disclosure-title">Custody Map</span>
+        <span class="disclosure-title">Asset Location Map</span>
         <a class="nav-link" href="{{ url_for('asset_search') }}">Asset Search</a>
       </span>
-      <span class="disclosure-hint">Thread → Building → Operational Domain → Custody Holder → Asset</span>
+      <span class="disclosure-hint">Asset Domain -> Mission Area -> Building -> Custody Holder -> Asset</span>
     </summary>
     <div class="disclosure-body">
-      {% if custody_map.threads %}
+      {% if custody_map.domains %}
         <ul class="custody-map-tree">
-          {% for thread in custody_map.threads %}
+          {% for domain in custody_map.domains %}
             <li>
               <details class="disclosure-section custody-map-node">
                 <summary>
-                  <span class="custody-map-label">Thread: {{ thread.label }}</span>
-                  <span class="custody-map-hint">{{ thread.asset_count }} asset{% if thread.asset_count != 1 %}s{% endif %}</span>
+                  <span class="custody-map-label">Asset Domain: {{ domain.label }}</span>
+                  <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
                 </summary>
                 <div class="disclosure-body">
                   <ul class="custody-map-children">
-                    {% for building in thread.buildings %}
+                    {% for mission_area in domain.mission_areas %}
                       <li>
                         <details class="disclosure-section custody-map-node">
                           <summary>
-                            <span class="custody-map-label">Building: {{ building.label }}</span>
-                            <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
+                            <span class="custody-map-label">Mission Area: {{ mission_area.label }}</span>
+                            <span class="custody-map-hint">{{ mission_area.asset_count }} asset{% if mission_area.asset_count != 1 %}s{% endif %}</span>
                           </summary>
                           <div class="disclosure-body">
                             <ul class="custody-map-children">
-                              {% for domain in building.domains %}
+                              {% for building in mission_area.buildings %}
                                 <li>
                                   <details class="disclosure-section custody-map-node">
                                     <summary>
-                                      <span class="custody-map-label">Operational Domain: {{ domain.label }}</span>
-                                      <span class="custody-map-hint">{{ domain.asset_count }} asset{% if domain.asset_count != 1 %}s{% endif %}</span>
+                                      <span class="custody-map-label">Building: {{ building.label }}</span>
+                                      <span class="custody-map-hint">{{ building.asset_count }} asset{% if building.asset_count != 1 %}s{% endif %}</span>
                                     </summary>
                                     <div class="disclosure-body">
                                       <ul class="custody-map-children">
-                                        {% for holder in domain.holders %}
+                                        {% for holder in building.holders %}
                                           <li>
                                             <details class="disclosure-section custody-map-node">
                                               <summary>
@@ -459,7 +459,7 @@
           {% endfor %}
         </ul>
       {% else %}
-        <p class="dashboard-note">No active assets in the custody map.</p>
+        <p class="dashboard-note">No active assets in the asset location map.</p>
       {% endif %}
     </div>
   </details>
