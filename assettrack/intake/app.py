@@ -2181,6 +2181,94 @@ def _assign_slot_building_room_label(building: object, room: object) -> str:
     return "/".join(part for part in parts if part)
 
 
+
+ASSIGN_SLOT_BATCH_SESSION_KEY = "assign_slot_batch"
+ASSIGN_SLOT_PENDING_SESSION_KEY = "assign_slot_pending_preview"
+
+
+def _assign_slot_batch_tags() -> list[str]:
+    raw_tags = session.get(ASSIGN_SLOT_BATCH_SESSION_KEY, [])
+    if not isinstance(raw_tags, list):
+        return []
+
+    tags: list[str] = []
+    seen: set[str] = set()
+    for raw_tag in raw_tags:
+        tag = str(raw_tag or "").strip().upper()
+        if tag and tag not in seen:
+            tags.append(tag)
+            seen.add(tag)
+    return tags
+
+
+def _save_assign_slot_batch_tags(tags: list[str]) -> None:
+    session[ASSIGN_SLOT_BATCH_SESSION_KEY] = tags
+    session.pop(ASSIGN_SLOT_PENDING_SESSION_KEY, None)
+
+
+def _clear_assign_slot_workflow_state() -> None:
+    session.pop(ASSIGN_SLOT_BATCH_SESSION_KEY, None)
+    session.pop(ASSIGN_SLOT_PENDING_SESSION_KEY, None)
+
+
+def _build_assign_slot_batch_assets(conn: sqlite3.Connection, tags: list[str]) -> tuple[list[dict], list[str]]:
+    assets: list[dict] = []
+    errors: list[str] = []
+    for tag in tags:
+        asset_view, asset_errors = _build_admin_assign_asset_view(conn, tag)
+        if asset_errors:
+            errors.extend(f"{tag}: {error}" for error in asset_errors)
+            continue
+        if asset_view is None:
+            errors.append(f"{tag}: asset_tag not found")
+            continue
+        assets.append(asset_view)
+    return assets, errors
+
+
+def _assign_slot_empty_slot_count(slot_options: list[dict], case_name: str) -> int:
+    selected_case = str(case_name or "").strip().upper()
+    return sum(
+        1
+        for slot in slot_options
+        if str(slot.get("case_name") or "").strip().upper() == selected_case
+        and not str(slot.get("occupied_asset_tag") or "").strip()
+        and slot.get("occupied_asset_id") is None
+    )
+
+
+def _assign_slot_form_assignments(tags: list[str], case_name: str, slot_ids: list[str], building: str, room: str) -> list[dict]:
+    assignments: list[dict] = []
+    for index, tag in enumerate(tags):
+        assignments.append(
+            {
+                "asset_tag": tag,
+                "case_name": case_name,
+                "slot_id": slot_ids[index] if index < len(slot_ids) else "",
+                "building": building,
+                "room": room,
+            }
+        )
+    return assignments
+
+
+def _assign_slot_preview_rows(prepared_assignments: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for prepared in prepared_assignments:
+        asset = prepared["asset"]
+        slot = prepared["slot"]
+        rows.append(
+            {
+                "asset_tag": str(asset["asset_tag"]),
+                "serial": str(asset.get("serial_number") or ""),
+                "equipment_type": str(asset.get("equipment_type") or ""),
+                "case_name": str(slot["case_name"]),
+                "slot_id": int(slot["id"]),
+                "slot_position": int(slot["slot_position"]),
+            }
+        )
+    return rows
+
 def _write_assign_slot_occupancy_in_tx(
     conn: sqlite3.Connection,
     *,
@@ -11228,6 +11316,7 @@ def admin_assign_slot():
     if guard_result:
         return guard_result
 
+    action = ""
     asset_tag = ""
     building = ""
     room = ""
@@ -11235,6 +11324,8 @@ def admin_assign_slot():
     slot_id = ""
     notes = ""
     asset_view: Optional[dict] = None
+    preview_rows: list[dict] = []
+    selected_slot_ids: list[str] = []
     unslotted_assets: list[dict] = []
     slot_options: list[dict] = []
     case_options: list[str] = []
@@ -11247,26 +11338,170 @@ def admin_assign_slot():
         case_options = _slot_case_options(slot_options)
         location_context = _assign_slot_location_context()
         building_options = list(location_context["building_options"])
+
+        def render_assign_slot_template():
+            batch_tags = _assign_slot_batch_tags()
+            batch_assets, batch_errors = _build_assign_slot_batch_assets(conn, batch_tags)
+            if not batch_assets and asset_view is not None and action == "assign":
+                batch_assets = [asset_view]
+            return render_template(
+                "admin_assign_slot.html",
+                asset_tag=asset_tag,
+                building=building,
+                room=room,
+                case_name=case_name,
+                slot_id=slot_id,
+                notes=notes,
+                asset=asset_view,
+                batch_assets=batch_assets,
+                batch_errors=batch_errors,
+                preview_rows=preview_rows,
+                selected_slot_ids=selected_slot_ids,
+                unslotted_assets=unslotted_assets,
+                slot_options=slot_options,
+                case_options=case_options,
+                building_options=building_options,
+            )
+
         if request.method == "POST":
             action = (request.form.get("action") or "lookup").strip().lower()
             asset_tag = (request.form.get("asset_tag") or "").strip()
+            remove_asset_tag = (request.form.get("remove_asset_tag") or "").strip().upper()
             building = (request.form.get("building") or "").strip()
             room = (request.form.get("room") or "").strip()
             case_name = (request.form.get("case_name") or "").strip().upper()
             slot_id = (request.form.get("slot_id") or "").strip()
+            selected_slot_ids = [str(value or "").strip() for value in request.form.getlist("slot_id")]
             notes = (request.form.get("notes") or "").strip()
 
-            asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
-
             if action == "lookup":
+                asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
                 if not asset_tag:
                     flash("asset_tag is required.", "error")
                 elif blocking_errors:
                     for msg in blocking_errors:
                         flash(msg, "error")
                 else:
-                    flash(f"Asset {asset_view['asset_tag']} is eligible for slot assignment.", "success")
+                    canonical_tag = str(asset_view["asset_tag"]).strip().upper()
+                    batch_tags = _assign_slot_batch_tags()
+                    if canonical_tag in batch_tags:
+                        flash(f"Asset {canonical_tag} is already in this assignment batch.", "error")
+                    else:
+                        batch_tags.append(canonical_tag)
+                        _save_assign_slot_batch_tags(batch_tags)
+                        flash(f"Asset {canonical_tag} is eligible for slot assignment.", "success")
+                        flash(f"Added asset {canonical_tag} to the assignment batch.", "success")
+            elif action == "remove":
+                batch_tags = _assign_slot_batch_tags()
+                if remove_asset_tag and remove_asset_tag in batch_tags:
+                    batch_tags = [tag for tag in batch_tags if tag != remove_asset_tag]
+                    _save_assign_slot_batch_tags(batch_tags)
+                    flash(f"Removed asset {remove_asset_tag} from the assignment batch.", "success")
+                else:
+                    flash("Asset was not in the assignment batch.", "error")
+            elif action == "clear":
+                _clear_assign_slot_workflow_state()
+                flash("Cleared the assignment batch.", "success")
+                return redirect(url_for("admin_assign_slot"))
+            elif action == "preview":
+                session.pop(ASSIGN_SLOT_PENDING_SESSION_KEY, None)
+                batch_tags = _assign_slot_batch_tags()
+                batch_assets, batch_errors = _build_assign_slot_batch_assets(conn, batch_tags)
+                errors: list[str] = list(batch_errors)
+                structurally_complete = True
+                if not batch_tags:
+                    errors.append("Add at least one eligible asset before previewing the assignment batch.")
+                    structurally_complete = False
+                if not case_name:
+                    errors.append("case is required.")
+                    structurally_complete = False
+                if len(selected_slot_ids) < len(batch_tags) or any(not value for value in selected_slot_ids[: len(batch_tags)]):
+                    errors.append("Select one empty destination slot for each asset.")
+                    structurally_complete = False
+
+                normalized_location, location_errors, _ = _validate_assign_slot_location_form(
+                    {"building": building, "room": room}
+                )
+                building = normalized_location["building"]
+                room = normalized_location["room"]
+                errors.extend(location_errors)
+                if batch_errors or location_errors:
+                    structurally_complete = False
+
+                if case_name and batch_tags and _assign_slot_empty_slot_count(slot_options, case_name) < len(batch_tags):
+                    errors.append("Selected case does not have enough empty slots for this assignment batch.")
+
+                assignments = _assign_slot_form_assignments(batch_tags, case_name, selected_slot_ids, building, room)
+                if structurally_complete:
+                    try:
+                        prepared = _prepare_assign_slot_batch_in_tx(conn, assignments)
+                        if not errors:
+                            preview_rows = _assign_slot_preview_rows(prepared)
+                            session[ASSIGN_SLOT_PENDING_SESSION_KEY] = {
+                                "assignments": assignments,
+                                "building": building,
+                                "room": room,
+                                "case_name": case_name,
+                                "notes": notes,
+                                "rows": preview_rows,
+                            }
+                    except ValueError as e:
+                        errors.append(str(e))
+                for error in errors:
+                    flash(error, "error")
+                if not errors:
+                    flash("Assignment batch preview ready. Review and confirm one batch to commit.", "success")
+            elif action == "commit":
+                if request.form.get("confirm_assignment") != "yes":
+                    flash("Please confirm you reviewed the assignment batch before committing.", "error")
+                    pending_preview = session.get(ASSIGN_SLOT_PENDING_SESSION_KEY)
+                    if isinstance(pending_preview, dict):
+                        preview_rows = list(pending_preview.get("rows") or [])
+                        building = str(pending_preview.get("building") or "")
+                        room = str(pending_preview.get("room") or "")
+                        case_name = str(pending_preview.get("case_name") or "")
+                        notes = str(pending_preview.get("notes") or "")
+                    return render_assign_slot_template()
+
+                pending_preview = session.get(ASSIGN_SLOT_PENDING_SESSION_KEY)
+                if not isinstance(pending_preview, dict) or not pending_preview.get("assignments"):
+                    flash("Preview the complete mapping before committing.", "error")
+                    return render_assign_slot_template()
+
+                assignments = list(pending_preview.get("assignments") or [])
+                building = str(pending_preview.get("building") or "")
+                room = str(pending_preview.get("room") or "")
+                case_name = str(pending_preview.get("case_name") or "")
+                notes = str(pending_preview.get("notes") or "")
+                preview_rows = list(pending_preview.get("rows") or [])
+                try:
+                    assignment_results = _assign_slot_batch(
+                        conn,
+                        assignments,
+                        actor="admin",
+                        notes=notes,
+                    )
+                except ValueError as e:
+                    conn.rollback()
+                    flash(str(e), "error")
+                    return render_assign_slot_template()
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                _clear_assign_slot_workflow_state()
+                unslotted_assets = _list_unslotted_storage_assets(conn)
+                if len(assignment_results) == 1:
+                    result = assignment_results[0]
+                    flash(
+                        f"Assigned asset {result['asset_tag']} to {result['case_name']} slot {result['slot_position']}.",
+                        "success",
+                    )
+                else:
+                    flash(f"Assigned {len(assignment_results)} assets to slots in {case_name}.", "success")
+                return redirect(url_for("admin_assign_slot"))
             elif action == "assign":
+                asset_view, blocking_errors = _build_admin_assign_asset_view(conn, asset_tag)
                 if not asset_tag:
                     flash("asset_tag is required.", "error")
                 if not case_name:
@@ -11275,38 +11510,12 @@ def admin_assign_slot():
                     flash("slot is required.", "error")
 
                 if not asset_tag or not case_name or not slot_id:
-                    return render_template(
-                        "admin_assign_slot.html",
-                        asset_tag=asset_tag,
-                        building=building,
-                        room=room,
-                        case_name=case_name,
-                        slot_id=slot_id,
-                        notes=notes,
-                        asset=asset_view,
-                        unslotted_assets=unslotted_assets,
-                        slot_options=slot_options,
-                        case_options=case_options,
-                        building_options=building_options,
-                    )
+                    return render_assign_slot_template()
 
                 if blocking_errors:
                     for msg in blocking_errors:
                         flash(msg, "error")
-                    return render_template(
-                        "admin_assign_slot.html",
-                        asset_tag=asset_tag,
-                        building=building,
-                        room=room,
-                        case_name=case_name,
-                        slot_id=slot_id,
-                        notes=notes,
-                        asset=asset_view,
-                        unslotted_assets=unslotted_assets,
-                        slot_options=slot_options,
-                        case_options=case_options,
-                        building_options=building_options,
-                    )
+                    return render_assign_slot_template()
 
                 normalized_location, location_errors, _ = _validate_assign_slot_location_form(
                     {"building": building, "room": room}
@@ -11316,20 +11525,7 @@ def admin_assign_slot():
                 if location_errors:
                     for error in location_errors:
                         flash(error, "error")
-                    return render_template(
-                        "admin_assign_slot.html",
-                        asset_tag=asset_tag,
-                        building=building,
-                        room=room,
-                        case_name=case_name,
-                        slot_id=slot_id,
-                        notes=notes,
-                        asset=asset_view,
-                        unslotted_assets=unslotted_assets,
-                        slot_options=slot_options,
-                        case_options=case_options,
-                        building_options=building_options,
-                    )
+                    return render_assign_slot_template()
 
                 selected_slot, slot_errors = _resolve_slot_selection(
                     conn,
@@ -11345,20 +11541,7 @@ def admin_assign_slot():
                 if slot_errors:
                     for error in slot_errors:
                         flash(slot_error_map.get(error, error), "error")
-                    return render_template(
-                        "admin_assign_slot.html",
-                        asset_tag=asset_tag,
-                        building=building,
-                        room=room,
-                        case_name=case_name,
-                        slot_id=slot_id,
-                        notes=notes,
-                        asset=asset_view,
-                        unslotted_assets=unslotted_assets,
-                        slot_options=slot_options,
-                        case_options=case_options,
-                        building_options=building_options,
-                    )
+                    return render_assign_slot_template()
 
                 try:
                     assignment_result = _assign_single_asset_to_slot(
@@ -11376,24 +11559,12 @@ def admin_assign_slot():
                     flash(str(e), "error")
                     asset_view, _ = _build_admin_assign_asset_view(conn, asset_tag)
                     unslotted_assets = _list_unslotted_storage_assets(conn)
-                    return render_template(
-                        "admin_assign_slot.html",
-                        asset_tag=asset_tag,
-                        building=building,
-                        room=room,
-                        case_name=case_name,
-                        slot_id=slot_id,
-                        notes=notes,
-                        asset=asset_view,
-                        unslotted_assets=unslotted_assets,
-                        slot_options=slot_options,
-                        case_options=case_options,
-                        building_options=building_options,
-                    )
+                    return render_assign_slot_template()
                 except Exception:
                     conn.rollback()
                     raise
 
+                _clear_assign_slot_workflow_state()
                 flash(
                     f"Assigned asset {assignment_result['asset_tag']} to {assignment_result['case_name']} slot {assignment_result['slot_position']}.",
                     "success",
@@ -11401,24 +11572,10 @@ def admin_assign_slot():
                 return redirect(url_for("admin_assign_slot"))
             else:
                 flash("Unknown action.", "error")
+
+        return render_assign_slot_template()
     finally:
         conn.close()
-
-    return render_template(
-        "admin_assign_slot.html",
-        asset_tag=asset_tag,
-        building=building,
-        room=room,
-        case_name=case_name,
-        slot_id=slot_id,
-        notes=notes,
-        asset=asset_view,
-        unslotted_assets=unslotted_assets,
-        slot_options=slot_options,
-        case_options=case_options,
-        building_options=building_options,
-    )
-
 
 @app.route("/admin/slot-move", methods=["GET", "POST"])
 @require_login
