@@ -2181,6 +2181,362 @@ def _assign_slot_building_room_label(building: object, room: object) -> str:
     return "/".join(part for part in parts if part)
 
 
+def _write_assign_slot_occupancy_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    slot_id: int,
+    asset_id: int,
+    asset_tag: str,
+    assigned_at: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+        VALUES (?, ?, ?);
+        """,
+        (slot_id, asset_id, assigned_at),
+    )
+    conn.execute(
+        """
+        UPDATE slots
+        SET current_asset_tag = ?
+        WHERE id = ?;
+        """,
+        (asset_tag, slot_id),
+    )
+
+
+def _append_slot_assign_event_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    event_date: str,
+    actor: str,
+    notes: str,
+    payload: dict,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO asset_events (
+            asset_tag,
+            event_type,
+            event_date,
+            actor,
+            notes,
+            payload,
+            holder_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            asset_tag,
+            "SLOT_ASSIGN",
+            event_date,
+            actor,
+            notes or None,
+            json.dumps(payload),
+            None,
+        ),
+    )
+
+
+def _validate_assign_slot_asset_row(conn: sqlite3.Connection, asset_tag: str):
+    asset_row = _find_asset_for_scan_tag(conn, asset_tag)
+    if not asset_row:
+        raise ValueError("asset_tag not found")
+
+    location_type = _normalize_location_type(asset_row.get("location_type"))
+    if _is_terminal_location_type(location_type):
+        raise ValueError("Asset is retired/disposed and cannot be assigned to a slot.")
+    if location_type != "STORAGE":
+        raise ValueError("Asset must be location_type=STORAGE.")
+    if location_type == "IN_CUSTODY":
+        raise ValueError("Asset is IN_CUSTODY and cannot be assigned to a slot.")
+
+    occupied_by_asset = conn.execute(
+        """
+        SELECT 1
+        FROM slot_occupancy
+        WHERE asset_id = ?
+        LIMIT 1;
+        """,
+        (asset_row["id"],),
+    ).fetchone()
+    legacy_occupied_by_asset = conn.execute(
+        """
+        SELECT 1
+        FROM slots
+        WHERE UPPER(current_asset_tag) = UPPER(?)
+           OR REPLACE(REPLACE(UPPER(current_asset_tag), '-', ''), ' ', '') = UPPER(?)
+        LIMIT 1;
+        """,
+        (asset_row["asset_tag"], asset_row["asset_tag"]),
+    ).fetchone()
+    if occupied_by_asset or legacy_occupied_by_asset:
+        raise ValueError("Asset is already slotted.")
+    return asset_row
+
+
+def _validate_assign_slot_destination_row(
+    conn: sqlite3.Connection,
+    *,
+    slot_id: int,
+    case_name: str,
+):
+    slot = conn.execute(
+        """
+        SELECT id, case_name, slot_position, current_asset_tag
+        FROM slots
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (slot_id,),
+    ).fetchone()
+    if not slot:
+        raise ValueError("Selected slot does not exist.")
+    if str(slot["case_name"] or "").strip().upper() != str(case_name or "").strip().upper():
+        raise ValueError("Selected slot does not belong to selected case.")
+
+    occupied_by_slot = conn.execute(
+        """
+        SELECT 1
+        FROM slot_occupancy
+        WHERE slot_id = ?
+        LIMIT 1;
+        """,
+        (slot["id"],),
+    ).fetchone()
+    if occupied_by_slot:
+        raise ValueError("Selected slot is already occupied.")
+    legacy_slot_occupied = str(slot["current_asset_tag"] or "").strip()
+    if legacy_slot_occupied:
+        raise ValueError("Selected slot is already occupied.")
+    return slot
+
+
+def _prepare_assign_slot_batch_in_tx(
+    conn: sqlite3.Connection,
+    assignments: list[dict],
+) -> list[dict]:
+    if not assignments:
+        raise ValueError("Batch assignment requires at least one assignment.")
+
+    prepared: list[dict] = []
+    seen_asset_ids: set[int] = set()
+    seen_slot_ids: set[int] = set()
+    for assignment in assignments:
+        asset_tag = str(assignment.get("asset_tag") or "").strip()
+        case_name = str(assignment.get("case_name") or "").strip()
+        slot_id_raw = assignment.get("slot_id")
+        building = str(assignment.get("building") or "").strip()
+        room = str(assignment.get("room") or "").strip()
+
+        if not asset_tag:
+            raise ValueError("asset_tag is required.")
+        if not case_name:
+            raise ValueError("case is required.")
+        if slot_id_raw in (None, ""):
+            raise ValueError("slot is required.")
+        try:
+            slot_id = int(slot_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Select a valid slot.") from exc
+
+        asset_row = _validate_assign_slot_asset_row(conn, asset_tag)
+        asset_id = int(asset_row["id"])
+        if asset_id in seen_asset_ids:
+            raise ValueError("Each asset may appear only once in a batch.")
+        seen_asset_ids.add(asset_id)
+
+        slot = _validate_assign_slot_destination_row(conn, slot_id=slot_id, case_name=case_name)
+        resolved_slot_id = int(slot["id"])
+        if resolved_slot_id in seen_slot_ids:
+            raise ValueError("Each destination slot may appear only once in a batch.")
+        seen_slot_ids.add(resolved_slot_id)
+
+        prepared.append(
+            {
+                "asset": asset_row,
+                "slot": slot,
+                "building": building,
+                "room": room,
+            }
+        )
+    return prepared
+
+
+def _commit_prepared_assign_slot_in_tx(
+    conn: sqlite3.Connection,
+    *,
+    prepared_assignment: dict,
+    actor: str,
+    notes: str,
+    event_date: str,
+) -> dict:
+    asset_row = prepared_assignment["asset"]
+    slot = prepared_assignment["slot"]
+    asset_id = int(asset_row["id"])
+    slot_id = int(slot["id"])
+    asset_tag = str(asset_row["asset_tag"])
+    building = str(prepared_assignment["building"])
+    room = str(prepared_assignment["room"])
+    building_room = _assign_slot_building_room_label(building, room)
+
+    _write_assign_slot_occupancy_in_tx(
+        conn,
+        slot_id=slot_id,
+        asset_id=asset_id,
+        asset_tag=asset_tag,
+        assigned_at=event_date,
+    )
+
+    asset_columns = get_asset_table_columns(conn)
+    update_clauses: list[str] = []
+    update_values: list[object] = []
+    if "home_slot_id" not in asset_columns:
+        raise ValueError("Assets table missing required column: home_slot_id.")
+    update_clauses.append("home_slot_id = ?")
+    update_values.append(slot_id)
+    if "building_room" in asset_columns:
+        update_clauses.append("building_room = ?")
+        update_values.append(building_room)
+    if "case_number" in asset_columns:
+        update_clauses.append("case_number = ?")
+        update_values.append(str(slot["case_name"]))
+    if "slot_number" in asset_columns:
+        update_clauses.append("slot_number = ?")
+        update_values.append(str(slot["slot_position"]))
+    if "updated_date" in asset_columns:
+        update_clauses.append("updated_date = ?")
+        update_values.append(event_date)
+    update_values.append(asset_id)
+    conn.execute(
+        f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
+        tuple(update_values),
+    )
+
+    payload = {
+        "slot_id": slot_id,
+        "building_room": building_room,
+        "case_number": str(slot["case_name"]),
+        "slot_number": int(slot["slot_position"]),
+    }
+    _append_slot_assign_event_in_tx(
+        conn,
+        asset_tag=asset_tag,
+        event_date=event_date,
+        actor=actor,
+        notes=notes,
+        payload=payload,
+    )
+
+    canonical_asset = conn.execute(
+        """
+        SELECT home_slot_id, case_number, slot_number
+        FROM assets
+        WHERE id = ?
+        LIMIT 1;
+        """,
+        (asset_id,),
+    ).fetchone()
+    if canonical_asset is None:
+        raise ValueError("Asset disappeared during assignment.")
+    if canonical_asset["home_slot_id"] is None or int(canonical_asset["home_slot_id"]) != slot_id:
+        raise ValueError("Slot assignment failed to persist home_slot_id.")
+    occupancy_link = conn.execute(
+        """
+        SELECT 1
+        FROM slot_occupancy
+        WHERE slot_id = ? AND asset_id = ?
+        LIMIT 1;
+        """,
+        (slot_id, asset_id),
+    ).fetchone()
+    if occupancy_link is None:
+        raise ValueError("Slot assignment failed to persist slot_occupancy link.")
+    event_link = conn.execute(
+        """
+        SELECT 1
+        FROM asset_events
+        WHERE asset_tag = ?
+          AND event_type = 'SLOT_ASSIGN'
+          AND event_date = ?
+        LIMIT 1;
+        """,
+        (asset_tag, event_date),
+    ).fetchone()
+    if event_link is None:
+        raise ValueError("Slot assignment failed to append SLOT_ASSIGN event.")
+    if "case_number" in asset_columns and str(canonical_asset["case_number"] or "") != str(slot["case_name"]):
+        raise ValueError("Slot assignment failed to persist canonical case_number.")
+    if "slot_number" in asset_columns and str(canonical_asset["slot_number"] or "") != str(slot["slot_position"]):
+        raise ValueError("Slot assignment failed to persist canonical slot_number.")
+
+    return {
+        "asset_tag": asset_tag,
+        "slot_id": slot_id,
+        "case_name": str(slot["case_name"]),
+        "slot_position": int(slot["slot_position"]),
+    }
+
+
+def _assign_slot_batch(
+    conn: sqlite3.Connection,
+    assignments: list[dict],
+    *,
+    actor: str = "admin",
+    notes: str = "",
+    event_date: Optional[str] = None,
+) -> list[dict]:
+    conn.execute("BEGIN;")
+    try:
+        prepared = _prepare_assign_slot_batch_in_tx(conn, assignments)
+        now_iso = event_date or datetime.now(timezone.utc).isoformat()
+        results = [
+            _commit_prepared_assign_slot_in_tx(
+                conn,
+                prepared_assignment=prepared_assignment,
+                actor=actor,
+                notes=notes,
+                event_date=now_iso,
+            )
+            for prepared_assignment in prepared
+        ]
+        conn.commit()
+        return results
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def _assign_single_asset_to_slot(
+    conn: sqlite3.Connection,
+    *,
+    asset_tag: str,
+    case_name: str,
+    slot_id: int,
+    building: str,
+    room: str,
+    actor: str = "admin",
+    notes: str = "",
+) -> dict:
+    results = _assign_slot_batch(
+        conn,
+        [
+            {
+                "asset_tag": asset_tag,
+                "case_name": case_name,
+                "slot_id": slot_id,
+                "building": building,
+                "room": room,
+            }
+        ],
+        actor=actor,
+        notes=notes,
+    )
+    return results[0]
+
+
 def _build_admin_edit_asset_view(conn, scan_tag: str) -> tuple[Optional[dict], list[str]]:
     asset = _find_asset_for_scan_tag(conn, scan_tag)
     if not asset:
@@ -11005,187 +11361,16 @@ def admin_assign_slot():
                     )
 
                 try:
-                    conn.execute("BEGIN;")
-
-                    asset_row = _find_asset_for_scan_tag(conn, asset_tag)
-                    if not asset_row:
-                        raise ValueError("asset_tag not found")
-
-                    location_type = _normalize_location_type(asset_row.get("location_type"))
-                    if _is_terminal_location_type(location_type):
-                        raise ValueError("Asset is retired/disposed and cannot be assigned to a slot.")
-                    if location_type != "STORAGE":
-                        raise ValueError("Asset must be location_type=STORAGE.")
-                    if location_type == "IN_CUSTODY":
-                        raise ValueError("Asset is IN_CUSTODY and cannot be assigned to a slot.")
-
-                    occupied_by_asset = conn.execute(
-                        """
-                        SELECT 1
-                        FROM slot_occupancy
-                        WHERE asset_id = ?
-                        LIMIT 1;
-                        """,
-                        (asset_row["id"],),
-                    ).fetchone()
-                    legacy_occupied_by_asset = conn.execute(
-                        """
-                        SELECT 1
-                        FROM slots
-                        WHERE UPPER(current_asset_tag) = UPPER(?)
-                           OR REPLACE(REPLACE(UPPER(current_asset_tag), '-', ''), ' ', '') = UPPER(?)
-                        LIMIT 1;
-                        """,
-                        (asset_row["asset_tag"], asset_row["asset_tag"]),
-                    ).fetchone()
-                    if occupied_by_asset or legacy_occupied_by_asset:
-                        raise ValueError("Asset is already slotted.")
-
-                    slot = conn.execute(
-                        """
-                        SELECT id, case_name, slot_position, current_asset_tag
-                        FROM slots
-                        WHERE id = ?
-                        LIMIT 1;
-                        """,
-                        (int(selected_slot["id"]),),
-                    ).fetchone()
-                    if not slot:
-                        raise ValueError("Selected slot does not exist.")
-
-                    occupied_by_slot = conn.execute(
-                        """
-                        SELECT 1
-                        FROM slot_occupancy
-                        WHERE slot_id = ?
-                        LIMIT 1;
-                        """,
-                        (slot["id"],),
-                    ).fetchone()
-                    if occupied_by_slot:
-                        raise ValueError("Selected slot is already occupied.")
-                    legacy_slot_occupied = str(slot["current_asset_tag"] or "").strip()
-                    if legacy_slot_occupied:
-                        raise ValueError("Selected slot is already occupied.")
-
-                    now_iso = datetime.now(timezone.utc).isoformat()
-
-                    conn.execute(
-                        """
-                        INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
-                        VALUES (?, ?, ?);
-                        """,
-                        (slot["id"], asset_row["id"], now_iso),
+                    assignment_result = _assign_single_asset_to_slot(
+                        conn,
+                        asset_tag=asset_tag,
+                        case_name=case_name,
+                        slot_id=int(selected_slot["id"]),
+                        building=building,
+                        room=room,
+                        actor="admin",
+                        notes=notes,
                     )
-
-                    conn.execute(
-                        """
-                        UPDATE slots
-                        SET current_asset_tag = ?
-                        WHERE id = ?;
-                        """,
-                        (asset_row["asset_tag"], slot["id"]),
-                    )
-
-                    asset_columns = get_asset_table_columns(conn)
-                    update_clauses: list[str] = []
-                    update_values: list[object] = []
-                    if "home_slot_id" not in asset_columns:
-                        raise ValueError("Assets table missing required column: home_slot_id.")
-                    update_clauses.append("home_slot_id = ?")
-                    update_values.append(slot["id"])
-                    if "building_room" in asset_columns:
-                        update_clauses.append("building_room = ?")
-                        update_values.append(_assign_slot_building_room_label(building, room))
-                    if "case_number" in asset_columns:
-                        update_clauses.append("case_number = ?")
-                        update_values.append(str(slot["case_name"]))
-                    if "slot_number" in asset_columns:
-                        update_clauses.append("slot_number = ?")
-                        update_values.append(str(slot["slot_position"]))
-                    if "updated_date" in asset_columns:
-                        update_clauses.append("updated_date = ?")
-                        update_values.append(now_iso)
-                    if update_clauses:
-                        update_values.append(asset_row["id"])
-                        conn.execute(
-                            f"UPDATE assets SET {', '.join(update_clauses)} WHERE id = ?;",
-                            tuple(update_values),
-                        )
-
-                    payload = {
-                        "slot_id": int(slot["id"]),
-                        "building_room": _assign_slot_building_room_label(building, room),
-                        "case_number": str(slot["case_name"]),
-                        "slot_number": int(slot["slot_position"]),
-                    }
-                    conn.execute(
-                        """
-                        INSERT INTO asset_events (
-                            asset_tag,
-                            event_type,
-                            event_date,
-                            actor,
-                            notes,
-                            payload,
-                            holder_id
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        (
-                            str(asset_row["asset_tag"]),
-                            "SLOT_ASSIGN",
-                            now_iso,
-                            "admin",
-                            notes or None,
-                            json.dumps(payload),
-                            None,
-                        ),
-                    )
-
-                    canonical_asset = conn.execute(
-                        """
-                        SELECT home_slot_id, case_number, slot_number
-                        FROM assets
-                        WHERE id = ?
-                        LIMIT 1;
-                        """,
-                        (asset_row["id"],),
-                    ).fetchone()
-                    if canonical_asset is None:
-                        raise ValueError("Asset disappeared during assignment.")
-                    if canonical_asset["home_slot_id"] is None or int(canonical_asset["home_slot_id"]) != int(slot["id"]):
-                        raise ValueError("Slot assignment failed to persist home_slot_id.")
-                    occupancy_link = conn.execute(
-                        """
-                        SELECT 1
-                        FROM slot_occupancy
-                        WHERE slot_id = ? AND asset_id = ?
-                        LIMIT 1;
-                        """,
-                        (slot["id"], asset_row["id"]),
-                    ).fetchone()
-                    if occupancy_link is None:
-                        raise ValueError("Slot assignment failed to persist slot_occupancy link.")
-                    event_link = conn.execute(
-                        """
-                        SELECT 1
-                        FROM asset_events
-                        WHERE asset_tag = ?
-                          AND event_type = 'SLOT_ASSIGN'
-                          AND event_date = ?
-                        LIMIT 1;
-                        """,
-                        (str(asset_row["asset_tag"]), now_iso),
-                    ).fetchone()
-                    if event_link is None:
-                        raise ValueError("Slot assignment failed to append SLOT_ASSIGN event.")
-                    if "case_number" in asset_columns and str(canonical_asset["case_number"] or "") != str(slot["case_name"]):
-                        raise ValueError("Slot assignment failed to persist canonical case_number.")
-                    if "slot_number" in asset_columns and str(canonical_asset["slot_number"] or "") != str(slot["slot_position"]):
-                        raise ValueError("Slot assignment failed to persist canonical slot_number.")
-
-                    conn.commit()
                 except ValueError as e:
                     conn.rollback()
                     flash(str(e), "error")
@@ -11210,7 +11395,7 @@ def admin_assign_slot():
                     raise
 
                 flash(
-                    f"Assigned asset {asset_row['asset_tag']} to {slot['case_name']} slot {slot['slot_position']}.",
+                    f"Assigned asset {assignment_result['asset_tag']} to {assignment_result['case_name']} slot {assignment_result['slot_position']}.",
                     "success",
                 )
                 return redirect(url_for("admin_assign_slot"))
