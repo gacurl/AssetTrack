@@ -531,12 +531,22 @@ def _custody_map(conn: sqlite3.Connection) -> dict:
             a.building,
             a.location_type,
             a.current_holder_id,
+            s.case_name AS current_case_name,
+            s.slot_position AS current_slot_position,
             h.id AS holder_detail_id,
             h.name AS holder_name,
             h.organization AS holder_organization
         FROM assets a
         LEFT JOIN holders h
           ON h.id = a.current_holder_id
+        LEFT JOIN (
+            SELECT asset_id, MIN(slot_id) AS slot_id
+            FROM slot_occupancy
+            GROUP BY asset_id
+        ) so
+          ON so.asset_id = a.id
+        LEFT JOIN slots s
+          ON s.id = so.slot_id
         WHERE COALESCE(a.location_type, '') <> 'DISPOSED'
         ORDER BY
             COALESCE(NULLIF(TRIM(a.building), ''), 'No Building Recorded') ASC,
@@ -572,11 +582,28 @@ def _custody_map(conn: sqlite3.Connection) -> dict:
                 "assets": [],
             },
         )
+        location_type = str(row["location_type"] or "").strip()
+        current_case_name = str(row["current_case_name"] or "").strip()
+        current_slot_position = row["current_slot_position"]
+        storage_display = ""
+        storage_case_name = ""
+        storage_slot_position = None
+        if location_type == "STORAGE":
+            if current_case_name and current_slot_position is not None:
+                storage_slot_position = int(current_slot_position)
+                storage_case_name = current_case_name
+                storage_display = f"Stored in {storage_case_name}, Slot {storage_slot_position}"
+            else:
+                storage_display = "Unslotted"
+
         holder_node["assets"].append(
             {
                 "asset_tag": _asset_map_label(row["asset_tag"]),
                 "equipment_type_label": _equipment_type_label(row["equipment_type"]),
-                "location_type": str(row["location_type"] or "").strip(),
+                "location_type": location_type,
+                "storage_display": storage_display,
+                "storage_case_name": storage_case_name,
+                "storage_slot_position": storage_slot_position,
             }
         )
 
