@@ -1066,6 +1066,264 @@ def test_assign_slot_manual_lookup_still_works(client_with_temp_db) -> None:
     assert b"Asset AT-MANUAL-1 is eligible for slot assignment." in response.data
 
 
+def _insert_assign_slot_slots(rows: list[tuple[int, str, int, str | None]]) -> None:
+    conn = db.get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (?, ?, ?, ?);
+            """,
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _assign_slot_route_state() -> dict[str, object]:
+    conn = db.get_connection()
+    try:
+        return {
+            "assets": [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT asset_tag, home_slot_id, case_number, slot_number FROM assets ORDER BY asset_tag;"
+                ).fetchall()
+            ],
+            "slots": [
+                dict(row)
+                for row in conn.execute("SELECT id, current_asset_tag FROM slots ORDER BY id;").fetchall()
+            ],
+            "occupancy": [
+                dict(row)
+                for row in conn.execute("SELECT slot_id, asset_id FROM slot_occupancy ORDER BY slot_id;").fetchall()
+            ],
+            "slot_assign_events": [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT asset_tag, event_type FROM asset_events WHERE event_type = 'SLOT_ASSIGN' ORDER BY id;"
+                ).fetchall()
+            ],
+        }
+    finally:
+        conn.close()
+
+
+def test_assign_slot_workflow_accumulates_previews_confirms_and_commits_mixed_batch(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-BATCH-LAPTOP", serial_number="SER-BATCH-LAPTOP")
+    _create_unslotted_asset(
+        client_with_temp_db,
+        asset_tag="AT-BATCH-ROUTER",
+        serial_number="SER-BATCH-ROUTER",
+        equipment_type="router",
+    )
+    _insert_assign_slot_slots([(9001, "CASE-BATCH-UI", 1, None), (9002, "CASE-BATCH-UI", 2, None)])
+
+    first = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-BATCH-LAPTOP"},
+        follow_redirects=True,
+    )
+    assert first.status_code == 200
+    assert b"Asset AT-BATCH-LAPTOP is eligible for slot assignment." in first.data
+    assert b"AT-BATCH-LAPTOP" in first.data
+
+    duplicate = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-BATCH-LAPTOP"},
+        follow_redirects=True,
+    )
+    assert b"Asset AT-BATCH-LAPTOP is already in this assignment batch." in duplicate.data
+
+    removed = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "remove", "remove_asset_tag": "AT-BATCH-LAPTOP"},
+        follow_redirects=True,
+    )
+    assert b"Removed asset AT-BATCH-LAPTOP from the assignment batch." in removed.data
+    assert b"No assets in the assignment batch." in removed.data
+
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-BATCH-LAPTOP"})
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-BATCH-ROUTER"})
+
+    preview = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={
+            "action": "preview",
+            "building": "HQ",
+            "room": "105",
+            "case_name": "CASE-BATCH-UI",
+            "slot_id": ["9001", "9002"],
+            "notes": "operator batch",
+        },
+        follow_redirects=True,
+    )
+    assert preview.status_code == 200
+    assert b"Assignment batch preview ready. Review and confirm one batch to commit." in preview.data
+    assert b"Preview Assignment" in preview.data
+    assert b"AT-BATCH-LAPTOP" in preview.data
+    assert b"AT-BATCH-ROUTER" in preview.data
+    assert b"CASE-BATCH-UI / Slot 1" in preview.data
+    assert b"CASE-BATCH-UI / Slot 2" in preview.data
+    assert b"I reviewed this assignment batch" in preview.data
+
+    commit = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit", "confirm_assignment": "yes"},
+        follow_redirects=True,
+    )
+    assert commit.status_code == 200
+    assert b"Assigned 2 assets to slots in CASE-BATCH-UI." in commit.data
+    assert b"No assets in the assignment batch." in commit.data
+
+    state = _assign_slot_route_state()
+    assert state["slots"] == [
+        {"id": 9001, "current_asset_tag": "AT-BATCH-LAPTOP"},
+        {"id": 9002, "current_asset_tag": "AT-BATCH-ROUTER"},
+    ]
+    assert state["slot_assign_events"] == [
+        {"asset_tag": "AT-BATCH-LAPTOP", "event_type": "SLOT_ASSIGN"},
+        {"asset_tag": "AT-BATCH-ROUTER", "event_type": "SLOT_ASSIGN"},
+    ]
+
+
+def test_assign_slot_workflow_requires_confirmation_and_is_repeat_submission_safe(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-CONFIRM-1", serial_number="SER-CONFIRM-1")
+    _insert_assign_slot_slots([(9011, "CASE-CONFIRM", 1, None)])
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-CONFIRM-1"})
+    client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-CONFIRM", "slot_id": ["9011"]},
+    )
+
+    missing_confirmation = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit"},
+        follow_redirects=True,
+    )
+    assert b"Please confirm you reviewed the assignment batch before committing." in missing_confirmation.data
+    assert _assign_slot_route_state()["slot_assign_events"] == []
+
+    committed = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit", "confirm_assignment": "yes"},
+        follow_redirects=True,
+    )
+    assert b"Assigned asset AT-CONFIRM-1 to CASE-CONFIRM slot 1." in committed.data
+
+    repeated = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit", "confirm_assignment": "yes"},
+        follow_redirects=True,
+    )
+    assert b"Preview the complete mapping before committing." in repeated.data
+    assert _assign_slot_route_state()["slot_assign_events"] == [
+        {"asset_tag": "AT-CONFIRM-1", "event_type": "SLOT_ASSIGN"}
+    ]
+
+
+def test_assign_slot_failed_preview_clears_prior_pending_mapping(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-PENDING-1", serial_number="SER-PENDING-1")
+    _insert_assign_slot_slots([(9015, "CASE-PENDING", 1, None)])
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-PENDING-1"})
+    ready = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-PENDING", "slot_id": ["9015"]},
+        follow_redirects=True,
+    )
+    assert b"Assignment batch preview ready." in ready.data
+
+    failed_preview = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-PENDING", "slot_id": [""]},
+        follow_redirects=True,
+    )
+    assert b"Select one empty destination slot for each asset." in failed_preview.data
+
+    commit = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit", "confirm_assignment": "yes"},
+        follow_redirects=True,
+    )
+    assert b"Preview the complete mapping before committing." in commit.data
+    assert _assign_slot_route_state()["slot_assign_events"] == []
+
+def test_assign_slot_workflow_blocks_insufficient_occupied_and_duplicate_slots(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-BLOCK-1", serial_number="SER-BLOCK-1")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-BLOCK-2", serial_number="SER-BLOCK-2", equipment_type="switch")
+    _insert_assign_slot_slots([
+        (9021, "CASE-BLOCK", 1, None),
+        (9022, "CASE-BLOCK", 2, "AT-OCCUPANT"),
+        (9023, "CASE-ROOM", 1, None),
+        (9024, "CASE-ROOM", 2, None),
+    ])
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-BLOCK-1"})
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-BLOCK-2"})
+    before = _assign_slot_route_state()
+
+    insufficient = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-BLOCK", "slot_id": ["9021", "9022"]},
+        follow_redirects=True,
+    )
+    assert b"Selected case does not have enough empty slots for this assignment batch." in insufficient.data
+    assert _assign_slot_route_state() == before
+
+    duplicate_slot = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-ROOM", "slot_id": ["9023", "9023"]},
+        follow_redirects=True,
+    )
+    assert b"Each destination slot may appear only once in a batch." in duplicate_slot.data
+    assert _assign_slot_route_state() == before
+
+    occupied_slot = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-BLOCK", "slot_id": ["9022", "9021"]},
+        follow_redirects=True,
+    )
+    assert b"Selected slot is already occupied." in occupied_slot.data
+    assert _assign_slot_route_state() == before
+
+
+def test_assign_slot_commit_failure_does_not_show_success_or_clear_batch(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-STALE-1", serial_number="SER-STALE-1")
+    _insert_assign_slot_slots([(9031, "CASE-STALE", 1, None)])
+    client_with_temp_db.post("/admin/assign-slot", data={"action": "lookup", "asset_tag": "AT-STALE-1"})
+    preview = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "preview", "case_name": "CASE-STALE", "slot_id": ["9031"]},
+        follow_redirects=True,
+    )
+    assert b"Preview Assignment" in preview.data
+
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE slots SET current_asset_tag = 'EXISTING-OCCUPANT' WHERE id = 9031;")
+        conn.commit()
+    finally:
+        conn.close()
+
+    failed_commit = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "commit", "confirm_assignment": "yes"},
+        follow_redirects=True,
+    )
+    assert b"Selected slot is already occupied." in failed_commit.data
+    assert b"Assigned asset AT-STALE-1" not in failed_commit.data
+    assert b"AT-STALE-1" in failed_commit.data
+    assert _assign_slot_route_state()["slot_assign_events"] == []
 def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     _create_building("HQ")

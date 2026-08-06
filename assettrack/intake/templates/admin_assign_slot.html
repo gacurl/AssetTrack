@@ -181,6 +181,7 @@
   {% if asset %}
     <div class="card">
       <h2>Selected Asset</h2>
+      <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
       <div class="asset-summary-row">
         <div><strong>asset_tag:</strong> <code>{{ asset.asset_tag }}</code></div>
         <div><strong>serial_number:</strong> {{ asset.serial or "Not recorded" }}</div>
@@ -188,12 +189,48 @@
         <div><strong>location_type:</strong> <code>{{ asset.location_type or "" }}</code></div>
       </div>
     </div>
+  {% endif %}
 
-    <div class="card">
-      <h2>Assign Slot</h2>
+  <div class="card">
+    <h2>Assignment Batch</h2>
+    {% if batch_errors %}
+      <div class="flash error">
+        {% for error in batch_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if batch_assets %}
+      <table class="assign-slot-table">
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Serial number</th>
+            <th>Equipment type</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in batch_assets %}
+            <tr>
+              <td class="asset-tag-cell" data-label="Asset tag"><code>{{ row.asset_tag }}</code></td>
+              <td data-label="Serial number">{{ row.serial or "Not recorded" }}</td>
+              <td data-label="Equipment type">{{ row.equipment_type or "Unknown" }}</td>
+              <td data-label="Action">
+                <form method="post" action="{{ url_for('admin_assign_slot') }}">
+                  <input type="hidden" name="action" value="remove" />
+                  <input type="hidden" name="remove_asset_tag" value="{{ row.asset_tag }}" />
+                  <button type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
       <form method="post" action="{{ url_for('admin_assign_slot') }}">
-        <input type="hidden" name="action" value="assign" />
-        <input type="hidden" name="asset_tag" value="{{ asset.asset_tag }}" />
+        <input type="hidden" name="action" value="preview" />
 
         <div class="row">
           <label for="building"><strong>building</strong> (optional)</label><br />
@@ -230,23 +267,39 @@
           </select>
         </div>
 
-        <div class="row">
-          <label for="slot_id"><strong>slot</strong> (required)</label><br />
-          <select id="slot_id" name="slot_id" required>
-            <option value="">Select slot</option>
-            {% for slot in slot_options %}
-              {% set occupied = slot.occupied_asset_tag %}
-              <option
-                value="{{ slot.id }}"
-                data-case="{{ slot.case_name }}"
-                {% if slot_id == (slot.id|string) %}selected{% endif %}
-                {% if occupied %}disabled{% endif %}
-              >
-                {{ slot.case_name }} / Slot {{ slot.slot_position }}{% if occupied %} - occupied{% endif %}
-              </option>
+        <table class="assign-slot-table">
+          <thead>
+            <tr>
+              <th>Asset tag</th>
+              <th>Slot</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in batch_assets %}
+              {% set selected_slot_id = selected_slot_ids[loop.index0] if selected_slot_ids|length > loop.index0 else '' %}
+              <tr>
+                <td class="asset-tag-cell" data-label="Asset tag"><code>{{ row.asset_tag }}</code></td>
+                <td data-label="Slot">
+                  <label class="sr-only" for="slot_id_{{ loop.index0 }}">slot for {{ row.asset_tag }}</label>
+                  <select id="slot_id_{{ loop.index0 }}" class="assign-slot-row-slot" name="slot_id" required>
+                    <option value="">Select slot</option>
+                    {% for slot in slot_options %}
+                      {% set occupied = slot.occupied_asset_tag %}
+                      <option
+                        value="{{ slot.id }}"
+                        data-case="{{ slot.case_name }}"
+                        {% if selected_slot_id == (slot.id|string) %}selected{% endif %}
+                        {% if occupied %}disabled{% endif %}
+                      >
+                        {{ slot.case_name }} / Slot {{ slot.slot_position }}{% if occupied %} - occupied{% endif %}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </td>
+              </tr>
             {% endfor %}
-          </select>
-        </div>
+          </tbody>
+        </table>
 
         <div class="row">
           <label for="notes"><strong>notes</strong> (optional)</label><br />
@@ -260,9 +313,50 @@
           />
         </div>
 
-        <button type="submit">Assign Slot</button>
+        <button type="submit">Preview Assignment Batch</button>
+      </form>
+
+      <form method="post" action="{{ url_for('admin_assign_slot') }}" style="margin-top: 0.65rem;">
+        <input type="hidden" name="action" value="clear" />
+        <button type="submit">Clear Batch</button>
       </form>
       <p class="muted" style="margin-top: 0.65rem;"><a href="{{ url_for('admin_slot_provision') }}">Create empty slots</a></p>
+    {% else %}
+      <p class="muted">No assets in the assignment batch.</p>
+    {% endif %}
+  </div>
+
+  {% if preview_rows %}
+    <div class="card">
+      <h2>Preview Assignment</h2>
+      <table class="assign-slot-table">
+        <thead>
+          <tr>
+            <th>Asset tag</th>
+            <th>Equipment type</th>
+            <th>Destination</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview_rows %}
+            <tr>
+              <td class="asset-tag-cell" data-label="Asset tag"><code>{{ row.asset_tag }}</code></td>
+              <td data-label="Equipment type">{{ row.equipment_type or "Unknown" }}</td>
+              <td data-label="Destination">{{ row.case_name }} / Slot {{ row.slot_position }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form method="post" action="{{ url_for('admin_assign_slot') }}">
+        <input type="hidden" name="action" value="commit" />
+        <div class="row">
+          <label>
+            <input type="checkbox" name="confirm_assignment" value="yes" required />
+            I reviewed this assignment batch and want to assign these assets to the mapped slots.
+          </label>
+        </div>
+        <button type="submit">Commit Assignment Batch</button>
+      </form>
     </div>
   {% endif %}
 {% endblock %}
@@ -270,29 +364,31 @@
 {% block extra_scripts %}
   <script>
     const assignCaseSelect = document.getElementById("case_name");
-    const assignSlotSelect = document.getElementById("slot_id");
+    const assignSlotSelects = Array.from(document.querySelectorAll(".assign-slot-row-slot"));
 
-    if (assignCaseSelect && assignSlotSelect) {
-      const assignSlotOptions = Array.from(assignSlotSelect.options);
+    if (assignCaseSelect && assignSlotSelects.length) {
+      const slotOptionGroups = assignSlotSelects.map((select) => Array.from(select.options));
 
       function syncAssignSlotOptions() {
         const selectedCase = assignCaseSelect.value;
-        const selectedSlot = assignSlotSelect.value;
 
-        assignSlotOptions.forEach((option) => {
-          if (!option.value) {
-            option.hidden = false;
-            return;
+        assignSlotSelects.forEach((select, index) => {
+          const selectedSlot = select.value;
+          slotOptionGroups[index].forEach((option) => {
+            if (!option.value) {
+              option.hidden = false;
+              return;
+            }
+            const matchesCase = !selectedCase || option.dataset.case === selectedCase;
+            const isSelected = option.value === selectedSlot;
+            option.hidden = !matchesCase && !isSelected;
+          });
+
+          const selectedOption = select.selectedOptions[0];
+          if (selectedOption && selectedOption.value && selectedOption.dataset.case !== selectedCase) {
+            select.value = "";
           }
-          const matchesCase = !selectedCase || option.dataset.case === selectedCase;
-          const isSelected = option.value === selectedSlot;
-          option.hidden = !matchesCase && !isSelected;
         });
-
-        const selectedOption = assignSlotSelect.selectedOptions[0];
-        if (selectedOption && selectedOption.value && selectedOption.dataset.case !== selectedCase) {
-          assignSlotSelect.value = "";
-        }
       }
 
       assignCaseSelect.addEventListener("change", syncAssignSlotOptions);
