@@ -435,6 +435,15 @@
                                                         <a class="nav-link" href="{{ url_for('asset_history', asset_tag=asset.asset_tag, return_to=url_for('dashboard')) }}"><code>{{ asset.asset_tag }}</code></a>
                                                       </span>
                                                       <span class="custody-map-asset-type">{{ asset.equipment_type_label }}</span>
+                                                      {% if asset.storage_display %}
+                                                        <span class="custody-map-asset-type">
+                                                          {% if asset.storage_case_name %}
+                                                            <a class="nav-link" href="{{ url_for('dashboard_case_detail', case_name=asset.storage_case_name, return_to=url_for('dashboard')) }}">{{ asset.storage_display }}</a>
+                                                          {% else %}
+                                                            {{ asset.storage_display }}
+                                                          {% endif %}
+                                                        </span>
+                                                      {% endif %}
                                                     </li>
                                                   {% endfor %}
                                                 </ul>

@@ -652,13 +652,20 @@ class DashboardTests(unittest.TestCase):
             building="HQ North",
             room="210",
         )
-        self._insert_asset(
+        stored_switch_id = self._insert_asset(
             "AT-STORED-SWITCH",
             location_type="STORAGE",
             home_slot_id=10,
             equipment_type="switch",
             building="HQ North",
             room="Closet",
+        )
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (10, ?, '2026-01-01T00:00:00Z');
+            """,
+            (stored_switch_id,),
         )
         self._insert_asset(
             "AT-UNSLOTTED-ROUTER",
@@ -699,6 +706,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(sysadmins_holder["label"], "Alex Holder")
         self.assertEqual(sysadmins_holder["assets"][0]["asset_tag"], "AT-LAPTOP")
         self.assertEqual(sysadmins_holder["assets"][0]["equipment_type_label"], "Laptop")
+        self.assertEqual(sysadmins_holder["assets"][0]["storage_display"], "")
 
         network_domain = custody_map["domains"][1]
         self.assertEqual([mission_area["label"] for mission_area in network_domain["mission_areas"]], ["No Mission Area Recorded"])
@@ -714,6 +722,14 @@ class DashboardTests(unittest.TestCase):
             [asset["equipment_type_label"] for asset in network_holder["assets"]],
             ["Switch", "Router"],
         )
+        self.assertEqual(
+            [asset["storage_display"] for asset in network_holder["assets"]],
+            ["Stored in CASE-STORAGE, Slot 1", "Unslotted"],
+        )
+        self.assertEqual(network_holder["assets"][0]["storage_case_name"], "CASE-STORAGE")
+        self.assertEqual(network_holder["assets"][0]["storage_slot_position"], 1)
+        self.assertEqual(network_holder["assets"][1]["storage_case_name"], "")
+        self.assertIsNone(network_holder["assets"][1]["storage_slot_position"])
 
         unclassified_domain = custody_map["domains"][2]
         unclassified_mission = unclassified_domain["mission_areas"][0]
@@ -734,6 +750,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_custody_map_render_is_collapsible_at_each_hierarchy_level(self) -> None:
         self._insert_holder(1, "Alex Holder", organization="CISR")
+        self._insert_slot(20, "CASE-MAP", 7)
         self._insert_asset(
             "AT-LAPTOP",
             location_type="IN_CUSTODY",
@@ -742,10 +759,25 @@ class DashboardTests(unittest.TestCase):
             building="HQ North",
             room="210",
         )
-        self._insert_asset(
+        stored_switch_id = self._insert_asset(
             "AT-SWITCH",
             location_type="STORAGE",
+            home_slot_id=20,
             equipment_type="switch",
+            building="HQ North",
+            room="Closet",
+        )
+        self.conn.execute(
+            """
+            INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
+            VALUES (20, ?, '2026-01-01T00:00:00Z');
+            """,
+            (stored_switch_id,),
+        )
+        self._insert_asset(
+            "AT-UNSLOTTED",
+            location_type="STORAGE",
+            equipment_type="router",
             building="HQ North",
             room="Closet",
         )
@@ -772,5 +804,10 @@ class DashboardTests(unittest.TestCase):
             b'<a class="nav-link" href="/assets/history?asset_tag=AT-SWITCH&amp;return_to=/dashboard"><code>AT-SWITCH</code></a>',
             response.data,
         )
+        self.assertIn(
+            b'<a class="nav-link" href="/dashboard/cases/CASE-MAP?return_to=/dashboard">Stored in CASE-MAP, Slot 7</a>',
+            response.data,
+        )
+        self.assertIn(b"Unslotted", response.data)
         self.assertGreaterEqual(response.data.count(b'class="disclosure-section custody-map-node"'), 4)
         self.assertIn(b'class="custody-map-asset"', response.data)
