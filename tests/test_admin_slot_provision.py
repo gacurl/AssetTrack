@@ -12,6 +12,13 @@ from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
 
 
+LAPTOP_CASE_SIZE_OPTIONS = (
+    "10 Slot Laptop Case",
+    "18 Slot Laptop Case",
+    "30 Slot Laptop Case",
+)
+
+
 @pytest.fixture
 def client_with_temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
@@ -450,6 +457,68 @@ def test_admin_case_size_update_accepts_every_menu_choice(client_with_temp_db) -
     assert metadata["case_size"] == CASE_SIZE_OPTIONS[-1]
     assert slot_count == 1
 
+
+
+def test_admin_case_size_update_saves_laptop_choices_without_changing_slots_or_events(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES
+                (3301, 'CASE-LAPTOP-SIZE', 1, NULL),
+                (3302, 'CASE-LAPTOP-SIZE', 2, NULL);
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload)
+            VALUES ('LAPTOP-SIZE-AUDIT', 'created', '2026-01-01T00:00:00Z', 'system', NULL, '{}');
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    detail_response = client_with_temp_db.get("/dashboard/cases/CASE-LAPTOP-SIZE")
+    assert detail_response.status_code == 200
+    for option in LAPTOP_CASE_SIZE_OPTIONS:
+        assert f'<option value="{option}"'.encode() in detail_response.data
+
+    for option in LAPTOP_CASE_SIZE_OPTIONS:
+        response = client_with_temp_db.post(
+            "/admin/cases/CASE-LAPTOP-SIZE/case-size",
+            data={"case_size": option},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+        assert option.encode() in response.data
+        assert b"Total slots:</strong> 2" in response.data
+        assert b"Available slots:</strong> 2" in response.data
+
+        verify_conn = db.get_connection()
+        try:
+            metadata = verify_conn.execute(
+                "SELECT case_size FROM case_metadata WHERE case_name = 'CASE-LAPTOP-SIZE';"
+            ).fetchone()
+            slot_rows = verify_conn.execute(
+                "SELECT id, slot_position, current_asset_tag FROM slots WHERE case_name = 'CASE-LAPTOP-SIZE' ORDER BY id ASC;"
+            ).fetchall()
+            event_rows = verify_conn.execute(
+                "SELECT asset_tag, event_type, payload FROM asset_events ORDER BY id ASC;"
+            ).fetchall()
+        finally:
+            verify_conn.close()
+
+        assert metadata["case_size"] == option
+        assert [(row["id"], row["slot_position"], row["current_asset_tag"]) for row in slot_rows] == [
+            (3301, 1, None),
+            (3302, 2, None),
+        ]
+        assert [(row["asset_tag"], row["event_type"], row["payload"]) for row in event_rows] == [
+            ("LAPTOP-SIZE-AUDIT", "created", "{}"),
+        ]
 
 def test_operator_cannot_edit_case_size(client_with_temp_db) -> None:
     operator_id = create_test_user(username="operator-case-size", password="operator-pass", role="operator")
