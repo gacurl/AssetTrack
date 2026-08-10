@@ -246,7 +246,8 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     assert b"status-dot low" in response.data
     assert b"Total slots:</strong> 3" in response.data
     assert b"Occupied slots:</strong> 1" in response.data
-    assert b"Empty slots:</strong> 2" in response.data
+    assert b"Available slots:</strong> 2" in response.data
+    assert b"Utilization:</strong> 33%" in response.data
     assert b"Check boxes to select assets." in response.data
     assert b"Select all" in response.data
     assert b"Select all eligible assets" not in response.data
@@ -264,6 +265,12 @@ def test_dashboard_case_detail_200_includes_expected_slot_positions(app_client) 
     assert b"AT-OUT" in response.data
     assert b"Empty" in response.data
 
+
+def test_dashboard_case_detail_capacity_summary_handles_zero_slots() -> None:
+    summary = intake_app._case_status_summary(0, 0)
+
+    assert summary["available_slots"] == 0
+    assert summary["utilization_percent"] == 0
 
 def test_dashboard_case_detail_asset_tags_link_to_asset_history(app_client) -> None:
     conn, client = app_client

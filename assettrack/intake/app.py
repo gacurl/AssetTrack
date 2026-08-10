@@ -1478,6 +1478,7 @@ def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[st
     total = int(total_slots or 0)
     occupied = int(occupied_slots or 0)
     available = max(0, total - occupied)
+    utilization_percent = int((occupied * 100.0 / total) + 0.5) if total > 0 else 0
 
     if available == 0:
         return {
@@ -1485,6 +1486,7 @@ def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[st
             "text": "FULL - No space",
             "class_name": "full",
             "available_slots": available,
+            "utilization_percent": utilization_percent,
         }
     if available <= 3:
         return {
@@ -1492,12 +1494,14 @@ def _case_status_summary(total_slots: object, occupied_slots: object) -> dict[st
             "text": "LOW - Getting tight",
             "class_name": "low",
             "available_slots": available,
+            "utilization_percent": utilization_percent,
         }
     return {
         "label": "OPEN",
         "text": "OPEN - Use now",
         "class_name": "open",
         "available_slots": available,
+        "utilization_percent": utilization_percent,
     }
 
 

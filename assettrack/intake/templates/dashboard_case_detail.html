@@ -21,6 +21,28 @@
       flex-wrap: wrap;
     }
     .status-card { margin-bottom: 1rem; }
+    .case-status-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem 1.5rem;
+      flex-wrap: wrap;
+    }
+    .case-status-main,
+    .case-capacity-summary {
+      min-width: 14rem;
+    }
+    .case-status-main {
+      flex: 1 1 18rem;
+    }
+    .case-capacity-summary {
+      flex: 0 1 18rem;
+      line-height: 1.55;
+    }
+    .case-capacity-summary p,
+    .case-status-main p {
+      margin: 0;
+    }
     .status-dot.full { background: #12b76a; }
     .status-dot.low { background: #f79009; }
     .status-dot.open { background: #b42318; }
@@ -56,7 +78,7 @@
 {% block content %}
   {% set occupied_slots = case_detail.slots | selectattr("asset_tag") | list | length %}
   {% set total_slots = case_detail.slots | length %}
-  {% set empty_slots = total_slots - occupied_slots %}
+  {% set available_slots = total_slots - occupied_slots %}
   {% set status = case_status_summary(total_slots, occupied_slots) %}
   <div class="page-header-bar">
     <nav class="page-header-nav" aria-label="Contextual navigation">
@@ -77,33 +99,42 @@
   {% endwith %}
 
   <section class="card status-card">
-    <h2>Case Status</h2>
-    <p>
-      <span class="status-badge">
-        <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
-        <span>{{ status.text }}</span>
-      </span>
-      <br />
-      <strong>Total slots:</strong> {{ total_slots }}<br />
-      <strong>Occupied slots:</strong> {{ occupied_slots }}<br />
-      <strong>Empty slots:</strong> {{ empty_slots }}<br />
-      <strong>Case Size:</strong> {{ case_detail.case_size or "Not recorded" }}
-    </p>
-    {% if authenticated_role == 'admin' %}
-      <form method="post" action="{{ url_for('admin_case_size_update', case_name=case_detail.case_name) }}" class="case-action-row">
-        {% if return_to %}
-          <input type="hidden" name="return_to" value="{{ return_to }}" />
+    <div class="case-status-summary">
+      <div class="case-status-main">
+        <h2>Case Status</h2>
+        <p>
+          <span class="status-badge">
+            <span class="status-dot {{ status.class_name }}" aria-hidden="true"></span>
+            <span>{{ status.text }}</span>
+          </span>
+          <br />
+          <strong>Case Size:</strong> {{ case_detail.case_size or "Not recorded" }}
+        </p>
+        {% if authenticated_role == 'admin' %}
+          <form method="post" action="{{ url_for('admin_case_size_update', case_name=case_detail.case_name) }}" class="case-action-row">
+            {% if return_to %}
+              <input type="hidden" name="return_to" value="{{ return_to }}" />
+            {% endif %}
+            <label for="case_size"><strong>Case Size</strong></label>
+            <select id="case_size" name="case_size">
+              <option value="" {% if not case_detail.case_size %}selected{% endif %}>Not recorded</option>
+              {% for option in case_size_options %}
+                <option value="{{ option }}" {% if case_detail.case_size == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Save Case Size</button>
+          </form>
         {% endif %}
-        <label for="case_size"><strong>Case Size</strong></label>
-        <select id="case_size" name="case_size">
-          <option value="" {% if not case_detail.case_size %}selected{% endif %}>Not recorded</option>
-          {% for option in case_size_options %}
-            <option value="{{ option }}" {% if case_detail.case_size == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit">Save Case Size</button>
-      </form>
-    {% endif %}
+      </div>
+      <div class="case-capacity-summary" aria-label="Slot capacity summary">
+        <p>
+          <strong>Total slots:</strong> {{ total_slots }}<br />
+          <strong>Occupied slots:</strong> {{ occupied_slots }}<br />
+          <strong>Available slots:</strong> {{ available_slots }}<br />
+          <strong>Utilization:</strong> {{ status.utilization_percent }}%
+        </p>
+      </div>
+    </div>
   </section>
 
   <section class="card">
