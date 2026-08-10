@@ -66,6 +66,42 @@ def test_authenticated_navigation_refreshes_last_seen(client_with_temp_db, monke
         assert sess["session_started_at"] == 50
 
 
+def test_protected_route_refreshes_last_seen_without_route_local_touch(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client_with_temp_db, monkeypatch, last_seen=100, session_started_at=50)
+    _set_now(monkeypatch, 200)
+
+    response = client_with_temp_db.get("/assets/search")
+
+    assert response.status_code == 200
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["last_seen"] == 200
+        assert sess["session_started_at"] == 50
+
+
+def test_authenticated_activity_keeps_session_valid_beyond_twenty_minutes_total_age(
+    client_with_temp_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client_with_temp_db, monkeypatch, last_seen=100, session_started_at=50)
+
+    _set_now(monkeypatch, 100 + auth.SESSION_IDLE_TIMEOUT_SECONDS - 1)
+    first_response = client_with_temp_db.get("/assets/search")
+
+    assert first_response.status_code == 200
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["last_seen"] == 100 + auth.SESSION_IDLE_TIMEOUT_SECONDS - 1
+        assert sess["session_started_at"] == 50
+
+    _set_now(monkeypatch, 100 + auth.SESSION_IDLE_TIMEOUT_SECONDS + 30)
+    second_response = client_with_temp_db.get("/dashboard")
+
+    assert second_response.status_code == 200
+    with client_with_temp_db.session_transaction() as sess:
+        assert sess["last_seen"] == 100 + auth.SESSION_IDLE_TIMEOUT_SECONDS + 30
+        assert sess["session_started_at"] == 50
+
+
 def test_authenticated_pages_hide_session_status_diagnostics(
     client_with_temp_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
