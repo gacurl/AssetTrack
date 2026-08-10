@@ -5,6 +5,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from assettrack.cases import CASE_SIZE_OPTIONS
+
 REQUIRED_TABLES = {
     "app_settings",
     "assets",
@@ -35,6 +37,85 @@ def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) 
     cursor = conn.execute(f"PRAGMA table_info({table_name});")
     rows = cursor.fetchall()
     return any(row[1] == column_name for row in rows)
+
+
+
+def _sql_string_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _case_metadata_create_sql(table_name: str = "case_metadata", *, if_not_exists: bool = True) -> str:
+    allowed_values = ("", *CASE_SIZE_OPTIONS)
+    create_clause = "CREATE TABLE IF NOT EXISTS" if if_not_exists else "CREATE TABLE"
+    values_sql = ",\n                    ".join(_sql_string_literal(value) for value in allowed_values)
+    return f"""
+        {create_clause} {table_name} (
+            case_name TEXT PRIMARY KEY,
+            case_size TEXT NOT NULL DEFAULT '',
+            CHECK (
+                case_size IN (
+                    {values_sql}
+                )
+            )
+        );
+        """
+
+
+def _case_metadata_accepts_all_case_size_options(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'case_metadata'
+        LIMIT 1;
+        """
+    ).fetchone()
+    schema_sql = "" if row is None else str(row[0] or "")
+    return all(_sql_string_literal(option) in schema_sql for option in CASE_SIZE_OPTIONS)
+
+
+def _case_metadata_related_schema(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE tbl_name = 'case_metadata'
+          AND type IN ('index', 'trigger')
+          AND sql IS NOT NULL
+        ORDER BY type, name;
+        """
+    ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def _migrate_case_metadata_case_size_constraint(conn: sqlite3.Connection) -> None:
+    if not _table_exists(conn, "case_metadata") or _case_metadata_accepts_all_case_size_options(conn):
+        return
+
+    columns = [str(row[1]) for row in conn.execute("PRAGMA table_info(case_metadata);").fetchall()]
+    if columns != ["case_name", "case_size"]:
+        raise RuntimeError("Unsupported case_metadata schema; cannot migrate Case Size constraint safely.")
+
+    related_schema = _case_metadata_related_schema(conn)
+    conn.execute("SAVEPOINT case_metadata_case_size_constraint")
+    try:
+        conn.execute(_case_metadata_create_sql("case_metadata_new", if_not_exists=False))
+        conn.execute(
+            """
+            INSERT INTO case_metadata_new (case_name, case_size)
+            SELECT case_name, case_size
+            FROM case_metadata;
+            """
+        )
+        conn.execute("DROP TABLE case_metadata;")
+        conn.execute("ALTER TABLE case_metadata_new RENAME TO case_metadata;")
+        for schema_sql in related_schema:
+            conn.execute(schema_sql)
+        conn.execute("RELEASE SAVEPOINT case_metadata_case_size_constraint")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT case_metadata_case_size_constraint")
+        conn.execute("RELEASE SAVEPOINT case_metadata_case_size_constraint")
+        raise
 
 
 def _rebuild_asset_events_for_corrections(conn: sqlite3.Connection) -> None:
@@ -438,28 +519,8 @@ def _create_schema(conn: sqlite3.Connection):
         """
     )
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS case_metadata (
-            case_name TEXT PRIMARY KEY,
-            case_size TEXT NOT NULL DEFAULT '',
-            CHECK (
-                case_size IN (
-                    '',
-                    'Small Wheel',
-                    'Medium Wheel',
-                    'Large Wheel',
-                    '16 Rack Unit Wheel',
-                    '4 Rack Unit Wheel',
-                    '6 Rack Unit Wheel',
-                    '8 Rack Unit Wheel',
-                    'White Case',
-                    'SM-Case'
-                )
-            )
-        );
-        """
-    )
+    cursor.execute(_case_metadata_create_sql())
+    _migrate_case_metadata_case_size_constraint(conn)
 
     cursor.execute(
         """

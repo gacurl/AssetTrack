@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import assettrack.db as db
+from assettrack.cases import CASE_SIZE_OPTIONS
 
 
 def test_initialize_if_missing_or_empty_bootstraps_missing_db(tmp_path: Path) -> None:
@@ -231,6 +232,114 @@ def test_bootstrap_db_adds_case_metadata_without_touching_existing_records(tmp_p
     assert counts == {"slots": 1, "assets": 1, "asset_events": 1, "case_metadata": 0}
     assert case_size is None
 
+
+LAPTOP_CASE_SIZE_OPTIONS = (
+    "10 Slot Laptop Case",
+    "18 Slot Laptop Case",
+    "30 Slot Laptop Case",
+)
+
+
+def _legacy_case_metadata_sql() -> str:
+    legacy_options = tuple(option for option in CASE_SIZE_OPTIONS if option not in LAPTOP_CASE_SIZE_OPTIONS)
+    values_sql = ",\n                    ".join("'" + option.replace("'", "''") + "'" for option in ("", *legacy_options))
+    return f"""
+        CREATE TABLE case_metadata (
+            case_name TEXT PRIMARY KEY,
+            case_size TEXT NOT NULL DEFAULT '',
+            CHECK (
+                case_size IN (
+                    {values_sql}
+                )
+            )
+        );
+        """
+
+
+def test_initialize_schema_case_metadata_accepts_laptop_case_sizes_and_rejects_invalid(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        for index, option in enumerate(LAPTOP_CASE_SIZE_OPTIONS, start=1):
+            conn.execute(
+                "INSERT INTO case_metadata (case_name, case_size) VALUES (?, ?);",
+                (f"LAPTOP-{index}", option),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO case_metadata (case_name, case_size) VALUES ('BAD-CASE', 'Unsupported Laptop Case');"
+            )
+        rows = conn.execute(
+            "SELECT case_name, case_size FROM case_metadata ORDER BY case_name ASC;"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("LAPTOP-1", "10 Slot Laptop Case"),
+        ("LAPTOP-2", "18 Slot Laptop Case"),
+        ("LAPTOP-3", "30 Slot Laptop Case"),
+    ]
+
+
+def test_bootstrap_db_migrates_case_metadata_case_size_constraint_idempotently(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DROP TABLE case_metadata;")
+        conn.execute(_legacy_case_metadata_sql())
+        conn.execute("CREATE INDEX idx_case_metadata_case_size_test ON case_metadata(case_size);")
+        conn.execute(
+            "INSERT INTO case_metadata (case_name, case_size) VALUES ('CASE-KEEP-1', 'Small Wheel'), ('CASE-KEEP-2', '16 Rack Unit Wheel');"
+        )
+        conn.execute("INSERT INTO slots (id, case_name, slot_position, current_asset_tag) VALUES (401, 'CASE-KEEP-1', 1, NULL);")
+        conn.execute("INSERT INTO assets (asset_tag, equipment_type) VALUES ('KEEP-401', 'laptop');")
+        conn.execute(
+            "INSERT INTO asset_events (asset_tag, event_type, event_date, actor, notes, payload) VALUES ('KEEP-401', 'created', '2026-01-01T00:00:00Z', 'system', NULL, '{\"case\":\"CASE-KEEP-1\"}');"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert db.bootstrap_db(db_path) is False
+    assert db.bootstrap_db(db_path) is False
+
+    verify_conn = sqlite3.connect(db_path)
+    try:
+        metadata_rows = verify_conn.execute(
+            "SELECT case_name, case_size FROM case_metadata ORDER BY case_name ASC;"
+        ).fetchall()
+        schema_sql = verify_conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'case_metadata';"
+        ).fetchone()[0]
+        index_row = verify_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_case_metadata_case_size_test';"
+        ).fetchone()
+        counts = {
+            "slots": verify_conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0],
+            "assets": verify_conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0],
+            "asset_events": verify_conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0],
+        }
+        event_payload = verify_conn.execute("SELECT payload FROM asset_events WHERE asset_tag = 'KEEP-401';").fetchone()[0]
+        verify_conn.execute(
+            "INSERT INTO case_metadata (case_name, case_size) VALUES ('CASE-LAPTOP', '18 Slot Laptop Case');"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            verify_conn.execute(
+                "INSERT INTO case_metadata (case_name, case_size) VALUES ('CASE-BAD', 'Unsupported Laptop Case');"
+            )
+    finally:
+        verify_conn.close()
+
+    assert metadata_rows == [("CASE-KEEP-1", "Small Wheel"), ("CASE-KEEP-2", "16 Rack Unit Wheel")]
+    for option in LAPTOP_CASE_SIZE_OPTIONS:
+        assert option in schema_sql
+    assert index_row is not None
+    assert counts == {"slots": 1, "assets": 1, "asset_events": 1}
+    assert event_payload == '{"case":"CASE-KEEP-1"}'
 
 def test_bootstrap_db_adds_app_settings_table_to_existing_db(tmp_path: Path) -> None:
     db_path = tmp_path / "assettrack.db"
