@@ -55,6 +55,10 @@ def _session_timing_valid() -> bool:
     return True
 
 
+def refresh_session_activity() -> None:
+    session["last_seen"] = now_seconds()
+
+
 def _prefers_json_response() -> bool:
     if request.is_json:
         return True
@@ -104,6 +108,7 @@ def require_login(view_func):
         user = current_user()
         if user is None:
             return _forbidden_response()
+        refresh_session_activity()
         return view_func(*args, **kwargs)
 
     return wrapped
