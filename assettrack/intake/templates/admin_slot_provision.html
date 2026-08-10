@@ -20,28 +20,60 @@
 
   <div class="card">
     <h2>Create empty slots</h2>
-    <p class="card-intro">Adds new empty capacity for a case by appending slot numbers. Existing slots are unchanged.</p>
+    <p class="card-intro">Adds selected empty positions to an existing case. Existing slots are unchanged.</p>
     <form method="post" action="{{ url_for('admin_slot_provision') }}">
       <div class="admin-maintenance-grid">
         <div class="row">
           <label for="case_number"><strong>case_number</strong> (required)</label><br />
-          <input type="text" id="case_number" name="case_number" value="{{ case_number or '' }}" autocomplete="off" required />
-        </div>
-        <div class="row">
-          <label for="slot_count"><strong>slot_count</strong> (required)</label><br />
-          <input type="text" id="slot_count" name="slot_count" value="{{ slot_count or '' }}" autocomplete="off" required />
-        </div>
-        <div class="row">
-          <label for="case_size"><strong>Case Size</strong></label><br />
-          <select id="case_size" name="case_size">
-            <option value="" {% if not case_size %}selected{% endif %}>Not recorded</option>
-            {% for option in case_size_options %}
-              <option value="{{ option }}" {% if case_size == option %}selected{% endif %}>{{ option }}</option>
+          <select id="case_number" name="case_number" required>
+            <option value="" {% if not case_number %}selected{% endif %}>Select case</option>
+            {% for option in case_options %}
+              <option value="{{ option }}" {% if case_number == option %}selected{% endif %}>{{ option }}</option>
             {% endfor %}
           </select>
         </div>
+        <div class="row">
+          <label for="slot_identifiers"><strong>slot_identifiers</strong> (required)</label><br />
+          <textarea id="slot_identifiers" name="slot_identifiers" rows="4" required>{{ slot_identifiers or '' }}</textarea>
+        </div>
       </div>
-      <button type="submit">Create empty slots</button>
+      <button type="submit" name="action" value="preview">Preview empty slots</button>
     </form>
   </div>
+
+  {% if proposed_slots %}
+    <div class="card">
+      <h2>Preview empty slots</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">case_number</th>
+            <th scope="col">slot_position</th>
+            <th scope="col">Occupancy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for slot_position in proposed_slots %}
+            <tr>
+              <td><code>{{ case_number }}</code></td>
+              <td><code>{{ slot_position }}</code></td>
+              <td>Empty Slot</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form method="post" action="{{ url_for('admin_slot_provision') }}">
+        <input type="hidden" name="action" value="commit" />
+        <input type="hidden" name="case_number" value="{{ case_number }}" />
+        <input type="hidden" name="slot_identifiers" value="{{ slot_identifiers }}" />
+        <input type="hidden" name="expected_case_number" value="{{ case_number }}" />
+        <input type="hidden" name="expected_slot_identifiers" value="{{ slot_identifiers }}" />
+        <label>
+          <input type="checkbox" name="confirm_slot_provision" value="yes" />
+          I reviewed this slot provisioning preview.
+        </label>
+        <button type="submit">Commit empty slots</button>
+      </form>
+    </div>
+  {% endif %}
 {% endblock %}

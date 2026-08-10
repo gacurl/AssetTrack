@@ -8254,6 +8254,75 @@ def admin_receipt_cc_settings():
     return render_template("admin_receipt_cc.html", **_receipt_cc_settings_context())
 
 
+def _parse_slot_provision_identifiers(raw_value: str, errors: list[str]) -> list[int]:
+    tokens = [token for token in re.split(r"[\s,]+", raw_value.strip()) if token]
+    if not tokens:
+        errors.append("slot_identifiers is required.")
+        return []
+
+    parsed: list[int] = []
+    seen: set[int] = set()
+    duplicates: list[int] = []
+    for token in tokens:
+        try:
+            slot_position = int(token)
+        except ValueError:
+            errors.append("slot_identifiers must contain only integer slot positions.")
+            continue
+        if slot_position <= 0:
+            errors.append("slot_identifiers must be greater than 0.")
+            continue
+        if slot_position in seen and slot_position not in duplicates:
+            duplicates.append(slot_position)
+        seen.add(slot_position)
+        parsed.append(slot_position)
+
+    if duplicates:
+        errors.append(f"Duplicate slot identifiers in request: {', '.join(str(value) for value in duplicates)}.")
+    return parsed
+
+
+def _validate_slot_provision_request(
+    conn: sqlite3.Connection,
+    case_number: str,
+    proposed_slots: list[int],
+    errors: list[str],
+) -> None:
+    if not proposed_slots:
+        return
+
+    case_row = conn.execute(
+        """
+        SELECT 1
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+        LIMIT 1;
+        """,
+        (case_number,),
+    ).fetchone()
+    if case_row is None:
+        errors.append("Select an existing case before provisioning empty slots.")
+        return
+
+    placeholders = ", ".join("?" for _ in proposed_slots)
+    existing_rows = conn.execute(
+        f"""
+        SELECT slot_position
+        FROM slots
+        WHERE UPPER(case_name) = UPPER(?)
+          AND slot_position IN ({placeholders})
+        ORDER BY slot_position ASC;
+        """,
+        (case_number, *proposed_slots),
+    ).fetchall()
+    existing_positions = [int(row["slot_position"]) for row in existing_rows]
+    if existing_positions:
+        errors.append(
+            f"Slot identifiers already exist in case {case_number}: "
+            f"{', '.join(str(value) for value in existing_positions)}."
+        )
+
+
 @app.route("/admin/slots/provision", methods=["GET", "POST"])
 @require_login
 @require_role("admin")
@@ -8263,78 +8332,100 @@ def admin_slot_provision():
         return guard_result
 
     case_number = ""
-    slot_count = ""
-    case_size = ""
+    slot_identifiers = ""
+    proposed_slots: list[int] = []
+
+    def render_slot_provision_template():
+        conn = get_connection()
+        try:
+            case_options = _slot_case_options(_list_slot_options(conn))
+        finally:
+            conn.close()
+        return render_template(
+            "admin_slot_provision.html",
+            case_number=case_number,
+            slot_identifiers=slot_identifiers,
+            proposed_slots=proposed_slots,
+            case_options=case_options,
+        )
+
     if request.method == "POST":
+        action = (request.form.get("action") or "preview").strip().lower()
         case_number = (request.form.get("case_number") or "").strip().upper()
-        slot_count = (request.form.get("slot_count") or "").strip()
-        case_size = (request.form.get("case_size") or "").strip()
+        slot_identifiers = (request.form.get("slot_identifiers") or "").strip()
 
         if not case_number:
             flash("case_number is required.", "error")
-        if not slot_count:
-            flash("slot_count is required.", "error")
-        if not case_number or not slot_count:
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
-
-        try:
-            parsed_slot_count = int(slot_count)
-        except ValueError:
-            flash("slot_count must be an integer.", "error")
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
-
-        if parsed_slot_count <= 0:
-            flash("slot_count must be greater than 0.", "error")
-            return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
+        if not slot_identifiers:
+            flash("slot_identifiers is required.", "error")
+        if not case_number or not slot_identifiers:
+            return render_slot_provision_template()
 
         conn = get_connection()
         try:
+            errors: list[str] = []
+            proposed_slots = _parse_slot_provision_identifiers(slot_identifiers, errors)
+            if not errors:
+                _validate_slot_provision_request(conn, case_number, proposed_slots, errors)
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                return render_slot_provision_template()
+
+            if action == "preview":
+                flash("Slot provisioning preview ready. Review before committing.", "success")
+                return render_slot_provision_template()
+
+            if action != "commit":
+                flash("Unsupported slot provisioning action.", "error")
+                return render_slot_provision_template()
+
+            expected_case_number = (request.form.get("expected_case_number") or "").strip().upper()
+            expected_slot_identifiers = (request.form.get("expected_slot_identifiers") or "").strip()
+            if request.form.get("confirm_slot_provision") != "yes":
+                flash("Please confirm you reviewed the slot provisioning preview before committing.", "error")
+                return render_slot_provision_template()
+            if expected_case_number != case_number or expected_slot_identifiers != slot_identifiers:
+                flash("Preview changed. Review the slot provisioning preview again before committing.", "error")
+                proposed_slots = []
+                return render_slot_provision_template()
+
             try:
                 conn.execute("BEGIN;")
-                current_max = conn.execute(
-                    """
-                    SELECT MAX(slot_position) AS max_slot_position
-                    FROM slots
-                    WHERE UPPER(case_name) = UPPER(?);
-                    """,
-                    (case_number,),
-                ).fetchone()
-                start_position = int(current_max["max_slot_position"] or 0) + 1
-                rows = [
-                    (case_number, slot_position, None)
-                    for slot_position in range(start_position, start_position + parsed_slot_count)
-                ]
+                commit_errors: list[str] = []
+                _validate_slot_provision_request(conn, case_number, proposed_slots, commit_errors)
+                if commit_errors:
+                    raise ValueError("; ".join(commit_errors))
                 conn.executemany(
                     """
                     INSERT INTO slots (case_name, slot_position, current_asset_tag)
                     VALUES (?, ?, ?);
                     """,
-                    rows,
+                    [(case_number, slot_position, None) for slot_position in proposed_slots],
                 )
-                save_case_size(conn, case_number, case_size)
                 conn.commit()
             except ValueError as e:
                 conn.rollback()
                 flash(str(e), "error")
-                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
+                return render_slot_provision_template()
             except sqlite3.IntegrityError as e:
                 conn.rollback()
                 flash(f"Could not create empty slots: {e}", "error")
-                return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
+                return render_slot_provision_template()
             except Exception:
                 conn.rollback()
                 raise
         finally:
             conn.close()
 
-        end_position = start_position + parsed_slot_count - 1
         flash(
-            f"Created {parsed_slot_count} empty slots for case {case_number} (slots {start_position}-{end_position}).",
+            f"Created {len(proposed_slots)} empty slots for case {case_number}: "
+            f"{', '.join(str(slot) for slot in proposed_slots)}.",
             "success",
         )
         return redirect(url_for("admin_slot_provision"))
 
-    return render_template("admin_slot_provision.html", case_number=case_number, slot_count=slot_count, case_size=case_size, case_size_options=CASE_SIZE_OPTIONS)
+    return render_slot_provision_template()
 
 
 @app.route("/admin/case-corrections", methods=["GET", "POST"])
