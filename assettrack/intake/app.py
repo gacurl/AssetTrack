@@ -1281,9 +1281,13 @@ def _slot_occupancy_status(conn, slot_id: object) -> Optional[dict]:
     }
 
 
-def _list_slot_options(conn) -> list[dict]:
+def _list_slot_options(conn, *, empty_only: bool = False) -> list[dict]:
+    occupancy_filter = """
+        WHERE so.asset_id IS NULL
+          AND TRIM(COALESCE(s.current_asset_tag, '')) = ''
+    """ if empty_only else ""
     rows = conn.execute(
-        """
+        f"""
         SELECT
             s.id,
             s.case_name,
@@ -1294,6 +1298,7 @@ def _list_slot_options(conn) -> list[dict]:
         FROM slots s
         LEFT JOIN slot_occupancy so ON so.slot_id = s.id
         LEFT JOIN assets a ON a.id = so.asset_id
+        {occupancy_filter}
         ORDER BY UPPER(s.case_name) ASC, s.slot_position ASC, s.id ASC;
         """
     ).fetchall()
@@ -11334,7 +11339,7 @@ def admin_assign_slot():
     conn = get_connection()
     try:
         unslotted_assets = _list_unslotted_storage_assets(conn)
-        slot_options = _list_slot_options(conn)
+        slot_options = _list_slot_options(conn, empty_only=True)
         case_options = _slot_case_options(slot_options)
         location_context = _assign_slot_location_context()
         building_options = list(location_context["building_options"])
@@ -11461,6 +11466,10 @@ def admin_assign_slot():
                         room = str(pending_preview.get("room") or "")
                         case_name = str(pending_preview.get("case_name") or "")
                         notes = str(pending_preview.get("notes") or "")
+                        selected_slot_ids = [
+                            str(assignment.get("slot_id") or "")
+                            for assignment in list(pending_preview.get("assignments") or [])
+                        ]
                     return render_assign_slot_template()
 
                 pending_preview = session.get(ASSIGN_SLOT_PENDING_SESSION_KEY)
@@ -11474,6 +11483,10 @@ def admin_assign_slot():
                 case_name = str(pending_preview.get("case_name") or "")
                 notes = str(pending_preview.get("notes") or "")
                 preview_rows = list(pending_preview.get("rows") or [])
+                selected_slot_ids = [
+                    str(assignment.get("slot_id") or "")
+                    for assignment in list(pending_preview.get("assignments") or [])
+                ]
                 try:
                     assignment_results = _assign_slot_batch(
                         conn,

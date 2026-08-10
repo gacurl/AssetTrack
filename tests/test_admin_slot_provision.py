@@ -1207,6 +1207,8 @@ def test_assign_slot_workflow_requires_confirmation_and_is_repeat_submission_saf
         follow_redirects=True,
     )
     assert b"Please confirm you reviewed the assignment batch before committing." in missing_confirmation.data
+    assert b'value="CASE-CONFIRM" selected' in missing_confirmation.data
+    assert b'value="9011"' in missing_confirmation.data
     assert _assign_slot_route_state()["slot_assign_events"] == []
 
     committed = client_with_temp_db.post(
@@ -1324,7 +1326,7 @@ def test_assign_slot_commit_failure_does_not_show_success_or_clear_batch(client_
     assert b"Assigned asset AT-STALE-1" not in failed_commit.data
     assert b"AT-STALE-1" in failed_commit.data
     assert _assign_slot_route_state()["slot_assign_events"] == []
-def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -> None:
+def test_assign_slot_selectors_show_only_empty_slots_and_available_cases(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     _create_building("HQ")
     conn = db.get_connection()
@@ -1332,7 +1334,11 @@ def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -
         conn.execute(
             """
             INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
-            VALUES (501, 'CASE-SEL', 1, 'AT-BUSY'), (502, 'CASE-SEL', 2, NULL);
+            VALUES
+                (501, 'CASE-SEL', 1, 'AT-BUSY'),
+                (502, 'CASE-SEL', 2, NULL),
+                (503, 'CASE-FULL', 1, 'AT-FULL-1'),
+                (504, 'CASE-FULL', 2, 'AT-FULL-2');
             """
         )
         conn.commit()
@@ -1358,10 +1364,31 @@ def test_assign_slot_selectors_hide_occupied_slot_options(client_with_temp_db) -
         follow_redirects=True,
     )
     assert lookup.status_code == 200
-    assert b"CASE-SEL / Slot 1 - occupied" in lookup.data
+    assert b"CASE-SEL / Slot 1" not in lookup.data
     assert b"CASE-SEL / Slot 2" in lookup.data
-    assert b"disabled" in lookup.data
+    assert b'value="CASE-SEL"' in lookup.data
+    assert b"CASE-FULL" not in lookup.data
+    assert b" - occupied" not in lookup.data
+    assert b"disabled" not in lookup.data
 
+
+def test_assign_slot_selector_script_syncs_case_and_slot_choices(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    _create_building("HQ")
+    _insert_assign_slot_slots([(505, "CASE-JS-A", 1, None), (506, "CASE-JS-B", 1, None)])
+    _create_unslotted_asset(client_with_temp_db, asset_tag="AT-JS-1", serial_number="SER-JS-1")
+
+    lookup = client_with_temp_db.post(
+        "/admin/assign-slot",
+        data={"action": "lookup", "asset_tag": "AT-JS-1"},
+        follow_redirects=True,
+    )
+
+    assert lookup.status_code == 200
+    assert b'data-case="CASE-JS-A"' in lookup.data
+    assert b'data-case="CASE-JS-B"' in lookup.data
+    assert b"assignCaseSelect.value = slotCase" in lookup.data
+    assert b"selectedOption.dataset.case !== selectedCase" in lookup.data
 
 def test_assign_slot_allows_blank_building_and_room_without_default_location(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)

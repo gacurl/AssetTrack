@@ -380,8 +380,7 @@
               return;
             }
             const matchesCase = !selectedCase || option.dataset.case === selectedCase;
-            const isSelected = option.value === selectedSlot;
-            option.hidden = !matchesCase && !isSelected;
+            option.hidden = !matchesCase;
           });
 
           const selectedOption = select.selectedOptions[0];
@@ -390,6 +389,17 @@
           }
         });
       }
+
+      assignSlotSelects.forEach((select) => {
+        select.addEventListener("change", () => {
+          const selectedOption = select.selectedOptions[0];
+          const slotCase = selectedOption ? selectedOption.dataset.case : "";
+          if (slotCase && assignCaseSelect.value !== slotCase) {
+            assignCaseSelect.value = slotCase;
+          }
+          syncAssignSlotOptions();
+        });
+      });
 
       assignCaseSelect.addEventListener("change", syncAssignSlotOptions);
       syncAssignSlotOptions();
