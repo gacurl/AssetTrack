@@ -12183,4 +12183,4 @@ def admin_force_vacate():
 
 if __name__ == "__main__":
     # Local dev run (and container run).
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=False)
