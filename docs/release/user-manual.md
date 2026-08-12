@@ -379,6 +379,50 @@ Expected result:
 - The results show category totals and committed row counts.
 
 Legacy network CSV command-line utilities are not normal operator procedures. They are retained for internal or maintainer use only.
+## Reconcile Government Inventory
+
+**Admin or maintainer CLI only**
+
+Use government inventory reconciliation to compare an operator-supplied authoritative inventory file with the current AssetTrack database. This is a read-only report. It does not create, update, retire, delete, issue, return, assign, or move assets.
+
+Supported files:
+
+- CSV
+- XLSX
+
+The inventory filename is supplied by the operator. It is not hard-coded.
+
+Command syntax from the repository root:
+
+```text
+python scripts/reconcile_government_inventory.py <inventory.xlsx-or.csv> --db <assettrack.db>
+```
+
+Equivalent module command:
+
+```text
+python -m scripts.reconcile_government_inventory <inventory.xlsx-or.csv> --db <assettrack.db>
+```
+
+Use `--db` to choose the SQLite database to compare. For example:
+
+```text
+python scripts/reconcile_government_inventory.py "BQ26 ETP.xlsx" --db ./data/assettrack.db
+```
+
+Major result categories:
+
+- `exact_or_normalized_tag_matches`: government and AssetTrack records match by asset tag after existing barcode normalization.
+- `government_only_assets`: the government file lists an asset that AssetTrack does not list as an active or retired/disposed normalized-tag match.
+- `assettrack_only_active_assets`: AssetTrack has an active asset absent from the government file.
+- `identity_conflicts`: the normalized asset tag matches, but serial numbers differ.
+- `ambiguous_normalized_tags`: duplicate normalized asset tags exist on either side and are not silently classified.
+- `duplicate_serial_warnings` and `duplicate_mac_warnings`: duplicate serial or MAC values in the government file. These are warnings and supporting evidence only; they are not used to auto-match records.
+- `retired_disposed_assettrack_records`, `retired_disposed_tag_matches`, and `retired_disposed_assettrack_only`: retired or disposed AssetTrack records reported separately from active discrepancies.
+
+No automatic AssetTrack corrections are performed. Review the report and use approved AssetTrack workflows for any later correction work.
+
+Normal operator GUI access for this reconciliation will be implemented separately under Issue 31-34A / #1169. Do not treat this CLI as the future GUI workflow.
 
 ## Backup The Database
 
