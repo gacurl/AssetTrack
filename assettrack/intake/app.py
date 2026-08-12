@@ -80,6 +80,7 @@ from assettrack.holder_import import (
 )
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
+from scripts.reconcile_government_inventory import reconcile_inventory
 from assettrack.natural_sort import natural_identifier_sort_key
 from assettrack.reference_data import (
     create_building,
@@ -10162,6 +10163,89 @@ def admin_db_restore():
         status_code,
     )
 
+
+
+def _inventory_reconciliation_view(result) -> dict[str, object]:
+    counts = result.summary_counts()
+    discrepancy_count = (
+        counts["government_only_assets"]
+        + counts["assettrack_only_active_assets"]
+        + counts["identity_conflicts"]
+        + counts["ambiguous_normalized_tags"]
+        + counts["duplicate_serial_warnings"]
+        + counts["duplicate_mac_warnings"]
+        + counts["retired_disposed_tag_matches"]
+        + counts["retired_disposed_assettrack_only"]
+    )
+    return {
+        "counts": counts,
+        "matched": counts["exact_or_normalized_tag_matches"],
+        "discrepancies": discrepancy_count,
+        "clean": discrepancy_count == 0,
+        "government_only": result.government_only,
+        "assettrack_only_active": result.assettrack_only_active,
+        "identity_conflicts": result.identity_conflicts,
+        "ambiguous_government_tags": result.ambiguous_government_tags,
+        "ambiguous_assettrack_tags": result.ambiguous_assettrack_tags,
+        "duplicate_serial_warnings": result.duplicate_serial_warnings,
+        "duplicate_mac_warnings": result.duplicate_mac_warnings,
+        "terminal_matches": result.terminal_matches,
+        "terminal_assettrack_only": result.terminal_assettrack_only,
+    }
+
+
+@app.route("/report/inventory-reconciliation", methods=["GET", "POST"])
+@require_login
+def inventory_reconciliation():
+    result: dict[str, object] | None = None
+    error_message: str | None = None
+    status_code = 200
+
+    if request.method == "POST":
+        upload = request.files.get("inventory_file")
+        filename = str((upload.filename if upload is not None else "") or "").strip()
+        if upload is None or not filename:
+            error_message = "Choose a .csv or .xlsx inventory file to analyze."
+            status_code = 400
+        else:
+            suffix = Path(filename).suffix.lower()
+            tempfile_suffix = ASSET_IMPORT_TEMPFILE_SUFFIXES.get(suffix)
+            if tempfile_suffix is None:
+                error_message = "Unsupported file type. Upload a .csv or .xlsx file."
+                status_code = 400
+            else:
+                temp_path: Path | None = None
+                conn: sqlite3.Connection | None = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=tempfile_suffix) as handle:
+                        upload.save(handle)
+                        temp_path = Path(handle.name)
+
+                    resolved_db_path = _resolved_runtime_db_path()
+                    conn = sqlite3.connect(f"file:{resolved_db_path.resolve()}?mode=ro", uri=True)
+                    conn.row_factory = sqlite3.Row
+                    result = _inventory_reconciliation_view(reconcile_inventory(conn, temp_path))
+                    result["filename"] = filename
+                except ValueError as exc:
+                    error_message = str(exc)
+                    status_code = 400
+                except sqlite3.Error as exc:
+                    error_message = f"Could not read AssetTrack database: {exc}"
+                    status_code = 500
+                finally:
+                    if conn is not None:
+                        conn.close()
+                    if temp_path is not None:
+                        temp_path.unlink(missing_ok=True)
+
+    return (
+        render_template(
+            "inventory_reconciliation.html",
+            result=result,
+            error_message=error_message,
+        ),
+        status_code,
+    )
 
 @app.get("/report")
 @require_login

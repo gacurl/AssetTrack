@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import io
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
+
+import assettrack.db as db
+from assettrack.intake import app as intake_app
+from tests.auth_test_utils import create_test_user, login_session
 
 from scripts.reconcile_government_inventory import (
     _open_readonly_database,
@@ -227,3 +233,169 @@ def test_reconciliation_cli_supports_direct_and_module_execution(tmp_path: Path)
     assert module.returncode == 0, module.stderr
     assert "government_records: 12" in direct.stdout
     assert direct.stdout == module.stdout
+
+@pytest.fixture
+def client_with_temp_app_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "assettrack.db")
+    conn = db.get_connection()
+    conn.close()
+    intake_app.app.testing = True
+    return intake_app.app.test_client()
+
+
+def _login_role(client, *, username: str, role: str) -> None:
+    user_id = create_test_user(username=username, password="test-pass", role=role)
+    login_session(client, user_id)
+
+
+def _insert_app_asset(asset_tag: str, serial_number: str, location_type: str = "STORAGE") -> None:
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO assets (asset_tag, serial_number, location_type) VALUES (?, ?, ?);",
+            (asset_tag, serial_number, location_type),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _app_counts() -> dict[str, int]:
+    conn = db.get_connection()
+    try:
+        return {
+            "assets": int(conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0]),
+            "asset_events": int(conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0]),
+            "slots": int(conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0]),
+        }
+    finally:
+        conn.close()
+
+
+def _inventory_bytes(rows: list[list[str]], *, xlsx: bool = False) -> bytes:
+    frame = pd.DataFrame(rows, columns=["equipment_type", "asset_tag", "clean_asset_tag", "serial_number", "mac_address"])
+    if not xlsx:
+        return frame.to_csv(index=False).encode("utf-8")
+    output = io.BytesIO()
+    frame.to_excel(output, index=False)
+    return output.getvalue()
+
+
+def _post_inventory(client, content: bytes, filename: str):
+    return client.post(
+        "/report/inventory-reconciliation",
+        data={"inventory_file": (io.BytesIO(content), filename)},
+        content_type="multipart/form-data",
+    )
+
+
+def test_inventory_reconciliation_page_access_and_role_boundary(client_with_temp_app_db) -> None:
+    anonymous = client_with_temp_app_db.get("/report/inventory-reconciliation")
+    assert anonymous.status_code == 403
+
+    _login_role(client_with_temp_app_db, username="operator-recon-page", role="operator")
+    operator_response = client_with_temp_app_db.get("/report/inventory-reconciliation")
+    assert operator_response.status_code == 200
+    assert b"Analyze Government Inventory" in operator_response.data
+
+    report_response = client_with_temp_app_db.get("/report")
+    assert b'href="/report/inventory-reconciliation"' in report_response.data
+
+    _login_role(client_with_temp_app_db, username="admin-recon-page", role="admin")
+    admin_response = client_with_temp_app_db.get("/report/inventory-reconciliation")
+    assert admin_response.status_code == 200
+
+
+def test_inventory_reconciliation_gui_clean_csv_uses_arbitrary_filename_and_no_mutation(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-clean", role="operator")
+    _insert_app_asset("CLEAN100", "SER-CLEAN")
+    before = _app_counts()
+
+    response = _post_inventory(
+        client_with_temp_app_db,
+        _inventory_bytes([["Laptop", "CLEAN-100", "CLEAN100", "SER-CLEAN", "MAC-CLEAN"]]),
+        "operator selected clean source.csv",
+    )
+
+    assert response.status_code == 200
+    assert _app_counts() == before
+    assert b"operator selected clean source.csv" in response.data
+    assert b"INVENTORY RECONCILED" in response.data
+    assert b"<strong>1</strong><span>Government assets" in response.data
+    assert b"<strong>1</strong><span>AssetTrack active assets" in response.data
+    assert b"<strong>1</strong><span>Matched" in response.data
+    assert b"<strong>0</strong><span>Discrepancies" in response.data
+
+
+def test_inventory_reconciliation_gui_supports_arbitrary_xlsx_filename(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-xlsx", role="operator")
+    _insert_app_asset("XLSX100", "SER-XLSX")
+
+    response = _post_inventory(
+        client_with_temp_app_db,
+        _inventory_bytes([["Laptop", "XLSX-100", "XLSX100", "SER-XLSX", "MAC-XLSX"]], xlsx=True),
+        "field inventory arbitrary name.xlsx",
+    )
+
+    assert response.status_code == 200
+    assert b"field inventory arbitrary name.xlsx" in response.data
+    assert b"INVENTORY RECONCILED" in response.data
+
+
+def test_inventory_reconciliation_gui_rejects_unsupported_file(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-reject", role="operator")
+
+    response = _post_inventory(client_with_temp_app_db, b"not an inventory", "inventory.txt")
+
+    assert response.status_code == 400
+    assert b"Unsupported file type. Upload a .csv or .xlsx file." in response.data
+
+
+def test_inventory_reconciliation_gui_discrepancy_counts_match_engine_and_no_mutation(client_with_temp_app_db, tmp_path: Path) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-discrepancy", role="operator")
+    _insert_app_asset("MATCH100", "SER-MATCH")
+    _insert_app_asset("ONLY-ACTIVE-GUI", "SER-ONLY")
+    _insert_app_asset("CONFLICT-GUI", "SER-DB")
+    _insert_app_asset("DUPTAG-GUI", "SER-DUPTAG-A")
+    _insert_app_asset("DUPTAGGUI", "SER-DUPTAG-B")
+    _insert_app_asset("TERM-GUI", "SER-TERM", "RETIRED")
+    before = _app_counts()
+    rows = [
+        ["Laptop", "MATCH-100", "MATCH100", "SER-MATCH", "MAC-MATCH"],
+        ["Laptop", "GOV-ONLY-GUI", "", "SER-GOV", "MAC-GOV"],
+        ["Laptop", "CONFLICT-GUI", "", "SER-GOV-CONFLICT", "MAC-CONFLICT"],
+        ["Laptop", "DUPTAG-GUI", "", "SER-DUPTAG-GOV", "MAC-DUPTAG"],
+        ["Laptop", "DUPSER-GUI-1", "", "SER-DUP-GUI", "MAC-SER-1"],
+        ["Laptop", "DUPSER-GUI-2", "", "SER-DUP-GUI", "MAC-SER-2"],
+        ["Laptop", "DUPMAC-GUI-1", "", "SER-MAC-1", "MAC-DUP-GUI"],
+        ["Laptop", "DUPMAC-GUI-2", "", "SER-MAC-2", "mac-dup-gui"],
+        ["Laptop", "GOV-DUP-GUI", "", "SER-GOV-DUP-1", "MAC-GOV-DUP-1"],
+        ["Laptop", "GOVDUPGUI", "", "SER-GOV-DUP-2", "MAC-GOV-DUP-2"],
+        ["Laptop", "TERM-GUI", "", "SER-TERM", "MAC-TERM"],
+    ]
+    content = _inventory_bytes(rows)
+    inventory_path = tmp_path / "same-engine-source.csv"
+    inventory_path.write_bytes(content)
+
+    conn = sqlite3.connect(f"file:{db.DB_PATH.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        engine_counts = reconcile_inventory(conn, inventory_path).summary_counts()
+    finally:
+        conn.close()
+
+    response = _post_inventory(client_with_temp_app_db, content, "operator discrepancy source.csv")
+
+    assert response.status_code == 200
+    assert _app_counts() == before
+    assert b"Inventory discrepancies found." in response.data
+    assert f"Government-only: {engine_counts['government_only_assets']}".encode() in response.data
+    assert f"AssetTrack-only active: {engine_counts['assettrack_only_active_assets']}".encode() in response.data
+    assert f"Identity conflicts: {engine_counts['identity_conflicts']}".encode() in response.data
+    assert f"Ambiguous normalized tags: {engine_counts['ambiguous_normalized_tags']}".encode() in response.data
+    assert f"Duplicate serial warnings: {engine_counts['duplicate_serial_warnings']}".encode() in response.data
+    assert f"Duplicate MAC warnings: {engine_counts['duplicate_mac_warnings']}".encode() in response.data
+    assert f"Retired/disposed tag matches: {engine_counts['retired_disposed_tag_matches']}".encode() in response.data
+    assert b"GOV-ONLY-GUI" in response.data
+    assert b"ONLY-ACTIVE-GUI" in response.data
+    assert b"CONFLICT-GUI" in response.data
