@@ -65,6 +65,7 @@
       <span class="report-utility-label">Report utilities</span>
       <a class="nav-link" href="{{ url_for('case_inventory') }}">Case inventory</a>
       <a class="nav-link" href="{{ url_for('receipts_list', return_to=report_return_to) }}">Search receipts</a>
+      <a class="nav-link" href="{{ url_for('inventory_reconciliation') }}">Inventory Reconciliation</a>
       {% if include_retired_assets %}
         <a class="nav-link" href="{{ url_for('human_report') }}">View active inventory only</a>
       {% else %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Reconciliation{% endblock %}
+{% block page_heading %}Inventory Reconciliation{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .recon-help { margin: 0 0 1rem 0; color: var(--color-text-muted); }
+    .recon-result-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+    .recon-result-metric {
+      border: 1px solid var(--color-surface);
+      padding: 0.75rem;
+      background: var(--color-surface-bg);
+    }
+    .recon-result-metric strong {
+      display: block;
+      font-size: 1.75rem;
+      line-height: 1;
+    }
+    .recon-status-pass { font-size: 1.3rem; font-weight: 800; }
+    .recon-section { margin-top: 1rem; border-top: 1px solid var(--color-surface); padding-top: 0.75rem; }
+    .recon-section summary { cursor: pointer; font-weight: 700; }
+    .recon-count { color: var(--color-text-muted); font-weight: 400; margin-left: 0.5rem; }
+    .recon-list { margin: 0.5rem 0 0 1.25rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="report-actions report-utility-links" aria-label="Report navigation">
+    <a class="nav-link" href="{{ url_for('human_report') }}">Back to Reports</a>
+  </div>
+
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Analyze Government Inventory</h2>
+    <p class="recon-help">Upload a government inventory CSV or XLSX file. Analyze Inventory reads the current AssetTrack database and does not change assets, events, custody, or slots.</p>
+    <form method="post" enctype="multipart/form-data">
+      <div class="row">
+        <label for="inventory_file"><strong>Inventory file</strong></label><br />
+        <input
+          id="inventory_file"
+          type="file"
+          name="inventory_file"
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          required
+        />
+      </div>
+      <button type="submit" name="action" value="analyze">Analyze Inventory</button>
+    </form>
+  </div>
+
+  {% if result is not none %}
+    <div class="card">
+      <h2>Reconciliation Result</h2>
+      <p class="recon-help"><strong>File:</strong> {{ result.filename }}</p>
+      {% if result.clean %}
+        <p class="flash success recon-status-pass">&#10003; INVENTORY RECONCILED</p>
+      {% else %}
+        <p class="flash error"><strong>Inventory discrepancies found.</strong> Review the counts and details below.</p>
+      {% endif %}
+
+      <div class="recon-result-metrics" aria-label="Reconciliation totals">
+        <div class="recon-result-metric"><strong>{{ result.counts.government_records }}</strong><span>Government assets</span></div>
+        <div class="recon-result-metric"><strong>{{ result.counts.assettrack_active_records_considered }}</strong><span>AssetTrack active assets</span></div>
+        <div class="recon-result-metric"><strong>{{ result.matched }}</strong><span>Matched</span></div>
+        <div class="recon-result-metric"><strong>{{ result.discrepancies }}</strong><span>Discrepancies</span></div>
+      </div>
+
+      <h3>Discrepancy Counts</h3>
+      <ul class="recon-list">
+        <li>Government-only: {{ result.counts.government_only_assets }}</li>
+        <li>AssetTrack-only active: {{ result.counts.assettrack_only_active_assets }}</li>
+        <li>Identity conflicts: {{ result.counts.identity_conflicts }}</li>
+        <li>Ambiguous normalized tags: {{ result.counts.ambiguous_normalized_tags }}</li>
+        <li>Duplicate serial warnings: {{ result.counts.duplicate_serial_warnings }}</li>
+        <li>Duplicate MAC warnings: {{ result.counts.duplicate_mac_warnings }}</li>
+        <li>Retired/disposed tag matches: {{ result.counts.retired_disposed_tag_matches }}</li>
+        <li>Retired/disposed AssetTrack-only: {{ result.counts.retired_disposed_assettrack_only }}</li>
+      </ul>
+
+      {% set sections = [
+        ('Government-Only Assets', result.government_only),
+        ('AssetTrack-Only Active Assets', result.assettrack_only_active),
+        ('Retired / Disposed AssetTrack-Only Assets', result.terminal_assettrack_only)
+      ] %}
+      {% for title, rows in sections %}
+        <details class="recon-section" {% if rows %}open{% endif %}>
+          <summary>{{ title }} <span class="recon-count">{{ rows|length }}</span></summary>
+          <ul class="recon-list">
+            {% for row in rows %}
+              <li><code>{{ row.asset_tag }}</code>{% if row.serial_number %} serial {{ row.serial_number }}{% endif %}{% if row.location_type %} ({{ row.location_type }}){% endif %}</li>
+            {% else %}
+              <li>None</li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endfor %}
+
+      <details class="recon-section" {% if result.identity_conflicts %}open{% endif %}>
+        <summary>Identity Conflicts <span class="recon-count">{{ result.identity_conflicts|length }}</span></summary>
+        <ul class="recon-list">
+          {% for government, asset in result.identity_conflicts %}
+            <li><code>{{ government.asset_tag }}</code> matched <code>{{ asset.asset_tag }}</code>; government serial {{ government.serial_number or "blank" }}, AssetTrack serial {{ asset.serial_number or "blank" }}</li>
+          {% else %}
+            <li>None</li>
+          {% endfor %}
+        </ul>
+      </details>
+
+      <details class="recon-section" {% if result.ambiguous_government_tags or result.ambiguous_assettrack_tags %}open{% endif %}>
+        <summary>Ambiguous Normalized Tags <span class="recon-count">{{ result.counts.ambiguous_normalized_tags }}</span></summary>
+        <ul class="recon-list">
+          {% for key, rows in result.ambiguous_government_tags %}
+            <li>Government <code>{{ key }}</code>: {% for row in rows %}<code>{{ row.asset_tag }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+          {% endfor %}
+          {% for key, rows in result.ambiguous_assettrack_tags %}
+            <li>AssetTrack <code>{{ key }}</code>: {% for row in rows %}<code>{{ row.asset_tag }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+          {% endfor %}
+          {% if not result.ambiguous_government_tags and not result.ambiguous_assettrack_tags %}
+            <li>None</li>
+          {% endif %}
+        </ul>
+      </details>
+
+      <details class="recon-section" {% if result.duplicate_serial_warnings or result.duplicate_mac_warnings %}open{% endif %}>
+        <summary>Duplicate Serial / MAC Warnings <span class="recon-count">{{ result.counts.duplicate_serial_warnings + result.counts.duplicate_mac_warnings }}</span></summary>
+        <ul class="recon-list">
+          {% for key, rows in result.duplicate_serial_warnings %}
+            <li>Serial <code>{{ key }}</code>: {% for row in rows %}<code>{{ row.asset_tag }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+          {% endfor %}
+          {% for key, rows in result.duplicate_mac_warnings %}
+            <li>MAC <code>{{ key }}</code>: {% for row in rows %}<code>{{ row.asset_tag }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+          {% endfor %}
+          {% if not result.duplicate_serial_warnings and not result.duplicate_mac_warnings %}
+            <li>None</li>
+          {% endif %}
+        </ul>
+      </details>
+
+      <details class="recon-section" {% if result.terminal_matches %}open{% endif %}>
+        <summary>Retired / Disposed Tag Matches <span class="recon-count">{{ result.terminal_matches|length }}</span></summary>
+        <ul class="recon-list">
+          {% for government, asset in result.terminal_matches %}
+            <li><code>{{ government.asset_tag }}</code> matched retired/disposed AssetTrack record <code>{{ asset.asset_tag }}</code> ({{ asset.location_type }})</li>
+          {% else %}
+            <li>None</li>
+          {% endfor %}
+        </ul>
+      </details>
+    </div>
+  {% endif %}
+{% endblock %}
