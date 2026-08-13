@@ -140,7 +140,7 @@ def test_admin_can_view_system_health_counts(client_with_temp_db) -> None:
     assert response.data.count(b'href="/admin/assets/import"') == 1
     assert b"Import Switch/Router CSV" not in response.data
     assert b'href="/admin/network-assets/import"' not in response.data
-    assert b"Provision Slots" in response.data
+    assert b"Provision Case / Slots" in response.data
     assert b"Assign Slot" in response.data
     assert b"Move Slot" in response.data
     assert b"Receipt Search" in response.data

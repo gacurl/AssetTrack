@@ -369,6 +369,8 @@ def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_
         data={"action": "preview", "case_number": "CASE-P", "slot_identifiers": "2 3 4"},
     )
     assert preview_response.status_code == 200
+    assert b"Admin: Provision Case / Slots" in preview_response.data
+    assert b"Provision case / slots" in preview_response.data
     assert b"Slot provisioning preview ready. Review before committing." in preview_response.data
     assert b"Preview empty slots" in preview_response.data
     assert b"Empty Slot" in preview_response.data
@@ -417,6 +419,115 @@ def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_
         ("CASE-P", 3, None),
         ("CASE-P", 4, None),
     ]
+
+
+def test_admin_slot_provision_creates_new_case_from_typed_identifier(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    preview_response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={
+            "action": "preview",
+            "provision_mode": "new",
+            "new_case_number": "case-new-provision",
+            "slot_identifiers": "1 2 3",
+        },
+    )
+    assert preview_response.status_code == 200
+    assert b"Slot provisioning preview ready. Review before committing." in preview_response.data
+    assert b'name="provision_mode" value="new"' in preview_response.data
+    assert b"<code>CASE-NEW-PROVISION</code>" in preview_response.data
+    assert b"<code>1</code>" in preview_response.data
+    assert b"<code>2</code>" in preview_response.data
+    assert b"<code>3</code>" in preview_response.data
+
+    conn = db.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM assets;").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM slot_occupancy;").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM asset_events;").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM case_metadata;").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+    commit_response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={
+            "action": "commit",
+            "provision_mode": "new",
+            "case_number": "CASE-NEW-PROVISION",
+            "new_case_number": "CASE-NEW-PROVISION",
+            "slot_identifiers": "1 2 3",
+            "expected_provision_mode": "new",
+            "expected_case_number": "CASE-NEW-PROVISION",
+            "expected_slot_identifiers": "1 2 3",
+            "confirm_slot_provision": "yes",
+        },
+        follow_redirects=True,
+    )
+    assert commit_response.status_code == 200
+    assert b"Created 3 empty slots for case CASE-NEW-PROVISION: 1, 2, 3." in commit_response.data
+
+    verify_conn = db.get_connection()
+    try:
+        rows = verify_conn.execute(
+            """
+            SELECT case_name, slot_position, current_asset_tag
+            FROM slots
+            WHERE case_name = 'CASE-NEW-PROVISION'
+            ORDER BY slot_position ASC;
+            """
+        ).fetchall()
+    finally:
+        verify_conn.close()
+
+    assert [(row["case_name"], row["slot_position"], row["current_asset_tag"]) for row in rows] == [
+        ("CASE-NEW-PROVISION", 1, None),
+        ("CASE-NEW-PROVISION", 2, None),
+        ("CASE-NEW-PROVISION", 3, None),
+    ]
+
+    detail_response = client_with_temp_db.get("/dashboard/cases/CASE-NEW-PROVISION")
+    assert detail_response.status_code == 200
+    assert b"CASE-NEW-PROVISION" in detail_response.data
+    assert b"Total slots:</strong> 3" in detail_response.data
+
+
+def test_admin_slot_provision_new_case_mode_rejects_existing_case(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO slots (id, case_name, slot_position, current_asset_tag)
+            VALUES (3911, 'CASE-EXISTS', 1, NULL);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={
+            "action": "preview",
+            "provision_mode": "new",
+            "new_case_number": "case-exists",
+            "slot_identifiers": "2",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"Case CASE-EXISTS already exists. Select existing-case mode to add slots." in response.data
+    verify_conn = db.get_connection()
+    try:
+        rows = verify_conn.execute(
+            "SELECT slot_position FROM slots WHERE case_name = 'CASE-EXISTS' ORDER BY slot_position ASC;"
+        ).fetchall()
+    finally:
+        verify_conn.close()
+    assert [int(row["slot_position"]) for row in rows] == [1]
 
 
 def test_existing_case_may_remain_blank_case_size(client_with_temp_db) -> None:
@@ -785,7 +896,7 @@ def test_case_correction_page_shows_empty_case_message(client_with_temp_db) -> N
 
     assert response.status_code == 200
     assert "No Cases are available to correct." in html
-    assert "Admin Tools → Provision Slots" in html
+    assert "Admin Tools → Provision Case / Slots" in html
     assert "/admin/slots/provision" in html
     assert 'name="old_case_name"' not in html
     assert 'name="new_case_name"' not in html
