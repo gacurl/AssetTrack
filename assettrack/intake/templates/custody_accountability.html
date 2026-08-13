@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Asset Custody / Accountability{% endblock %}
+{% block page_heading %}Asset Custody / Accountability{% endblock %}
+{% block page_class %} report-page{% endblock %}
+
+{% block content %}
+  <nav class="actions" aria-label="Report navigation">
+    <a class="nav-link" href="{{ url_for('human_report') }}">Back to Reports</a>
+    <a class="action-secondary" href="{{ url_for('custody_accountability_pdf') }}">Generate PDF</a>
+  </nav>
+
+  <div class="card">
+    <h2>Summary</h2>
+    <p class="muted">Generated {{ timestamp_label(report.generated_at) }}. Preview is read-only.</p>
+    <p class="{% if report.checked_out == 0 and report.unresolved == 0 %}flash success{% else %}flash warning{% endif %}">
+      {% if report.checked_out == 0 and report.unresolved == 0 %}
+        ALL ACTIVE ASSETS ACCOUNTED FOR
+      {% else %}
+        OUTSTANDING ASSETS REQUIRE ATTENTION
+      {% endif %}
+    </p>
+    <div class="report-grid">
+      <div class="report-stat">Total active assets<strong>{{ report.active_assets }}</strong></div>
+      <div class="report-stat">Checked in<strong>{{ report.checked_in }}</strong></div>
+      <div class="report-stat">Checked out<strong>{{ report.checked_out }}</strong></div>
+      <div class="report-stat">Unresolved / inconsistent<strong>{{ report.unresolved }}</strong></div>
+    </div>
+    <p class="muted">
+      Holder ID on the ISSUE event is historical evidence. Holder names and organizations shown here are current lookups for that stored ID.
+      Storage evidence is current slot/building-room data; historical case/slot labels are not invented.
+    </p>
+  </div>
+
+  <section class="report-section">
+    <h2>Holder / MA Accountability</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Holder ID</th>
+            <th>Current Name / Organization</th>
+            <th>Unique Assets Issued</th>
+            <th>Issue Transactions</th>
+            <th>Total Custody Time</th>
+            <th>Longest Interval</th>
+            <th>Outstanding</th>
+            <th>Outstanding Asset Tags</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.holders %}
+            <tr>
+              <td><code>{{ holder_identifier_label(row.holder) }}</code></td>
+              <td>{{ holder_summary_label(row.holder) }}</td>
+              <td>{{ row.unique_asset_tags|length }}</td>
+              <td>{{ row.issue_transaction_count }}</td>
+              <td>{{ duration_label(row.total_custody_time) }}</td>
+              <td>{{ duration_label(row.longest_custody_interval) }}</td>
+              <td>{{ row.currently_outstanding_count }}</td>
+              <td>{% if row.outstanding_asset_tags %}<code>{{ row.outstanding_asset_tags|join(', ') }}</code>{% endif %}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8">No custody intervals found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Asset Accountability</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Serial</th>
+            <th>Type</th>
+            <th>Current State</th>
+            <th>Current Holder</th>
+            <th>Current Storage / Location Evidence</th>
+            <th>Issues</th>
+            <th>Total Custody</th>
+            <th>Longest</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for asset in report.assets %}
+            <tr>
+              <td><code>{{ asset.asset_tag }}</code></td>
+              <td>{{ asset.serial_number }}</td>
+              <td>{{ asset.equipment_type }}</td>
+              <td>{{ accountability_state_label(asset.current_accountability_state) }}</td>
+              <td>{% if asset.current_holder.holder_id is not none %}{{ holder_summary_label(asset.current_holder) }}{% endif %}</td>
+              <td>{{ asset.current_storage_location }}</td>
+              <td>{{ asset.issue_count }}</td>
+              <td>{{ duration_label(asset.total_custody_duration) }}</td>
+              <td>{{ duration_label(asset.longest_custody_interval) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9">No active assets found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Outstanding Assets</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Holder</th>
+            <th>Checkout Timestamp</th>
+            <th>Elapsed</th>
+            <th>Available Storage / Location Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in outstanding_rows %}
+            <tr>
+              <td><code>{{ row.asset.asset_tag }}</code></td>
+              <td>{{ holder_summary_label(row.interval.holder) }}</td>
+              <td>{{ timestamp_label(row.interval.issue_timestamp) }}</td>
+              <td>{{ duration_label(row.interval.elapsed) }}</td>
+              <td>{{ row.asset.current_storage_location }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No outstanding assets.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Custody Intervals</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Issue Timestamp</th>
+            <th>Holder ID / Current Label</th>
+            <th>Return Timestamp</th>
+            <th>Elapsed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in interval_rows %}
+            <tr>
+              <td><code>{{ row.asset.asset_tag }}</code></td>
+              <td>{{ timestamp_label(row.interval.issue_timestamp) }}</td>
+              <td><code>{{ holder_identifier_label(row.interval.holder) }}</code> / {{ holder_summary_label(row.interval.holder) }}</td>
+              <td>{{ timestamp_label(row.interval.return_timestamp) }}</td>
+              <td>{{ duration_label(row.interval.elapsed) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No Issue/Return intervals found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Exceptions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Exception</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in exception_rows %}
+            <tr>
+              <td><code>{{ row.asset.asset_tag }}</code></td>
+              <td>{{ row.exception }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2">No inconsistent histories found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
