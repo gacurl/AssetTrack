@@ -80,7 +80,15 @@ from assettrack.holder_import import (
 )
 from assettrack.import_analysis import analyze_asset_import_csv, analyze_asset_import_xlsx
 from assettrack.import_reconciliation import build_asset_import_preview
-from scripts.reconcile_government_inventory import reconcile_inventory
+from assettrack.reconciliation_dispositions import (
+    insert_reconciliation_disposition_event,
+    latest_reconciliation_dispositions,
+)
+from scripts.reconcile_government_inventory import (
+    active_discrepancies,
+    discrepancy_key_from_snapshot,
+    reconcile_inventory,
+)
 from assettrack.natural_sort import natural_identifier_sort_key
 from assettrack.reference_data import (
     create_building,
@@ -10165,7 +10173,7 @@ def admin_db_restore():
 
 
 
-def _inventory_reconciliation_view(result) -> dict[str, object]:
+def _inventory_reconciliation_view(result, conn: sqlite3.Connection) -> dict[str, object]:
     counts = result.summary_counts()
     discrepancy_count = (
         counts["government_only_assets"]
@@ -10177,11 +10185,41 @@ def _inventory_reconciliation_view(result) -> dict[str, object]:
         + counts["retired_disposed_tag_matches"]
         + counts["retired_disposed_assettrack_only"]
     )
+    discrepancies = active_discrepancies(result)
+    latest_by_key = latest_reconciliation_dispositions(conn, tuple(item.key for item in discrepancies))
+    discrepancy_rows = []
+    reviewed_count = 0
+    for discrepancy in discrepancies:
+        latest = latest_by_key.get(discrepancy.key)
+        is_reviewed = bool(latest and latest.is_reviewed)
+        if is_reviewed:
+            reviewed_count += 1
+        discrepancy_rows.append(
+            {
+                "key": discrepancy.key,
+                "category": discrepancy.category,
+                "label": discrepancy.label,
+                "normalized_asset_key": discrepancy.normalized_asset_key,
+                "snapshot": discrepancy.snapshot,
+                "snapshot_json": discrepancy.snapshot_json,
+                "latest_disposition": latest,
+                "is_reviewed": is_reviewed,
+            }
+        )
+    if discrepancy_count == 0:
+        reconciliation_state = "CLEAN RECONCILIATION"
+    elif reviewed_count == discrepancy_count:
+        reconciliation_state = "RECONCILIATION COMPLETE"
+    else:
+        reconciliation_state = "RECONCILIATION REQUIRES ATTENTION"
     return {
         "counts": counts,
         "matched": counts["exact_or_normalized_tag_matches"],
         "discrepancies": discrepancy_count,
         "clean": discrepancy_count == 0,
+        "reconciliation_state": reconciliation_state,
+        "reviewed_discrepancies": reviewed_count,
+        "active_discrepancies": discrepancy_rows,
         "government_only": result.government_only,
         "assettrack_only_active": result.assettrack_only_active,
         "identity_conflicts": result.identity_conflicts,
@@ -10202,6 +10240,66 @@ def inventory_reconciliation():
     status_code = 200
 
     if request.method == "POST":
+        action = (request.form.get("action") or "analyze").strip().lower()
+        if action == "save_disposition":
+            note = str(request.form.get("disposition_note") or "").strip()
+            reviewed = request.form.get("is_reviewed") == "1"
+            submitted_key = str(request.form.get("discrepancy_key") or "").strip()
+            snapshot_json = str(request.form.get("discrepancy_snapshot_json") or "").strip()
+            try:
+                snapshot = json.loads(snapshot_json)
+                if not isinstance(snapshot, dict):
+                    raise ValueError("Disposition evidence is invalid.")
+                expected_key = discrepancy_key_from_snapshot(snapshot)
+                if not submitted_key or submitted_key != expected_key:
+                    raise ValueError("Disposition evidence does not match the discrepancy key.")
+                if not note:
+                    raise ValueError("Enter a disposition note before saving Reviewed / Dispositioned.")
+                user = current_user()
+                if user is None:
+                    return abort(403)
+                conn = get_connection()
+                try:
+                    conn.execute("BEGIN IMMEDIATE;")
+                    insert_reconciliation_disposition_event(
+                        conn,
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                        actor_user_id=int(user["id"]),
+                        actor_username=str(user.get("username") or ""),
+                        discrepancy_key=submitted_key,
+                        discrepancy_category=str(snapshot.get("category") or ""),
+                        normalized_asset_key=str(snapshot.get("normalized_asset_key") or ""),
+                        discrepancy_snapshot_json=snapshot_json,
+                        disposition_note=note,
+                        is_reviewed=reviewed,
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                finally:
+                    conn.close()
+                flash(
+                    "Disposition saved. Re-run the same inventory analysis to see the latest disposition on active discrepancies.",
+                    "success",
+                )
+                return redirect(url_for("inventory_reconciliation"))
+            except (ValueError, json.JSONDecodeError, sqlite3.Error) as exc:
+                error_message = str(exc)
+                status_code = 400
+        elif action != "analyze":
+            error_message = "Unknown inventory reconciliation action."
+            status_code = 400
+        if error_message is not None:
+            return (
+                render_template(
+                    "inventory_reconciliation.html",
+                    result=result,
+                    error_message=error_message,
+                ),
+                status_code,
+            )
+
         upload = request.files.get("inventory_file")
         filename = str((upload.filename if upload is not None else "") or "").strip()
         if upload is None or not filename:
@@ -10221,10 +10319,8 @@ def inventory_reconciliation():
                         upload.save(handle)
                         temp_path = Path(handle.name)
 
-                    resolved_db_path = _resolved_runtime_db_path()
-                    conn = sqlite3.connect(f"file:{resolved_db_path.resolve()}?mode=ro", uri=True)
-                    conn.row_factory = sqlite3.Row
-                    result = _inventory_reconciliation_view(reconcile_inventory(conn, temp_path))
+                    conn = get_connection()
+                    result = _inventory_reconciliation_view(reconcile_inventory(conn, temp_path), conn)
                     result["filename"] = filename
                 except ValueError as exc:
                     error_message = str(exc)

@@ -27,6 +27,22 @@
     .recon-section summary { cursor: pointer; font-weight: 700; }
     .recon-count { color: var(--color-text-muted); font-weight: 400; margin-left: 0.5rem; }
     .recon-list { margin: 0.5rem 0 0 1.25rem; }
+    .recon-disposition {
+      border: 1px solid var(--color-surface);
+      background: var(--color-surface-bg);
+      margin: 0.75rem 0;
+      padding: 0.75rem;
+    }
+    .recon-disposition.reviewed { border-color: var(--color-success); }
+    .recon-disposition h4 { margin: 0 0 0.5rem 0; }
+    .recon-evidence {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+      gap: 0.75rem;
+      margin: 0.5rem 0;
+    }
+    .recon-evidence ul { margin: 0.25rem 0 0 1.25rem; }
+    .recon-disposition textarea { width: 100%; min-height: 5rem; }
   </style>
 {% endblock %}
 
@@ -62,10 +78,16 @@
       <h2>Reconciliation Result</h2>
       <p class="recon-help"><strong>File:</strong> {{ result.filename }}</p>
       {% if result.clean %}
-        <p class="flash success recon-status-pass">&#10003; INVENTORY RECONCILED</p>
+        <p class="flash success recon-status-pass">CLEAN RECONCILIATION</p>
       {% else %}
         <p class="flash error"><strong>Inventory discrepancies found.</strong> Review the counts and details below.</p>
       {% endif %}
+      <p class="{% if result.reconciliation_state == 'RECONCILIATION REQUIRES ATTENTION' %}flash error{% else %}flash success{% endif %}">
+        <strong>{{ result.reconciliation_state }}</strong>
+        {% if result.discrepancies > 0 %}
+          {{ result.reviewed_discrepancies }} of {{ result.discrepancies }} active discrepancies reviewed/accounted for.
+        {% endif %}
+      </p>
 
       <div class="recon-result-metrics" aria-label="Reconciliation totals">
         <div class="recon-result-metric"><strong>{{ result.counts.government_records }}</strong><span>Government assets</span></div>
@@ -85,6 +107,86 @@
         <li>Retired/disposed tag matches: {{ result.counts.retired_disposed_tag_matches }}</li>
         <li>Retired/disposed AssetTrack-only: {{ result.counts.retired_disposed_assettrack_only }}</li>
       </ul>
+
+      <details class="recon-section" {% if result.active_discrepancies %}open{% endif %}>
+        <summary>Disposition Active Discrepancies <span class="recon-count">{{ result.active_discrepancies|length }}</span></summary>
+        {% for discrepancy in result.active_discrepancies %}
+          <div class="recon-disposition{% if discrepancy.is_reviewed %} reviewed{% endif %}">
+            <h4>{{ discrepancy.label }}</h4>
+            <p class="recon-help">
+              Key: <code>{{ discrepancy.key }}</code>
+              {% if discrepancy.normalized_asset_key %} | normalized asset key: <code>{{ discrepancy.normalized_asset_key }}</code>{% endif %}
+            </p>
+            <div class="recon-evidence">
+              <div>
+                <strong>Government evidence</strong>
+                <ul>
+                  {% for row in discrepancy.snapshot.government %}
+                    <li>
+                      <code>{{ row.asset_tag }}</code>
+                      {% if row.serial_number %} serial {{ row.serial_number }}{% endif %}
+                      {% if row.mac_address %} MAC {{ row.mac_address }}{% endif %}
+                      {% if row.row_number %} row {{ row.row_number }}{% endif %}
+                    </li>
+                  {% else %}
+                    <li>None</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div>
+                <strong>AssetTrack evidence</strong>
+                <ul>
+                  {% for row in discrepancy.snapshot.assettrack %}
+                    <li>
+                      <code>{{ row.asset_tag }}</code>
+                      {% if row.serial_number %} serial {{ row.serial_number }}{% endif %}
+                      {% if row.location_type %} ({{ row.location_type }}){% endif %}
+                    </li>
+                  {% else %}
+                    <li>None</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+            {% if discrepancy.snapshot.duplicate_value %}
+              <p class="recon-help">Duplicate value: <code>{{ discrepancy.snapshot.duplicate_value }}</code></p>
+            {% endif %}
+            {% if discrepancy.snapshot.member_tags %}
+              <p class="recon-help">Members: {% for tag in discrepancy.snapshot.member_tags %}<code>{{ tag }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+            {% endif %}
+
+            {% if discrepancy.latest_disposition %}
+              <p class="flash success">
+                Latest disposition: {% if discrepancy.latest_disposition.is_reviewed %}Reviewed / Dispositioned{% else %}Note saved{% endif %}
+                by {{ discrepancy.latest_disposition.actor_username }} at {{ discrepancy.latest_disposition.created_at }}.
+                Green means reviewed/accounted for; it does not mean government and AssetTrack values now agree.
+              </p>
+              <p>{{ discrepancy.latest_disposition.disposition_note }}</p>
+            {% else %}
+              <p class="flash error">No disposition saved for this active discrepancy.</p>
+            {% endif %}
+
+            <form method="post">
+              <input type="hidden" name="action" value="save_disposition" />
+              <input type="hidden" name="discrepancy_key" value="{{ discrepancy.key }}" />
+              <input type="hidden" name="discrepancy_snapshot_json" value="{{ discrepancy.snapshot_json }}" />
+              <div class="row">
+                <label for="disposition_note_{{ loop.index }}"><strong>Disposition note</strong></label><br />
+                <textarea id="disposition_note_{{ loop.index }}" name="disposition_note" required></textarea>
+              </div>
+              <label>
+                <input type="checkbox" name="is_reviewed" value="1" />
+                Reviewed / Dispositioned
+              </label>
+              <div class="row">
+                <button type="submit">Save Disposition</button>
+              </div>
+            </form>
+          </div>
+        {% else %}
+          <p class="recon-help">No active discrepancies.</p>
+        {% endfor %}
+      </details>
 
       {% set sections = [
         ('Government-Only Assets', result.government_only),
