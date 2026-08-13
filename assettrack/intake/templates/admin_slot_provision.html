@@ -48,8 +48,12 @@
           <input id="new_case_number" name="new_case_number" value="{{ new_case_number or '' }}" autocomplete="off" />
         </div>
         <div class="row">
-          <label for="slot_identifiers"><strong>slot_identifiers</strong> (required)</label><br />
-          <textarea id="slot_identifiers" name="slot_identifiers" rows="4" required>{{ slot_identifiers or '' }}</textarea>
+          <label for="slot_identifiers"><strong>slot_identifiers</strong> (existing case)</label><br />
+          <textarea id="slot_identifiers" name="slot_identifiers" rows="4">{{ slot_identifiers or '' }}</textarea>
+        </div>
+        <div class="row">
+          <label for="slot_count"><strong>slot_count</strong> (new case)</label><br />
+          <input id="slot_count" name="slot_count" value="{{ slot_count or '' }}" inputmode="numeric" autocomplete="off" />
         </div>
       </div>
       <button type="submit" name="action" value="preview">Preview empty slots</button>
@@ -83,9 +87,11 @@
         <input type="hidden" name="case_number" value="{{ case_number }}" />
         <input type="hidden" name="new_case_number" value="{{ new_case_number }}" />
         <input type="hidden" name="slot_identifiers" value="{{ slot_identifiers }}" />
+        <input type="hidden" name="slot_count" value="{{ slot_count }}" />
         <input type="hidden" name="expected_provision_mode" value="{{ provision_mode }}" />
         <input type="hidden" name="expected_case_number" value="{{ case_number }}" />
         <input type="hidden" name="expected_slot_identifiers" value="{{ slot_identifiers }}" />
+        <input type="hidden" name="expected_slot_count" value="{{ slot_count }}" />
         <label>
           <input type="checkbox" name="confirm_slot_provision" value="yes" />
           I reviewed this slot provisioning preview.

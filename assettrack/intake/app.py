@@ -8291,6 +8291,22 @@ def _parse_slot_provision_identifiers(raw_value: str, errors: list[str]) -> list
     return parsed
 
 
+def _parse_slot_provision_count(raw_value: str, errors: list[str]) -> list[int]:
+    value = str(raw_value or "").strip()
+    if not value:
+        errors.append("slot_count is required.")
+        return []
+    try:
+        slot_count = int(value)
+    except ValueError:
+        errors.append("slot_count must be an integer.")
+        return []
+    if slot_count <= 0:
+        errors.append("slot_count must be greater than 0.")
+        return []
+    return list(range(1, slot_count + 1))
+
+
 def _validate_slot_provision_request(
     conn: sqlite3.Connection,
     case_number: str,
@@ -8349,6 +8365,7 @@ def admin_slot_provision():
     case_number = ""
     new_case_number = ""
     slot_identifiers = ""
+    slot_count = ""
     provision_mode = "existing"
     proposed_slots: list[int] = []
 
@@ -8363,6 +8380,7 @@ def admin_slot_provision():
             case_number=case_number,
             new_case_number=new_case_number,
             slot_identifiers=slot_identifiers,
+            slot_count=slot_count,
             provision_mode=provision_mode,
             proposed_slots=proposed_slots,
             case_options=case_options,
@@ -8379,18 +8397,26 @@ def admin_slot_provision():
         if provision_mode == "new":
             case_number = new_case_number
         slot_identifiers = (request.form.get("slot_identifiers") or "").strip()
+        slot_count = (request.form.get("slot_count") or "").strip()
 
         if not case_number:
             flash("case_number is required.", "error")
-        if not slot_identifiers:
+        if provision_mode == "existing" and not slot_identifiers:
             flash("slot_identifiers is required.", "error")
-        if not case_number or not slot_identifiers:
+        if provision_mode == "new" and not slot_count:
+            flash("slot_count is required.", "error")
+        missing_existing_slots = provision_mode == "existing" and not slot_identifiers
+        missing_new_count = provision_mode == "new" and not slot_count
+        if not case_number or missing_existing_slots or missing_new_count:
             return render_slot_provision_template()
 
         conn = get_connection()
         try:
             errors: list[str] = []
-            proposed_slots = _parse_slot_provision_identifiers(slot_identifiers, errors)
+            if provision_mode == "new":
+                proposed_slots = _parse_slot_provision_count(slot_count, errors)
+            else:
+                proposed_slots = _parse_slot_provision_identifiers(slot_identifiers, errors)
             if not errors:
                 _validate_slot_provision_request(
                     conn,
@@ -8414,13 +8440,15 @@ def admin_slot_provision():
 
             expected_case_number = (request.form.get("expected_case_number") or "").strip().upper()
             expected_slot_identifiers = (request.form.get("expected_slot_identifiers") or "").strip()
+            expected_slot_count = (request.form.get("expected_slot_count") or "").strip()
             expected_provision_mode = (request.form.get("expected_provision_mode") or "existing").strip().lower()
             if request.form.get("confirm_slot_provision") != "yes":
                 flash("Please confirm you reviewed the slot provisioning preview before committing.", "error")
                 return render_slot_provision_template()
             if (
                 expected_case_number != case_number
-                or expected_slot_identifiers != slot_identifiers
+                or (provision_mode == "existing" and expected_slot_identifiers != slot_identifiers)
+                or (provision_mode == "new" and expected_slot_count != slot_count)
                 or expected_provision_mode != provision_mode
             ):
                 flash("Preview changed. Review the slot provisioning preview again before committing.", "error")

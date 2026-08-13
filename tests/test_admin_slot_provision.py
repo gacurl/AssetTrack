@@ -421,7 +421,7 @@ def test_admin_slot_provision_creates_new_empty_slots_for_case(client_with_temp_
     ]
 
 
-def test_admin_slot_provision_creates_new_case_from_typed_identifier(client_with_temp_db) -> None:
+def test_admin_slot_provision_creates_new_case_slots_from_slot_count(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
 
     preview_response = client_with_temp_db.post(
@@ -430,16 +430,19 @@ def test_admin_slot_provision_creates_new_case_from_typed_identifier(client_with
             "action": "preview",
             "provision_mode": "new",
             "new_case_number": "case-new-provision",
-            "slot_identifiers": "1 2 3",
+            "slot_count": "3",
         },
     )
     assert preview_response.status_code == 200
     assert b"Slot provisioning preview ready. Review before committing." in preview_response.data
     assert b'name="provision_mode" value="new"' in preview_response.data
+    assert b'name="slot_count" value="3"' in preview_response.data
+    assert b'name="expected_slot_count" value="3"' in preview_response.data
     assert b"<code>CASE-NEW-PROVISION</code>" in preview_response.data
     assert b"<code>1</code>" in preview_response.data
     assert b"<code>2</code>" in preview_response.data
     assert b"<code>3</code>" in preview_response.data
+    assert preview_response.data.count(b"Empty Slot") == 3
 
     conn = db.get_connection()
     try:
@@ -458,10 +461,10 @@ def test_admin_slot_provision_creates_new_case_from_typed_identifier(client_with
             "provision_mode": "new",
             "case_number": "CASE-NEW-PROVISION",
             "new_case_number": "CASE-NEW-PROVISION",
-            "slot_identifiers": "1 2 3",
+            "slot_count": "3",
             "expected_provision_mode": "new",
             "expected_case_number": "CASE-NEW-PROVISION",
-            "expected_slot_identifiers": "1 2 3",
+            "expected_slot_count": "3",
             "confirm_slot_provision": "yes",
         },
         follow_redirects=True,
@@ -494,6 +497,68 @@ def test_admin_slot_provision_creates_new_case_from_typed_identifier(client_with
     assert b"Total slots:</strong> 3" in detail_response.data
 
 
+@pytest.mark.parametrize(
+    ("slot_count", "message"),
+    [
+        ("", "slot_count is required."),
+        ("0", "slot_count must be greater than 0."),
+        ("-1", "slot_count must be greater than 0."),
+        ("abc", "slot_count must be an integer."),
+    ],
+)
+def test_admin_slot_provision_new_case_rejects_invalid_slot_count(
+    client_with_temp_db,
+    slot_count: str,
+    message: str,
+) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={
+            "action": "preview",
+            "provision_mode": "new",
+            "new_case_number": "case-bad-count",
+            "slot_count": slot_count,
+        },
+    )
+
+    assert response.status_code == 200
+    assert message.encode() in response.data
+    conn = db.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM slots;").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_admin_slot_provision_new_case_blocks_commit_when_slot_count_changes(client_with_temp_db) -> None:
+    _login_admin(client_with_temp_db)
+
+    response = client_with_temp_db.post(
+        "/admin/slots/provision",
+        data={
+            "action": "commit",
+            "provision_mode": "new",
+            "case_number": "CASE-COUNT-TAMPER",
+            "new_case_number": "CASE-COUNT-TAMPER",
+            "slot_count": "4",
+            "expected_provision_mode": "new",
+            "expected_case_number": "CASE-COUNT-TAMPER",
+            "expected_slot_count": "3",
+            "confirm_slot_provision": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"Preview changed. Review the slot provisioning preview again before committing." in response.data
+    conn = db.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM slots WHERE case_name = 'CASE-COUNT-TAMPER';").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 def test_admin_slot_provision_new_case_mode_rejects_existing_case(client_with_temp_db) -> None:
     _login_admin(client_with_temp_db)
     conn = db.get_connection()
@@ -514,7 +579,7 @@ def test_admin_slot_provision_new_case_mode_rejects_existing_case(client_with_te
             "action": "preview",
             "provision_mode": "new",
             "new_case_number": "case-exists",
-            "slot_identifiers": "2",
+            "slot_count": "2",
         },
     )
 
