@@ -8296,6 +8296,8 @@ def _validate_slot_provision_request(
     case_number: str,
     proposed_slots: list[int],
     errors: list[str],
+    *,
+    require_existing_case: bool = True,
 ) -> None:
     if not proposed_slots:
         return
@@ -8310,7 +8312,11 @@ def _validate_slot_provision_request(
         (case_number,),
     ).fetchone()
     if case_row is None:
-        errors.append("Select an existing case before provisioning empty slots.")
+        if require_existing_case:
+            errors.append("Select an existing case before provisioning empty slots.")
+        return
+    if not require_existing_case:
+        errors.append(f"Case {case_number} already exists. Select existing-case mode to add slots.")
         return
 
     placeholders = ", ".join("?" for _ in proposed_slots)
@@ -8341,7 +8347,9 @@ def admin_slot_provision():
         return guard_result
 
     case_number = ""
+    new_case_number = ""
     slot_identifiers = ""
+    provision_mode = "existing"
     proposed_slots: list[int] = []
 
     def render_slot_provision_template():
@@ -8353,14 +8361,23 @@ def admin_slot_provision():
         return render_template(
             "admin_slot_provision.html",
             case_number=case_number,
+            new_case_number=new_case_number,
             slot_identifiers=slot_identifiers,
+            provision_mode=provision_mode,
             proposed_slots=proposed_slots,
             case_options=case_options,
         )
 
     if request.method == "POST":
         action = (request.form.get("action") or "preview").strip().lower()
+        provision_mode = (request.form.get("provision_mode") or "existing").strip().lower()
+        if provision_mode not in {"existing", "new"}:
+            flash("Unsupported slot provisioning mode.", "error")
+            return render_slot_provision_template()
         case_number = (request.form.get("case_number") or "").strip().upper()
+        new_case_number = (request.form.get("new_case_number") or "").strip().upper()
+        if provision_mode == "new":
+            case_number = new_case_number
         slot_identifiers = (request.form.get("slot_identifiers") or "").strip()
 
         if not case_number:
@@ -8375,7 +8392,13 @@ def admin_slot_provision():
             errors: list[str] = []
             proposed_slots = _parse_slot_provision_identifiers(slot_identifiers, errors)
             if not errors:
-                _validate_slot_provision_request(conn, case_number, proposed_slots, errors)
+                _validate_slot_provision_request(
+                    conn,
+                    case_number,
+                    proposed_slots,
+                    errors,
+                    require_existing_case=provision_mode == "existing",
+                )
             if errors:
                 for error in errors:
                     flash(error, "error")
@@ -8391,10 +8414,15 @@ def admin_slot_provision():
 
             expected_case_number = (request.form.get("expected_case_number") or "").strip().upper()
             expected_slot_identifiers = (request.form.get("expected_slot_identifiers") or "").strip()
+            expected_provision_mode = (request.form.get("expected_provision_mode") or "existing").strip().lower()
             if request.form.get("confirm_slot_provision") != "yes":
                 flash("Please confirm you reviewed the slot provisioning preview before committing.", "error")
                 return render_slot_provision_template()
-            if expected_case_number != case_number or expected_slot_identifiers != slot_identifiers:
+            if (
+                expected_case_number != case_number
+                or expected_slot_identifiers != slot_identifiers
+                or expected_provision_mode != provision_mode
+            ):
                 flash("Preview changed. Review the slot provisioning preview again before committing.", "error")
                 proposed_slots = []
                 return render_slot_provision_template()
@@ -8402,7 +8430,13 @@ def admin_slot_provision():
             try:
                 conn.execute("BEGIN;")
                 commit_errors: list[str] = []
-                _validate_slot_provision_request(conn, case_number, proposed_slots, commit_errors)
+                _validate_slot_provision_request(
+                    conn,
+                    case_number,
+                    proposed_slots,
+                    commit_errors,
+                    require_existing_case=provision_mode == "existing",
+                )
                 if commit_errors:
                     raise ValueError("; ".join(commit_errors))
                 conn.executemany(
