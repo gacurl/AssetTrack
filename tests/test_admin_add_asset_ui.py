@@ -149,6 +149,66 @@ class AdminAddAssetUiTests(unittest.TestCase):
         self.assertNotIn(b"How to use:", response.data)
         self.assertNotIn(b"Add to database", response.data)
 
+    def test_shared_case_options_sort_naturally_without_reformatting_names(self) -> None:
+        slot_options = [
+            {"case_name": "Storage Case"},
+            {"case_name": "CASE-10"},
+            {"case_name": "CASE-2"},
+            {"case_name": "CASE-11"},
+            {"case_name": "CASE-3"},
+            {"case_name": "Network Case"},
+            {"case_name": "CASE-9"},
+            {"case_name": "White Case"},
+            {"case_name": "CASE-1"},
+            {"case_name": "storage-alpha"},
+            {"case_name": "CASE-2"},
+        ]
+
+        options = intake_app._slot_case_options(slot_options)
+
+        self.assertEqual(
+            options,
+            [
+                "CASE-1",
+                "CASE-2",
+                "CASE-3",
+                "CASE-9",
+                "CASE-10",
+                "CASE-11",
+                "Network Case",
+                "Storage Case",
+                "storage-alpha",
+                "White Case",
+            ],
+        )
+
+    def test_add_assets_case_selector_uses_natural_order_and_native_dropdown_hint(self) -> None:
+        self._insert_slot(121, "CASE-10", 1)
+        self._insert_slot(122, "CASE-2", 1)
+        self._insert_slot(123, "CASE-11", 1)
+        self._insert_slot(124, "CASE-1", 1)
+
+        response = self.client.get("/add-assets")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.data.decode("utf-8")
+        self.assertIn(
+            '<select id="case_name" name="case_name" autocomplete="off" data-timeout-lock-target>',
+            html,
+        )
+        self.assertLess(
+            html.index('<option value="CASE-1">CASE-1</option>'),
+            html.index('<option value="CASE-2">CASE-2</option>'),
+        )
+        self.assertLess(
+            html.index('<option value="CASE-2">CASE-2</option>'),
+            html.index('<option value="CASE-10">CASE-10</option>'),
+        )
+        self.assertLess(
+            html.index('<option value="CASE-10">CASE-10</option>'),
+            html.index('<option value="CASE-11">CASE-11</option>'),
+        )
+
     def test_add_assets_empty_scan_submission_shows_validation_message(self) -> None:
         intake_app.SCAN_QUEUE.clear()
 
