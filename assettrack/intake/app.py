@@ -53,6 +53,11 @@ from assettrack.custody_accountability import (
     HolderSummary,
     build_custody_accountability_report,
 )
+from assettrack.custody_analytics import (
+    AnalyticsDataset,
+    SUPPORTED_ANALYTICS,
+    build_analytics_dataset,
+)
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
@@ -9652,6 +9657,118 @@ def _custody_exception_rows(report: CustodyAccountabilityReport) -> list[dict[st
     return sorted(rows, key=lambda row: str(row["asset"].asset_tag).upper())
 
 
+ANALYTICS_CHART_TYPES: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("total_time_checked_out", "holder"): (("bar", "Bar"),),
+    ("checkout_transactions", "holder"): (("bar", "Bar"),),
+    ("number_of_assets", "asset_type"): (("bar", "Bar"),),
+    ("checkout_duration", "duration_range"): (("histogram", "Histogram"),),
+    ("current_accountability", "accountability_state"): (("bar", "Bar"),),
+    ("checkout_transactions", "checkout_date"): (("line", "Line"),),
+}
+
+ANALYTICS_MEASURE_LABELS: dict[str, str] = {
+    "total_time_checked_out": "Total Time Checked Out",
+    "checkout_transactions": "Checkout Transactions",
+    "number_of_assets": "Number of Assets",
+    "checkout_duration": "Checkout Duration",
+    "current_accountability": "Current Accountability",
+}
+
+ANALYTICS_GROUPING_LABELS: dict[str, str] = {
+    "holder": "MA / Holder",
+    "asset_type": "Asset Type",
+    "duration_range": "Duration Range",
+    "accountability_state": "Accountability State",
+    "checkout_date": "Checkout Date",
+}
+
+
+def _analytics_unique_options(values: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    seen: set[str] = set()
+    options: list[tuple[str, str]] = []
+    for value, label in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        options.append((value, label))
+    return options
+
+
+def _analytics_measure_options() -> list[tuple[str, str]]:
+    return _analytics_unique_options(
+        [(selection.measure, ANALYTICS_MEASURE_LABELS[selection.measure]) for selection in SUPPORTED_ANALYTICS]
+    )
+
+
+def _analytics_grouping_options() -> list[tuple[str, str]]:
+    return _analytics_unique_options(
+        [(selection.grouping, ANALYTICS_GROUPING_LABELS[selection.grouping]) for selection in SUPPORTED_ANALYTICS]
+    )
+
+
+def _analytics_supported_pairs() -> list[dict[str, str]]:
+    return [
+        {
+            "measure": selection.measure,
+            "grouping": selection.grouping,
+            "label": selection.label,
+        }
+        for selection in SUPPORTED_ANALYTICS
+    ]
+
+
+def _analytics_selector_mapping() -> list[dict[str, object]]:
+    return [
+        {
+            "measure": selection.measure,
+            "measure_label": ANALYTICS_MEASURE_LABELS[selection.measure],
+            "grouping": selection.grouping,
+            "grouping_label": ANALYTICS_GROUPING_LABELS[selection.grouping],
+            "charts": [
+                {"value": value, "label": label}
+                for value, label in _analytics_chart_types(selection.measure, selection.grouping)
+            ],
+        }
+        for selection in SUPPORTED_ANALYTICS
+    ]
+
+
+def _analytics_chart_types(measure: str, grouping: str) -> tuple[tuple[str, str], ...]:
+    return ANALYTICS_CHART_TYPES.get((measure, grouping), ())
+
+
+def _analytics_value_label(row, dataset: AnalyticsDataset) -> str:
+    if dataset.selection.measure == "total_time_checked_out":
+        return _duration_label(timedelta(seconds=row.value))
+    return str(row.value)
+
+
+def _analytics_chart_rows(dataset: AnalyticsDataset) -> list[dict[str, object]]:
+    max_value = max((row.value for row in dataset.rows), default=0)
+    row_count = len(dataset.rows)
+    chart_rows: list[dict[str, object]] = []
+    for index, row in enumerate(dataset.rows):
+        percent = 0 if max_value <= 0 else max(2, round((row.value / max_value) * 100))
+        x = 40 if row_count <= 1 else 40 + round((index / (row_count - 1)) * 440)
+        chart_rows.append(
+            {
+                "index": index,
+                "key": row.key,
+                "label": row.label,
+                "value": row.value,
+                "value_label": _analytics_value_label(row, dataset),
+                "percent": percent,
+                "x": x,
+                "y": 180 - (0 if max_value <= 0 else round((row.value / max_value) * 140)),
+            }
+        )
+    return chart_rows
+
+
+def _analytics_line_points(chart_rows: list[dict[str, object]]) -> str:
+    return " ".join(f"{row['x']},{row['y']}" for row in chart_rows)
+
+
 def _load_custody_accountability_report(resolved_db_path: Path, generated_at: datetime) -> CustodyAccountabilityReport:
     conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -10735,6 +10852,60 @@ def custody_accountability_pdf():
         download_name=download_name,
         mimetype="application/pdf",
         conditional=False,
+    )
+
+
+@app.get("/report/custody-analytics")
+@require_login
+def custody_analytics_dashboard():
+    default_selection = SUPPORTED_ANALYTICS[0]
+    measure = str(request.args.get("measure") or default_selection.measure).strip()
+    grouping = str(request.args.get("grouping") or default_selection.grouping).strip()
+    chart_types = _analytics_chart_types(measure, grouping)
+    chart_type = str(request.args.get("chart_type") or (chart_types[0][0] if chart_types else "")).strip()
+    should_generate = request.args.get("generate") == "1"
+    error_message: str | None = None
+    status_code = 200
+    dataset: AnalyticsDataset | None = None
+    chart_rows: list[dict[str, object]] = []
+
+    if not chart_types:
+        error_message = "Unsupported Measure and Group By combination."
+        status_code = 400
+    elif chart_type not in {value for value, _label in chart_types}:
+        error_message = "Unsupported chart type for the selected analytics dataset."
+        status_code = 400
+    elif should_generate:
+        generated_at = datetime.now(timezone.utc)
+        try:
+            report = _load_custody_accountability_report(_resolved_runtime_db_path(), generated_at)
+            dataset = build_analytics_dataset(report, measure=measure, grouping=grouping)
+            chart_rows = _analytics_chart_rows(dataset)
+        except ValueError as exc:
+            error_message = str(exc)
+            status_code = 400
+        except sqlite3.Error as exc:
+            error_message = f"Could not read custody analytics data: {exc}"
+            status_code = 500
+
+    return (
+        render_template(
+            "custody_analytics.html",
+            supported_pairs=_analytics_supported_pairs(),
+            selector_mapping=_analytics_selector_mapping(),
+            measure_options=_analytics_measure_options(),
+            grouping_options=_analytics_grouping_options(),
+            chart_types=chart_types,
+            selected_measure=measure,
+            selected_grouping=grouping,
+            selected_chart_type=chart_type,
+            dataset=dataset,
+            chart_rows=chart_rows,
+            line_points=_analytics_line_points(chart_rows),
+            should_generate=should_generate,
+            error_message=error_message,
+        ),
+        status_code,
     )
 
 

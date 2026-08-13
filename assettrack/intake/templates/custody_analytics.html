@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Custody Analytics{% endblock %}
+{% block page_heading %}Custody Analytics{% endblock %}
+{% block page_class %} report-page custody-analytics-page{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .analytics-controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 0.9rem;
+      align-items: end;
+    }
+    .analytics-controls label {
+      display: grid;
+      gap: 0.35rem;
+      font-weight: 700;
+    }
+    .analytics-controls select,
+    .analytics-controls button {
+      min-height: 2.85rem;
+      font-size: 1rem;
+    }
+    .analytics-supported {
+      margin-top: 0.8rem;
+      color: var(--color-text-muted);
+      font-size: 0.92rem;
+    }
+    .analytics-chart {
+      display: grid;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+    .analytics-bar-row {
+      display: grid;
+      grid-template-columns: minmax(8rem, 1.2fr) minmax(12rem, 3fr) minmax(4rem, auto);
+      gap: 0.7rem;
+      align-items: center;
+      break-inside: avoid;
+    }
+    .analytics-bar-track {
+      min-height: 1.8rem;
+      border: 1px solid var(--color-text);
+      background: repeating-linear-gradient(
+        45deg,
+        var(--color-surface-bg),
+        var(--color-surface-bg) 6px,
+        var(--color-surface-soft) 6px,
+        var(--color-surface-soft) 12px
+      );
+    }
+    .analytics-bar-fill {
+      min-height: 1.8rem;
+      background: var(--color-text);
+    }
+    .analytics-line-chart {
+      width: 100%;
+      max-width: 780px;
+      height: auto;
+      border: 1px solid var(--color-surface);
+      background: var(--color-surface-bg);
+    }
+    .analytics-line-labels {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 0.92rem;
+    }
+    @media print {
+      .analytics-controls,
+      .analytics-supported {
+        display: none !important;
+      }
+      .analytics-chart {
+        break-inside: avoid;
+      }
+      .analytics-line-chart {
+        max-width: 100%;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <nav class="actions report-actions" aria-label="Report navigation">
+    <a class="nav-link" href="{{ url_for('human_report') }}">Back to Reports</a>
+    <a class="nav-link" href="{{ url_for('custody_accountability_preview') }}">Asset Custody / Accountability</a>
+  </nav>
+
+  {% if error_message %}
+    <div class="flash error">{{ error_message }}</div>
+  {% endif %}
+
+  <form class="card analytics-controls" method="get" action="{{ url_for('custody_analytics_dashboard') }}">
+    <input type="hidden" name="generate" value="1">
+    <label>
+      Measure
+      <select name="measure" id="analytics-measure">
+        {% for value, label in measure_options %}
+          <option value="{{ value }}"{% if value == selected_measure %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Group By
+      <select name="grouping" id="analytics-grouping">
+        {% for value, label in grouping_options %}
+          <option value="{{ value }}"{% if value == selected_grouping %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Chart Type
+      <select name="chart_type" id="analytics-chart-type">
+        {% for value, label in chart_types %}
+          <option value="{{ value }}"{% if value == selected_chart_type %} selected{% endif %}>{{ label }}</option>
+        {% else %}
+          <option value="">No valid chart</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Generate</button>
+  </form>
+
+  <p class="analytics-supported">
+    Approved selections:
+    {% for pair in supported_pairs %}
+      <code data-measure="{{ pair.measure }}" data-grouping="{{ pair.grouping }}">{{ pair.label }}</code>{% if not loop.last %}; {% endif %}
+    {% endfor %}
+  </p>
+
+  {% if dataset %}
+    <section class="card">
+      <h2>{{ dataset.selection.label }}</h2>
+      {% if chart_rows %}
+        <div class="analytics-chart" role="img" aria-label="{{ dataset.selection.label }} {{ selected_chart_type }} chart">
+          {% if selected_chart_type in ["bar", "histogram"] %}
+            {% for row in chart_rows %}
+              <div class="analytics-bar-row">
+                <strong>{{ row.label }}</strong>
+                <div class="analytics-bar-track" aria-hidden="true">
+                  <div class="analytics-bar-fill" style="width: {{ row.percent }}%;"></div>
+                </div>
+                <span>{{ row.value_label }}</span>
+              </div>
+            {% endfor %}
+          {% elif selected_chart_type == "line" %}
+            <svg class="analytics-line-chart" viewBox="0 0 520 220" role="img" aria-label="{{ dataset.selection.label }}">
+              <line x1="30" y1="180" x2="500" y2="180" stroke="currentColor" stroke-width="1"></line>
+              <line x1="30" y1="30" x2="30" y2="180" stroke="currentColor" stroke-width="1"></line>
+              {% if chart_rows|length == 1 %}
+                <circle cx="{{ chart_rows[0].x }}" cy="{{ chart_rows[0].y }}" r="5" fill="currentColor"></circle>
+              {% else %}
+                <polyline points="{{ line_points }}" fill="none" stroke="currentColor" stroke-width="3"></polyline>
+                {% for row in chart_rows %}
+                  <circle cx="{{ row.x }}" cy="{{ row.y }}" r="4" fill="currentColor"></circle>
+                {% endfor %}
+              {% endif %}
+            </svg>
+            <ul class="analytics-line-labels">
+              {% for row in chart_rows %}
+                <li><strong>{{ row.label }}</strong>: {{ row.value_label }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="muted">No analytics results for this selection.</p>
+      {% endif %}
+    </section>
+  {% elif not should_generate %}
+    <div class="card">
+      <h2>Generate a Custody Analytics View</h2>
+      <p class="muted">Choose one approved Measure and Group By combination, then generate the chart.</p>
+    </div>
+  {% endif %}
+
+  <script id="analytics-selector-map" type="application/json">{{ selector_mapping|tojson }}</script>
+  <script>
+    (() => {
+      const mapNode = document.getElementById("analytics-selector-map");
+      const measureSelect = document.getElementById("analytics-measure");
+      const groupingSelect = document.getElementById("analytics-grouping");
+      const chartSelect = document.getElementById("analytics-chart-type");
+      if (!mapNode || !measureSelect || !groupingSelect || !chartSelect) {
+        return;
+      }
+
+      const selectorMap = JSON.parse(mapNode.textContent || "[]");
+      const option = (value, label) => {
+        const node = document.createElement("option");
+        node.value = value;
+        node.textContent = label;
+        return node;
+      };
+
+      const replaceOptions = (select, options, preferredValue) => {
+        select.replaceChildren();
+        options.forEach((item) => select.appendChild(option(item.value, item.label)));
+        if (options.some((item) => item.value === preferredValue)) {
+          select.value = preferredValue;
+        } else if (options.length > 0) {
+          select.value = options[0].value;
+        }
+      };
+
+      const validGroupsForMeasure = (measure) => {
+        const seen = new Set();
+        const groups = [];
+        selectorMap
+          .filter((item) => item.measure === measure)
+          .forEach((item) => {
+            if (!seen.has(item.grouping)) {
+              seen.add(item.grouping);
+              groups.push({ value: item.grouping, label: item.grouping_label });
+            }
+          });
+        return groups;
+      };
+
+      const chartsForSelection = (measure, grouping) => {
+        const selected = selectorMap.find((item) => item.measure === measure && item.grouping === grouping);
+        return selected ? selected.charts : [];
+      };
+
+      const refreshCharts = () => {
+        replaceOptions(chartSelect, chartsForSelection(measureSelect.value, groupingSelect.value), chartSelect.value);
+      };
+
+      const refreshGroups = () => {
+        replaceOptions(groupingSelect, validGroupsForMeasure(measureSelect.value), groupingSelect.value);
+        refreshCharts();
+      };
+
+      measureSelect.addEventListener("change", refreshGroups);
+      groupingSelect.addEventListener("change", refreshCharts);
+      refreshGroups();
+    })();
+  </script>
+{% endblock %}
