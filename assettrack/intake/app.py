@@ -29,7 +29,7 @@ from datetime import datetime, timezone, date, timedelta
 
 from flask import Flask, abort, flash, jsonify, make_response, redirect, render_template, request, send_file, session, url_for
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -48,6 +48,11 @@ from assettrack.assets import (
 )
 from assettrack.barcodes import barcode_lookup_key
 from assettrack.cases import CASE_SIZE_OPTIONS, save_case_size
+from assettrack.custody_accountability import (
+    CustodyAccountabilityReport,
+    HolderSummary,
+    build_custody_accountability_report,
+)
 from assettrack.dashboard import build_dashboard_data, get_custody_days_threshold
 from assettrack.db import bootstrap_db, get_connection
 from assettrack.drilldowns import (
@@ -9577,6 +9582,253 @@ def admin_network_asset_import_template():
     )
 
 
+def _duration_label(value: timedelta) -> str:
+    total_seconds = max(0, int(value.total_seconds()))
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _seconds = divmod(remainder, 60)
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or not parts:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def _timestamp_label(value: datetime | None) -> str:
+    if value is None:
+        return "OUTSTANDING"
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _holder_summary_label(holder: HolderSummary) -> str:
+    return holder.label or "Unknown holder"
+
+
+def _holder_identifier_label(holder: HolderSummary) -> str:
+    return "No holder ID" if holder.holder_id is None else str(holder.holder_id)
+
+
+def _accountability_state_label(value: object) -> str:
+    labels = {
+        "confirmed_checked_in": "Checked in",
+        "not_checked_in": "Checked out",
+        "unresolved": "Unresolved / inconsistent",
+    }
+    return labels.get(str(value or "").strip(), str(value or "").strip() or "Unknown")
+
+
+def _custody_outstanding_rows(report: CustodyAccountabilityReport) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for asset in report.assets:
+        for interval in asset.intervals:
+            if interval.outstanding:
+                rows.append({"asset": asset, "interval": interval})
+    return sorted(rows, key=lambda row: str(row["asset"].asset_tag).upper())
+
+
+def _custody_interval_rows(report: CustodyAccountabilityReport) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for asset in report.assets:
+        for interval in asset.intervals:
+            rows.append({"asset": asset, "interval": interval})
+    return sorted(
+        rows,
+        key=lambda row: (
+            str(row["asset"].asset_tag).upper(),
+            row["interval"].issue_timestamp,
+            row["interval"].issue_event_id,
+        ),
+    )
+
+
+def _custody_exception_rows(report: CustodyAccountabilityReport) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for asset in report.assets:
+        for exception in asset.exceptions:
+            rows.append({"asset": asset, "exception": exception})
+    return sorted(rows, key=lambda row: str(row["asset"].asset_tag).upper())
+
+
+def _load_custody_accountability_report(resolved_db_path: Path, generated_at: datetime) -> CustodyAccountabilityReport:
+    conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only = ON;")
+    try:
+        return build_custody_accountability_report(conn, generated_at=generated_at)
+    finally:
+        conn.close()
+
+
+def _build_custody_accountability_pdf(report: CustodyAccountabilityReport) -> bytes:
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle(
+        "CustodyPdfBody",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=9.5,
+        splitLongWords=False,
+        wordWrap="LTR",
+    )
+    title = styles["Title"]
+    heading = styles["Heading2"]
+    table_header_style = ParagraphStyle("CustodyPdfHeader", parent=body, fontName="Helvetica-Bold")
+
+    def _text(value: object) -> str:
+        return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _p(value: object, style: ParagraphStyle = body) -> Paragraph:
+        return Paragraph(_text(value), style)
+
+    def _table(headers: list[str], rows: list[list[object]], widths: list[float]) -> Table:
+        data = [[_p(header, table_header_style) for header in headers]]
+        data.extend([[_p(value) for value in row] for row in rows])
+        if len(data) == 1:
+            data.append([_p("None")] + [_p("") for _ in headers[1:]])
+        table = Table(data, colWidths=widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef5")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#b8c4d0")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        return table
+
+    def _page_number(canvas_obj, doc):
+        canvas_obj.saveState()
+        canvas_obj.setFont("Helvetica", 8)
+        canvas_obj.drawRightString(doc.pagesize[0] - 0.45 * inch, 0.28 * inch, f"Page {doc.page}")
+        canvas_obj.restoreState()
+
+    status_text = (
+        "ALL ACTIVE ASSETS ACCOUNTED FOR"
+        if report.checked_out == 0 and report.unresolved == 0
+        else "OUTSTANDING ASSETS REQUIRE ATTENTION"
+    )
+    story: list[object] = [
+        Paragraph("Asset Custody / Accountability", title),
+        Spacer(1, 0.08 * inch),
+        Paragraph(f"Generated: {_timestamp_label(report.generated_at)}", body),
+        Paragraph(
+            "Historical holder evidence is the holder ID stored on the ISSUE event. Names and organizations are current lookups for that ID.",
+            body,
+        ),
+        Paragraph(
+            "Historical storage labels are not invented; current storage comes from current slot/building-room records.",
+            body,
+        ),
+        Spacer(1, 0.1 * inch),
+        Paragraph(status_text, heading),
+        _table(
+            ["Active", "Checked In", "Checked Out", "Unresolved"],
+            [[report.active_assets, report.checked_in, report.checked_out, report.unresolved]],
+            [0.9 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch],
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Holder / MA Accountability", heading),
+        _table(
+            ["Holder ID", "Current Name / Org", "Unique Assets", "Issues", "Total Time", "Longest", "Outstanding", "Outstanding Tags"],
+            [
+                [
+                    _holder_identifier_label(row.holder),
+                    _holder_summary_label(row.holder),
+                    len(row.unique_asset_tags),
+                    row.issue_transaction_count,
+                    _duration_label(row.total_custody_time),
+                    _duration_label(row.longest_custody_interval),
+                    row.currently_outstanding_count,
+                    ", ".join(row.outstanding_asset_tags),
+                ]
+                for row in report.holders
+            ],
+            [0.6 * inch, 1.45 * inch, 0.65 * inch, 0.55 * inch, 0.8 * inch, 0.8 * inch, 0.7 * inch, 2.35 * inch],
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Outstanding Assets", heading),
+        _table(
+            ["Asset", "Holder", "Checkout", "Elapsed", "Storage Evidence"],
+            [
+                [
+                    row["asset"].asset_tag,
+                    _holder_summary_label(row["interval"].holder),
+                    _timestamp_label(row["interval"].issue_timestamp),
+                    _duration_label(row["interval"].elapsed),
+                    row["asset"].current_storage_location,
+                ]
+                for row in _custody_outstanding_rows(report)
+            ],
+            [1.15 * inch, 1.6 * inch, 1.35 * inch, 0.85 * inch, 2.8 * inch],
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Asset Custody / Accountability Details", heading),
+        _table(
+            ["Asset", "Serial", "Type", "State", "Current Holder", "Storage Evidence", "Issues", "Total", "Longest"],
+            [
+                [
+                    asset.asset_tag,
+                    asset.serial_number,
+                    asset.equipment_type,
+                    _accountability_state_label(asset.current_accountability_state),
+                    _holder_summary_label(asset.current_holder) if asset.current_holder.holder_id is not None else "",
+                    asset.current_storage_location,
+                    asset.issue_count,
+                    _duration_label(asset.total_custody_duration),
+                    _duration_label(asset.longest_custody_interval),
+                ]
+                for asset in report.assets
+            ],
+            [0.95 * inch, 0.95 * inch, 0.7 * inch, 1.0 * inch, 1.2 * inch, 1.45 * inch, 0.45 * inch, 0.6 * inch, 0.6 * inch],
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Custody Intervals", heading),
+        _table(
+            ["Asset", "Issue", "Holder ID / Current Label", "Return", "Elapsed"],
+            [
+                [
+                    row["asset"].asset_tag,
+                    _timestamp_label(row["interval"].issue_timestamp),
+                    f"{_holder_identifier_label(row['interval'].holder)} / {_holder_summary_label(row['interval'].holder)}",
+                    _timestamp_label(row["interval"].return_timestamp),
+                    _duration_label(row["interval"].elapsed),
+                ]
+                for row in _custody_interval_rows(report)
+            ],
+            [1.05 * inch, 1.35 * inch, 2.15 * inch, 1.35 * inch, 0.75 * inch],
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Exceptions", heading),
+        _table(
+            ["Asset", "Exception"],
+            [[row["asset"].asset_tag, row["exception"]] for row in _custody_exception_rows(report)],
+            [1.25 * inch, 6.4 * inch],
+        ),
+    ]
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        leftMargin=0.4 * inch,
+        rightMargin=0.4 * inch,
+        topMargin=0.45 * inch,
+        bottomMargin=0.45 * inch,
+        title="AssetTrack Custody Accountability",
+        author="AssetTrack",
+    )
+    doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
+    return buffer.getvalue()
+
+
 def _load_admin_human_report_data(resolved_db_path: Path, *, include_retired_assets: bool = True) -> dict:
     recent_events_limit = 10
     conn = sqlite3.connect(f"file:{resolved_db_path}?mode=ro", uri=True)
@@ -10439,6 +10691,50 @@ def human_report():
         report_error=report_error,
         include_retired_assets=include_retired_assets,
         **report_data,
+    )
+
+
+@app.get("/report/custody-accountability")
+@require_login
+def custody_accountability_preview():
+    generated_at = datetime.now(timezone.utc)
+    try:
+        report = _load_custody_accountability_report(_resolved_runtime_db_path(), generated_at)
+    except sqlite3.Error as exc:
+        return f"Could not read custody accountability report: {exc}", 500
+
+    return render_template(
+        "custody_accountability.html",
+        report=report,
+        generated_at=generated_at,
+        outstanding_rows=_custody_outstanding_rows(report),
+        interval_rows=_custody_interval_rows(report),
+        exception_rows=_custody_exception_rows(report),
+        duration_label=_duration_label,
+        timestamp_label=_timestamp_label,
+        holder_summary_label=_holder_summary_label,
+        holder_identifier_label=_holder_identifier_label,
+        accountability_state_label=_accountability_state_label,
+    )
+
+
+@app.get("/report/custody-accountability/pdf")
+@require_login
+def custody_accountability_pdf():
+    generated_at = datetime.now(timezone.utc)
+    try:
+        report = _load_custody_accountability_report(_resolved_runtime_db_path(), generated_at)
+        pdf_bytes = _build_custody_accountability_pdf(report)
+    except sqlite3.Error as exc:
+        return f"Could not build custody accountability PDF: {exc}", 500
+
+    download_name = f"assettrack-custody-accountability-{generated_at.strftime('%Y%m%d-%H%M%S')}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/pdf",
+        conditional=False,
     )
 
 
