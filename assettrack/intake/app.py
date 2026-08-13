@@ -1332,10 +1332,8 @@ def _list_slot_options(conn, *, empty_only: bool = False) -> list[dict]:
 
 
 def _slot_case_options(slot_options: list[dict]) -> list[str]:
-    return sorted(
-        {str(row["case_name"]) for row in slot_options if str(row["case_name"]).strip()},
-        key=natural_identifier_sort_key,
-    )
+    case_names = {str(row["case_name"]) for row in slot_options if str(row["case_name"]).strip()}
+    return sorted(case_names, key=natural_identifier_sort_key)
 
 def _resolve_slot_selection(
     conn: sqlite3.Connection,

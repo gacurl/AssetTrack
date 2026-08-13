@@ -158,7 +158,7 @@
           <div class="grid">
             <div class="row">
               <label for="case_name"><strong>Case</strong> (optional)</label><br />
-              <select id="case_name" name="case_name" data-timeout-lock-target>
+              <select id="case_name" name="case_name" autocomplete="off" data-timeout-lock-target>
                 <option value="">Unassigned</option>
                 {% for case_name in case_options %}
                   <option value="{{ case_name }}">{{ case_name }}</option>
