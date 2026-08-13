@@ -14,6 +14,7 @@ from assettrack.intake import app as intake_app
 from tests.auth_test_utils import create_test_user, login_session
 
 from scripts.reconcile_government_inventory import (
+    active_discrepancies,
     _open_readonly_database,
     format_reconciliation,
     load_government_records,
@@ -272,6 +273,20 @@ def _app_counts() -> dict[str, int]:
         conn.close()
 
 
+def _disposition_rows() -> list[sqlite3.Row]:
+    conn = db.get_connection()
+    try:
+        return conn.execute(
+            """
+            SELECT *
+            FROM inventory_reconciliation_disposition_events
+            ORDER BY id ASC;
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def _inventory_bytes(rows: list[list[str]], *, xlsx: bool = False) -> bytes:
     frame = pd.DataFrame(rows, columns=["equipment_type", "asset_tag", "clean_asset_tag", "serial_number", "mac_address"])
     if not xlsx:
@@ -287,6 +302,111 @@ def _post_inventory(client, content: bytes, filename: str):
         data={"inventory_file": (io.BytesIO(content), filename)},
         content_type="multipart/form-data",
     )
+
+
+def _active_app_discrepancy(rows: list[list[str]]):
+    content = _inventory_bytes(rows)
+    inventory_path = db.DB_PATH.parent / "disposition-source.csv"
+    inventory_path.write_bytes(content)
+    conn = db.get_connection()
+    try:
+        result = reconcile_inventory(conn, inventory_path)
+        discrepancies = active_discrepancies(result)
+    finally:
+        conn.close()
+        inventory_path.unlink(missing_ok=True)
+    assert discrepancies
+    return discrepancies[0], content
+
+
+def _post_disposition(client, discrepancy, *, note: str, reviewed: bool = True):
+    data = {
+        "action": "save_disposition",
+        "discrepancy_key": discrepancy.key,
+        "discrepancy_snapshot_json": discrepancy.snapshot_json,
+        "disposition_note": note,
+    }
+    if reviewed:
+        data["is_reviewed"] = "1"
+    return client.post("/report/inventory-reconciliation", data=data)
+
+
+def test_inventory_reconciliation_disposition_schema_is_idempotent_and_append_only(tmp_path: Path) -> None:
+    db_path = tmp_path / "assettrack.db"
+    db.initialize_schema(db_path)
+    db.initialize_schema(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        table = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'inventory_reconciliation_disposition_events';
+            """
+        ).fetchone()
+        index = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index'
+              AND name = 'idx_inventory_reconciliation_disposition_events_discrepancy_key';
+            """
+        ).fetchone()
+        triggers = {
+            str(row[0])
+            for row in conn.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'trigger'
+                  AND tbl_name = 'inventory_reconciliation_disposition_events';
+                """
+            ).fetchall()
+        }
+        assert table is not None
+        assert index is not None
+        assert triggers == {
+            "inventory_reconciliation_disposition_events_no_update",
+            "inventory_reconciliation_disposition_events_no_delete",
+        }
+
+        conn.execute(
+            """
+            INSERT INTO inventory_reconciliation_disposition_events (
+                created_at,
+                actor_user_id,
+                actor_username,
+                discrepancy_key,
+                discrepancy_category,
+                normalized_asset_key,
+                discrepancy_snapshot_json,
+                disposition_note,
+                is_reviewed
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                "2026-08-13T00:00:00+00:00",
+                1,
+                "schema-tester",
+                "key-1",
+                "government_only_asset",
+                "GOV1",
+                '{"category":"government_only_asset"}',
+                "Reviewed against source document.",
+                1,
+            ),
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute(
+                "UPDATE inventory_reconciliation_disposition_events SET disposition_note = 'changed' WHERE id = 1;"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute("DELETE FROM inventory_reconciliation_disposition_events WHERE id = 1;")
+    finally:
+        conn.close()
 
 
 def test_inventory_reconciliation_page_access_and_role_boundary(client_with_temp_app_db) -> None:
@@ -320,7 +440,7 @@ def test_inventory_reconciliation_gui_clean_csv_uses_arbitrary_filename_and_no_m
     assert response.status_code == 200
     assert _app_counts() == before
     assert b"operator selected clean source.csv" in response.data
-    assert b"INVENTORY RECONCILED" in response.data
+    assert b"CLEAN RECONCILIATION" in response.data
     assert b"<strong>1</strong><span>Government assets" in response.data
     assert b"<strong>1</strong><span>AssetTrack active assets" in response.data
     assert b"<strong>1</strong><span>Matched" in response.data
@@ -339,7 +459,7 @@ def test_inventory_reconciliation_gui_supports_arbitrary_xlsx_filename(client_wi
 
     assert response.status_code == 200
     assert b"field inventory arbitrary name.xlsx" in response.data
-    assert b"INVENTORY RECONCILED" in response.data
+    assert b"CLEAN RECONCILIATION" in response.data
 
 
 def test_inventory_reconciliation_gui_rejects_unsupported_file(client_with_temp_app_db) -> None:
@@ -399,3 +519,115 @@ def test_inventory_reconciliation_gui_discrepancy_counts_match_engine_and_no_mut
     assert b"GOV-ONLY-GUI" in response.data
     assert b"ONLY-ACTIVE-GUI" in response.data
     assert b"CONFLICT-GUI" in response.data
+    assert b"RECONCILIATION REQUIRES ATTENTION" in response.data
+
+
+def test_inventory_reconciliation_disposition_requires_note(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-note-required", role="operator")
+    _insert_app_asset("MATCH-NOTE", "SER-MATCH")
+    discrepancy, _content = _active_app_discrepancy(
+        [
+            ["Laptop", "MATCH-NOTE", "", "SER-MATCH", "MAC-MATCH"],
+            ["Laptop", "GOV-NOTE-ONLY", "", "SER-GOV", "MAC-GOV"],
+        ]
+    )
+    before = _app_counts()
+
+    response = _post_disposition(client_with_temp_app_db, discrepancy, note="", reviewed=True)
+
+    assert response.status_code == 400
+    assert b"Enter a disposition note before saving Reviewed / Dispositioned." in response.data
+    assert _disposition_rows() == []
+    assert _app_counts() == before
+
+
+def test_inventory_reconciliation_disposition_appends_user_and_reviewed_state(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-disposition", role="operator")
+    _insert_app_asset("MATCH-DISP", "SER-MATCH")
+    discrepancy, _content = _active_app_discrepancy(
+        [
+            ["Laptop", "MATCH-DISP", "", "SER-MATCH", "MAC-MATCH"],
+            ["Laptop", "GOV-DISP-ONLY", "", "SER-GOV", "MAC-GOV"],
+        ]
+    )
+    before = _app_counts()
+
+    first = _post_disposition(client_with_temp_app_db, discrepancy, note="Verified as accounted for.", reviewed=True)
+    second = _post_disposition(client_with_temp_app_db, discrepancy, note="Supervisor confirmed.", reviewed=True)
+
+    assert first.status_code == 302
+    assert second.status_code == 302
+    assert _app_counts() == before
+    rows = _disposition_rows()
+    assert len(rows) == 2
+    assert rows[0]["discrepancy_key"] == discrepancy.key
+    assert rows[0]["discrepancy_category"] == discrepancy.category
+    assert rows[0]["normalized_asset_key"] == discrepancy.normalized_asset_key
+    assert rows[0]["disposition_note"] == "Verified as accounted for."
+    assert int(rows[0]["is_reviewed"]) == 1
+    assert int(rows[0]["actor_user_id"]) > 0
+    assert rows[0]["actor_username"] == "operator-recon-disposition"
+    assert rows[1]["disposition_note"] == "Supervisor confirmed."
+    assert int(rows[1]["id"]) > int(rows[0]["id"])
+
+
+def test_inventory_reconciliation_disposition_persists_explicit_unreviewed_state(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-unreviewed", role="operator")
+    _insert_app_asset("MATCH-UNREVIEWED", "SER-MATCH")
+    discrepancy, _content = _active_app_discrepancy(
+        [
+            ["Laptop", "MATCH-UNREVIEWED", "", "SER-MATCH", "MAC-MATCH"],
+            ["Laptop", "GOV-UNREVIEWED-ONLY", "", "SER-GOV", "MAC-GOV"],
+        ]
+    )
+
+    response = _post_disposition(client_with_temp_app_db, discrepancy, note="Research note only.", reviewed=False)
+
+    assert response.status_code == 302
+    rows = _disposition_rows()
+    assert len(rows) == 1
+    assert rows[0]["disposition_note"] == "Research note only."
+    assert int(rows[0]["is_reviewed"]) == 0
+
+
+def test_inventory_reconciliation_unchanged_discrepancy_reassociates_and_complete_state(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-complete", role="operator")
+    _insert_app_asset("MATCH-COMPLETE", "SER-MATCH")
+    rows = [
+        ["Laptop", "MATCH-COMPLETE", "", "SER-MATCH", "MAC-MATCH"],
+        ["Laptop", "GOV-COMPLETE-ONLY", "", "SER-GOV", "MAC-GOV"],
+    ]
+    discrepancy, content = _active_app_discrepancy(rows)
+    _post_disposition(client_with_temp_app_db, discrepancy, note="Documented as expected.", reviewed=True)
+
+    response = _post_inventory(client_with_temp_app_db, content, "same discrepancy.csv")
+
+    assert response.status_code == 200
+    assert b"RECONCILIATION COMPLETE" in response.data
+    assert b"Documented as expected." in response.data
+    assert b"operator-recon-complete" in response.data
+
+
+def test_inventory_reconciliation_changed_or_new_discrepancy_does_not_inherit_disposition(client_with_temp_app_db) -> None:
+    _login_role(client_with_temp_app_db, username="operator-recon-new-key", role="operator")
+    _insert_app_asset("MATCH-NEWKEY", "SER-MATCH")
+    original_rows = [
+        ["Laptop", "MATCH-NEWKEY", "", "SER-MATCH", "MAC-MATCH"],
+        ["Laptop", "GOV-NEWKEY-ONLY", "", "SER-GOV-1", "MAC-GOV-1"],
+    ]
+    changed_rows = [
+        ["Laptop", "MATCH-NEWKEY", "", "SER-MATCH", "MAC-MATCH"],
+        ["Laptop", "GOV-NEWKEY-ONLY", "", "SER-GOV-2", "MAC-GOV-1"],
+        ["Laptop", "GOV-NEWKEY-ADDED", "", "SER-GOV-ADDED", "MAC-GOV-ADDED"],
+    ]
+    original_discrepancy, _content = _active_app_discrepancy(original_rows)
+    changed_discrepancy, changed_content = _active_app_discrepancy(changed_rows)
+    _post_disposition(client_with_temp_app_db, original_discrepancy, note="Old evidence reviewed.", reviewed=True)
+
+    response = _post_inventory(client_with_temp_app_db, changed_content, "changed discrepancy.csv")
+
+    assert changed_discrepancy.key != original_discrepancy.key
+    assert response.status_code == 200
+    assert b"RECONCILIATION REQUIRES ATTENTION" in response.data
+    assert b"Old evidence reviewed." not in response.data
+    assert b"No disposition saved for this active discrepancy." in response.data

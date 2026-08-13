@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sqlite3
 import sys
 from collections import defaultdict
@@ -81,6 +83,184 @@ class ReconciliationResult:
             "retired_disposed_tag_matches": len(self.terminal_matches),
             "retired_disposed_assettrack_only": len(self.terminal_assettrack_only),
         }
+
+
+@dataclass(frozen=True)
+class ReconciliationDiscrepancy:
+    key: str
+    category: str
+    label: str
+    normalized_asset_key: str
+    snapshot: dict[str, object]
+    snapshot_json: str
+
+
+def _canonical_json(data: dict[str, object]) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def discrepancy_key_from_snapshot(snapshot: dict[str, object]) -> str:
+    return hashlib.sha256(_canonical_json(snapshot).encode("utf-8")).hexdigest()
+
+
+def _canonical_text(value: object) -> str:
+    return _normalize_text(value).upper()
+
+
+def _government_snapshot(record: GovernmentRecord) -> dict[str, object]:
+    return {
+        "asset_tag": _normalize_text(record.asset_tag),
+        "compare_tag": _normalize_text(record.compare_tag),
+        "normalized_asset_key": record.key,
+        "serial_number": _canonical_text(record.serial_number),
+        "mac_address": _canonical_text(record.mac_address),
+        "equipment_type": _canonical_text(record.equipment_type),
+        "row_number": int(record.row_number),
+    }
+
+
+def _assettrack_snapshot(record: AssetTrackRecord) -> dict[str, object]:
+    return {
+        "id": int(record.id),
+        "asset_tag": _normalize_text(record.asset_tag),
+        "normalized_asset_key": record.key,
+        "serial_number": _canonical_text(record.serial_number),
+        "location_type": _canonical_text(record.location_type),
+    }
+
+
+def _member_tags(records: tuple[GovernmentRecord, ...] | tuple[AssetTrackRecord, ...]) -> list[str]:
+    return sorted(_normalize_text(getattr(record, "asset_tag")) for record in records)
+
+
+def _make_discrepancy(
+    *,
+    category: str,
+    label: str,
+    normalized_asset_key: str,
+    government: list[dict[str, object]] | None = None,
+    assettrack: list[dict[str, object]] | None = None,
+    duplicate_value: str = "",
+    member_tags: list[str] | None = None,
+) -> ReconciliationDiscrepancy:
+    snapshot: dict[str, object] = {
+        "category": category,
+        "normalized_asset_key": normalized_asset_key,
+        "government": government or [],
+        "assettrack": assettrack or [],
+        "duplicate_value": duplicate_value,
+        "member_tags": sorted(member_tags or []),
+    }
+    snapshot_json = _canonical_json(snapshot)
+    return ReconciliationDiscrepancy(
+        key=discrepancy_key_from_snapshot(snapshot),
+        category=category,
+        label=label,
+        normalized_asset_key=normalized_asset_key,
+        snapshot=snapshot,
+        snapshot_json=snapshot_json,
+    )
+
+
+def active_discrepancies(result: ReconciliationResult) -> tuple[ReconciliationDiscrepancy, ...]:
+    discrepancies: list[ReconciliationDiscrepancy] = []
+
+    for record in result.government_only:
+        discrepancies.append(
+            _make_discrepancy(
+                category="government_only_asset",
+                label=f"Government-only asset {record.asset_tag}",
+                normalized_asset_key=record.key,
+                government=[_government_snapshot(record)],
+                member_tags=[record.asset_tag],
+            )
+        )
+    for record in result.assettrack_only_active:
+        discrepancies.append(
+            _make_discrepancy(
+                category="assettrack_only_active_asset",
+                label=f"AssetTrack-only active asset {record.asset_tag}",
+                normalized_asset_key=record.key,
+                assettrack=[_assettrack_snapshot(record)],
+                member_tags=[record.asset_tag],
+            )
+        )
+    for government, asset in result.identity_conflicts:
+        discrepancies.append(
+            _make_discrepancy(
+                category="identity_conflict",
+                label=f"Identity conflict {government.asset_tag}",
+                normalized_asset_key=government.key or asset.key,
+                government=[_government_snapshot(government)],
+                assettrack=[_assettrack_snapshot(asset)],
+                member_tags=[government.asset_tag, asset.asset_tag],
+            )
+        )
+    for key, records in result.ambiguous_government_tags:
+        discrepancies.append(
+            _make_discrepancy(
+                category="ambiguous_government_normalized_tag",
+                label=f"Ambiguous government normalized tag {key}",
+                normalized_asset_key=key,
+                government=[_government_snapshot(record) for record in records],
+                member_tags=_member_tags(records),
+            )
+        )
+    for key, records in result.ambiguous_assettrack_tags:
+        discrepancies.append(
+            _make_discrepancy(
+                category="ambiguous_assettrack_normalized_tag",
+                label=f"Ambiguous AssetTrack normalized tag {key}",
+                normalized_asset_key=key,
+                assettrack=[_assettrack_snapshot(record) for record in records],
+                member_tags=_member_tags(records),
+            )
+        )
+    for key, records in result.duplicate_serial_warnings:
+        discrepancies.append(
+            _make_discrepancy(
+                category="duplicate_government_serial",
+                label=f"Duplicate government serial {key}",
+                normalized_asset_key="",
+                government=[_government_snapshot(record) for record in records],
+                duplicate_value=key,
+                member_tags=_member_tags(records),
+            )
+        )
+    for key, records in result.duplicate_mac_warnings:
+        discrepancies.append(
+            _make_discrepancy(
+                category="duplicate_government_mac",
+                label=f"Duplicate government MAC {key}",
+                normalized_asset_key="",
+                government=[_government_snapshot(record) for record in records],
+                duplicate_value=key,
+                member_tags=_member_tags(records),
+            )
+        )
+    for government, asset in result.terminal_matches:
+        discrepancies.append(
+            _make_discrepancy(
+                category="retired_disposed_tag_match",
+                label=f"Retired/disposed tag match {government.asset_tag}",
+                normalized_asset_key=government.key or asset.key,
+                government=[_government_snapshot(government)],
+                assettrack=[_assettrack_snapshot(asset)],
+                member_tags=[government.asset_tag, asset.asset_tag],
+            )
+        )
+    for record in result.terminal_assettrack_only:
+        discrepancies.append(
+            _make_discrepancy(
+                category="retired_disposed_assettrack_only",
+                label=f"Retired/disposed AssetTrack-only asset {record.asset_tag}",
+                normalized_asset_key=record.key,
+                assettrack=[_assettrack_snapshot(record)],
+                member_tags=[record.asset_tag],
+            )
+        )
+
+    return tuple(sorted(discrepancies, key=lambda item: (item.category, item.label, item.key)))
 
 
 def _read_inventory_frame(path: Path) -> pd.DataFrame:

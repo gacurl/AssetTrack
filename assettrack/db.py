@@ -674,6 +674,50 @@ def _create_schema(conn: sqlite3.Connection):
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS inventory_reconciliation_disposition_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            actor_user_id INTEGER NOT NULL,
+            actor_username TEXT NOT NULL CHECK(length(trim(actor_username)) > 0),
+            discrepancy_key TEXT NOT NULL CHECK(length(trim(discrepancy_key)) > 0),
+            discrepancy_category TEXT NOT NULL CHECK(length(trim(discrepancy_category)) > 0),
+            normalized_asset_key TEXT NULL,
+            discrepancy_snapshot_json TEXT NOT NULL CHECK(length(trim(discrepancy_snapshot_json)) > 0),
+            disposition_note TEXT NOT NULL CHECK(length(trim(disposition_note)) > 0),
+            is_reviewed INTEGER NOT NULL CHECK(is_reviewed IN (0, 1))
+        );
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_inventory_reconciliation_disposition_events_discrepancy_key
+            ON inventory_reconciliation_disposition_events(discrepancy_key);
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS inventory_reconciliation_disposition_events_no_update
+        BEFORE UPDATE ON inventory_reconciliation_disposition_events
+        BEGIN
+            SELECT RAISE(ABORT, 'inventory_reconciliation_disposition_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS inventory_reconciliation_disposition_events_no_delete
+        BEFORE DELETE ON inventory_reconciliation_disposition_events
+        BEGIN
+            SELECT RAISE(ABORT, 'inventory_reconciliation_disposition_events is append-only');
+        END;
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS receipt_queue (
             id INTEGER PRIMARY KEY,
             receipt_key TEXT NOT NULL UNIQUE,
