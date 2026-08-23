@@ -117,7 +117,8 @@ def test_issue_scan_stages_before_current_location_but_preview_blocks(client_wit
     assert b"padding: 0.6rem;" in issue_page.data
     assert b"font-size: 1rem;" in issue_page.data
     assert b'id="scan-input"' in issue_page.data
-    assert b"autofocus" not in issue_page.data
+    assert issue_page.data.count(b"autofocus") == 1
+    assert b'name="scan_text"\n              placeholder="Scan or enter asset tag"\n              autofocus' in issue_page.data
     assert b"HQ North" in issue_page.data
     assert b"Warehouse West" not in issue_page.data
     assert b'name="action" value="create_building"' not in issue_page.data
