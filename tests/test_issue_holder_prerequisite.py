@@ -180,6 +180,9 @@ def test_holders_issue_navigation_targets_issue_entry_and_preserves_selected_hol
 
     holders_page = client_with_temp_db.get("/holders")
     assert holders_page.status_code == 200
+    assert holders_page.data.count(b"autofocus") == 1
+    assert b'id="q"\n        name="q"' in holders_page.data
+    assert b'autocomplete="off"\n        autofocus' in holders_page.data
     assert b'href="/issue"' in holders_page.data
     assert b'href="/issue/preview"' not in holders_page.data
 

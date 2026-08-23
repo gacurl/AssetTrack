@@ -196,6 +196,9 @@ def test_dashboard_cases_renders_case_filter_input(app_client) -> None:
     response = client.get("/dashboard/cases")
     assert response.status_code == 200
     assert b'name="q"' in response.data
+    assert response.data.count(b"autofocus") == 1
+    assert b'id="case-filter-query"' in response.data
+    assert b'aria-label="Case name filter"\n          autofocus' in response.data
     assert b"Find case" not in response.data
 
 
