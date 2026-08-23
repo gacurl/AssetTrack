@@ -1,10 +1,13 @@
 # AssetTrack Release Notes
 
-Version: `v0.1.0-mvp`
+Version: `v2.0.0`
 
 ## Release summary
 
-AssetTrack `v0.1.0-mvp` is the first field-ready MVP release of the offline-first asset custody system. This release packages the current workflow, deployment path, and operational guidance into a clean release baseline for evaluation and controlled use.
+AssetTrack `v2.0.0` is the current field-ready release of the offline-first asset custody system. This release packages the current workflow, deployment path, and operational guidance into a clean release baseline for evaluation and controlled use.
+
+The visible application version, this release-notes version, and the Git tag for
+the deployed release must match.
 
 ## Key features
 

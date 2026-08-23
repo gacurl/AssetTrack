@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader
 
+from assettrack import ASSETTRACK_VERSION
 import assettrack.auth as auth
 import assettrack.db as db
 from assettrack.intake import app as intake_app
@@ -436,6 +437,7 @@ def test_dark_theme_cookie_persists_across_authenticated_navigation(client_with_
     assert b'aria-label="Switch to light mode"' in dashboard_response.data
     assert "\u2600\ufe0f".encode("utf-8") in dashboard_response.data
     assert b'aria-label="Switch to light mode"' in dashboard_response.data
+    assert f"AssetTrack v{ASSETTRACK_VERSION}".encode("utf-8") in dashboard_response.data
 
     asset_search_response = client_with_temp_db.get("/assets/search")
     assert asset_search_response.status_code == 200

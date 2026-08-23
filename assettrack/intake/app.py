@@ -35,6 +35,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from assettrack import ASSETTRACK_VERSION
 import assettrack.db as db_module
 from assettrack.assets import (
     APPROVED_NEW_EQUIPMENT_TYPES,
@@ -291,6 +292,7 @@ def inject_auth_user():
         "holder_display_type": _holder_display_type,
         "format_duration_label": _format_duration_label,
         "session_absolute_timeout_seconds": SESSION_ABSOLUTE_TIMEOUT_SECONDS,
+        "assettrack_version": ASSETTRACK_VERSION,
     }
 
 

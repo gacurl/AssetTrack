@@ -23,6 +23,30 @@ git clone https://github.com/gacurl/AssetTrack.git
 cd AssetTrack
 ```
 
+## Release version discipline
+
+Choose the release version before deployment work begins. AssetTrack uses
+Semantic Versioning from the `v2.0.0` baseline:
+
+- PATCH `v2.0.X`: compatible fixes, UI corrections, dependency/security
+  patches, and small operational refinements.
+- MINOR `v2.X.0`: backwards-compatible features and meaningful new operator
+  capability.
+- MAJOR `vX.0.0`: intentionally incompatible workflow, architecture,
+  data-contract, or security-boundary changes. Major releases require explicit
+  approval under AssetTrack governance.
+
+Before deployment:
+
+1. Update `ASSETTRACK_VERSION` in `assettrack/__init__.py`.
+2. Update `docs/release/release-notes.md` to the same `vX.Y.Z` version.
+3. Merge and verify the exact release commit.
+4. Create the matching Git tag `vX.Y.Z` only after verification passes.
+5. Record the deployed version and the exact release commit SHA.
+
+Do not deploy when the visible UI version, release notes version, and intended
+Git tag disagree.
+
 ## Start the system
 
 Before starting a Docker deployment, create a private runtime secret and store it outside git in your local environment file or deployment environment:
