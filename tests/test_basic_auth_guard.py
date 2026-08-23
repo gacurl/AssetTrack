@@ -131,6 +131,7 @@ def test_login_screen_renders_theme_toggle_without_persistence_storage(client_wi
     assert b'aria-label="Switch to dark mode"' in response.data
     assert b"localStorage" not in response.data
     assert b"sessionStorage" not in response.data
+    assert f"AssetTrack v{ASSETTRACK_VERSION}".encode("utf-8") in response.data
 
 
 def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> None:
@@ -160,6 +161,10 @@ def test_demo_route_is_public_and_uses_demo_only_copy(client_with_temp_db) -> No
     assert b"demo" in response.data.lower()
     assert b"sample" in response.data.lower()
     assert b"Safety note:" in response.data
+    assert f"AssetTrack v{ASSETTRACK_VERSION}".encode("utf-8") in response.data
+    assert b".page.demo-page {\n      max-width: 1360px;\n      box-sizing: border-box;" in response.data
+    assert b".demo-hero-line {\n      display: block;\n    }" in response.data
+    assert b"overflow-x: hidden" not in response.data
 
     conn = db.get_connection()
     try:
