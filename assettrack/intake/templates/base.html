@@ -105,6 +105,8 @@
 
       {% block content %}{% endblock %}
 
+      <footer class="page-footer muted">AssetTrack v{{ assettrack_version }}</footer>
+
       {% if timeout_seconds is defined and timeout_seconds is not none and last_seen_age_seconds is not none %}
         <div id="timeout-lock-panel" data-timeout-lock-panel hidden aria-hidden="true">
           <span id="timeout-lock-state">Active</span>
