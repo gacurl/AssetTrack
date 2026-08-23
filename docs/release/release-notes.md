@@ -1,13 +1,19 @@
 # AssetTrack Release Notes
 
-Version: `v2.0.0`
+Version: `v2.0.1`
 
 ## Release summary
 
-AssetTrack `v2.0.0` is the current field-ready release of the offline-first asset custody system. This release packages the current workflow, deployment path, and operational guidance into a clean release baseline for evaluation and controlled use.
+AssetTrack `v2.0.1` is the current field-ready release of the offline-first asset custody system. This release packages the current workflow, deployment path, and operational guidance into a clean release baseline for evaluation and controlled use.
 
 The visible application version, this release-notes version, and the Git tag for
 the deployed release must match.
+
+## v2.0.1 patch note
+
+- Complete visible version display on public/login and demo pages.
+- Fix demo page horizontal overflow by keeping the page container within the
+  viewport and allowing the hero headline to wrap naturally.
 
 ## Key features
 
