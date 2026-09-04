@@ -423,6 +423,28 @@
         {% endif %}
       </div>
 
+      {% if return_destination_rows is defined and return_destination_rows %}
+        <div class="return-flow-section">
+          <h3>Return Placement</h3>
+          <p>Home slot is permanent. Select the current physical return destination before review.</p>
+          {% for row in return_destination_rows %}
+            {% if row.canonical_tag %}
+              <form method="post" action="{{ url_for('return_destination_update') }}" class="workflow-action-row">
+                <input type="hidden" name="asset_tag" value="{{ row.canonical_tag }}" />
+                <label for="return-destination-{{ loop.index0 }}"><code>{{ row.canonical_tag }}</code> home: {{ row.home_slot }}</label>
+                <select id="return-destination-{{ loop.index0 }}" name="destination_slot_id" data-timeout-lock-target>
+                  <option value="">Choose destination</option>
+                  {% for option in row.destination_options %}
+                    <option value="{{ option.slot_id }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="action-secondary" data-timeout-lock-target>Set destination</button>
+              </form>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+
       {% if blocking_issues %}
         <div class="return-flow-section">
           <h3>Before Review</h3>

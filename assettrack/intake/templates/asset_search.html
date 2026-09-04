@@ -211,10 +211,11 @@
               </td>
               <td>
                 {% set has_home_slot = asset.home_case_name and asset.home_slot_position is not none %}
+                {% set has_current_slot = asset.current_case_name and asset.current_slot_position is not none %}
                 {% set is_issued = asset.holder_label %}
                 {% if is_issued %}
                   {% set search_status_tone = "issued" %}
-                {% elif has_home_slot %}
+                {% elif has_current_slot %}
                   {% set search_status_tone = "stored" %}
                 {% elif asset_is_terminal(asset.location_type) %}
                   {% set search_status_tone = "terminal" %}
@@ -224,8 +225,8 @@
                 <div class="status-cue" data-tone="{{ search_status_tone }}">
                   {% if is_issued %}
                     <span class="status-cue-label">Issued to {{ asset.holder_label }}</span>
-                  {% elif has_home_slot %}
-                    <span class="status-cue-label">Stored in {{ asset.home_case_name }}, Slot {{ asset.home_slot_position }}</span>
+                  {% elif has_current_slot %}
+                    <span class="status-cue-label">Stored in {{ asset.current_case_name }}, Slot {{ asset.current_slot_position }}</span>
                   {% elif asset_is_terminal(asset.location_type) %}
                     <span class="status-cue-label">{{ asset_state_label(asset.location_type) }}</span>
                     <span class="status-cue-detail">Retired or not in service.</span>
