@@ -49,6 +49,7 @@ RUN apk add --no-cache --upgrade \
 # Install deps first for better layer caching
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall --yes pip \
     && apk del .build-deps
 
 # Copy the app (includes assettrack/ + templates/)
