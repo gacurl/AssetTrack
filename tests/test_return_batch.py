@@ -104,14 +104,15 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertNotIn(b"Home location: Home slots", preview_render.data)
         self.assertNotIn(b"1 asset queued", preview_render.data)
         self.assertIn(b"Current State", preview_render.data)
-        self.assertIn(b"Review home slots before commit.", preview_render.data)
+        self.assertIn(b"Review home slots and selected return destinations before commit.", preview_render.data)
         self.assertIn(b"Confirm reviewed returns.", preview_render.data)
         self.assertNotIn(b"Commit only after blocked items are resolved.", preview_render.data)
         self.assertIn(b"Return Destination", preview_render.data)
         self.assertIn(b"Location: IN_CUSTODY", preview_render.data)
         self.assertIn(b"Issued to: Return Holder Five", preview_render.data)
-        self.assertIn(b"Home location: A / 1", preview_render.data)
-        self.assertIn(b"Assigned home slot: A / 1", preview_render.data)
+        self.assertIn(b"Home slot: A / 1", preview_render.data)
+        self.assertIn(b"Return destination: A / 1", preview_render.data)
+        self.assertIn(b"Permanent home slot: A / 1", preview_render.data)
         self.assertIn(b'name="confirm_responsibility_ack"', preview_render.data)
         self.assertIn(b"responsibility for this return batch was acknowledged before commit", preview_render.data)
         self.assertNotIn(b"null", preview_render.data)
@@ -257,7 +258,7 @@ class ReturnBatchTests(unittest.TestCase):
         html = preview.data.decode("utf-8")
 
         self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"Review home slots before commit.", preview.data)
+        self.assertIn(b"Review home slots and selected return destinations before commit.", preview.data)
         self.assertIn(b"Commit only after blocked items are resolved.", preview.data)
         self.assertNotIn(b"Confirm reviewed returns.", preview.data)
         self.assertIn("Needs Review", html)
@@ -305,11 +306,8 @@ class ReturnBatchTests(unittest.TestCase):
         preview = self.client.get("/return/preview")
 
         self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"Assigned home slot occupied: OCCUPIED-HOME", preview.data)
-        self.assertIn(
-            b"Assigned home slot CASE-BLOCKED / 4 is occupied by OTHER-ASSET.",
-            preview.data,
-        )
+        self.assertIn(b"Return destination required: OCCUPIED-HOME", preview.data)
+        self.assertIn(b"Choose an empty return destination.", preview.data)
         self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
 
     def test_return_preview_blocks_home_slot_occupied_by_slot_occupancy_when_marker_is_null(self) -> None:
@@ -335,11 +333,8 @@ class ReturnBatchTests(unittest.TestCase):
         preview = self.client.get("/return/preview")
 
         self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"Assigned home slot occupied: RETURN-DRIFT", preview.data)
-        self.assertIn(
-            b"Assigned home slot CASE-DRIFT / 1 is occupied by OCCUPANT-DRIFT.",
-            preview.data,
-        )
+        self.assertIn(b"Return destination required: RETURN-DRIFT", preview.data)
+        self.assertIn(b"Choose an empty return destination.", preview.data)
         self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
         self.assertNotIn(b"Commit Return", preview.data)
 
@@ -371,7 +366,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(blocked.status_code, 400)
         self.assertFalse(blocked.json["ok"])
         self.assertEqual(blocked.json["committed"], 0)
-        self.assertIn("Assigned home slot occupied: RETURN-COMMIT-DRIFT", blocked.json["error"])
+        self.assertIn("Return destination required: RETURN-COMMIT-DRIFT", blocked.json["error"])
 
         returned_asset = self.conn.execute(
             "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
@@ -401,11 +396,8 @@ class ReturnBatchTests(unittest.TestCase):
         preview = self.client.get("/return/preview")
 
         self.assertEqual(preview.status_code, 200)
-        self.assertIn(b"Assigned home slot occupied: RETURN-MARKER-DRIFT", preview.data)
-        self.assertIn(
-            b"Assigned home slot CASE-MARKER-DRIFT / 3 is occupied by MARKER-OCCUPANT.",
-            preview.data,
-        )
+        self.assertIn(b"Return destination required: RETURN-MARKER-DRIFT", preview.data)
+        self.assertIn(b"Choose an empty return destination.", preview.data)
         self.assertIn(b"Conflicts must be resolved before committing this batch.", preview.data)
         self.assertNotIn(b"Commit Return", preview.data)
 
@@ -428,7 +420,7 @@ class ReturnBatchTests(unittest.TestCase):
         self.assertEqual(blocked.status_code, 400)
         self.assertFalse(blocked.json["ok"])
         self.assertEqual(blocked.json["committed"], 0)
-        self.assertIn("Assigned home slot occupied: RETURN-COMMIT-MARKER-DRIFT", blocked.json["error"])
+        self.assertIn("Return destination required: RETURN-COMMIT-MARKER-DRIFT", blocked.json["error"])
 
         returned_asset = self.conn.execute(
             "SELECT location_type, current_holder_id FROM assets WHERE asset_tag = ?;",
@@ -804,6 +796,97 @@ class ReturnBatchTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue((response.headers.get("Location") or "").endswith("/return#queue-section"))
+
+    def test_return_to_alternate_empty_slot_preserves_home_and_receipt_evidence(self) -> None:
+        self._insert_holder(19, "Temporary Return Holder", email="temporary-return@example.org")
+        self._insert_slot(110, "HOME-CASE", 1, "HOME-OCCUPANT")
+        self._insert_slot(111, "TEMP-CASE", 2, None)
+        self._insert_asset("TEMP-RETURN", location_type="IN_CUSTODY", holder_id=19, home_slot_id=110)
+        self.conn.execute(
+            "UPDATE assets SET case_number = ?, slot_number = ? WHERE asset_tag = ?;",
+            ("HOME-CASE", "1", "TEMP-RETURN"),
+        )
+        self.conn.commit()
+        intake_app.SCAN_QUEUE.append(intake_app.Scan.now(asset_tag="TEMP-RETURN", equipment_type="laptop"))
+
+        queue = self.client.get("/return")
+        self.assertIn(b"Return Placement", queue.data)
+        self.assertIn(b"HOME-CASE / 1", queue.data)
+        self.assertIn(b"TEMP-CASE / 2", queue.data)
+
+        select = self.client.post(
+            "/return/destination",
+            data={"asset_tag": "TEMP-RETURN", "destination_slot_id": "111"},
+            follow_redirects=True,
+        )
+        self.assertEqual(select.status_code, 200)
+        self.assertIn(b"Return destination set to TEMP-CASE / 2.", select.data)
+
+        preview = self.client.get("/return/preview")
+        self.assertIn(b"Home slot: HOME-CASE / 1", preview.data)
+        self.assertIn(b"Return destination: TEMP-CASE / 2", preview.data)
+        self.assertIn(b"Permanent home slot: HOME-CASE / 1", preview.data)
+
+        committed = self.client.post(
+            "/return/commit",
+            data={"confirm_reviewed": "on", "confirm_responsibility_ack": "on"},
+            follow_redirects=False,
+        )
+        self.assertEqual(committed.status_code, 302)
+        self.assertEqual(len(intake_app.SCAN_QUEUE), 0)
+
+        asset = self.conn.execute(
+            "SELECT location_type, current_holder_id, home_slot_id, case_number, slot_number FROM assets WHERE asset_tag = ?;",
+            ("TEMP-RETURN",),
+        ).fetchone()
+        self.assertEqual(asset["location_type"], "STORAGE")
+        self.assertIsNone(asset["current_holder_id"])
+        self.assertEqual(int(asset["home_slot_id"]), 110)
+        self.assertEqual(asset["case_number"], "HOME-CASE")
+        self.assertEqual(asset["slot_number"], "1")
+        occupancy = self.conn.execute(
+            "SELECT slot_id FROM slot_occupancy so JOIN assets a ON a.id = so.asset_id WHERE a.asset_tag = ?;",
+            ("TEMP-RETURN",),
+        ).fetchone()
+        self.assertEqual(int(occupancy["slot_id"]), 111)
+        self.assertEqual(
+            self.conn.execute("SELECT current_asset_tag FROM slots WHERE id = 111;").fetchone()["current_asset_tag"],
+            "TEMP-RETURN",
+        )
+        event = self.conn.execute(
+            "SELECT payload FROM asset_events WHERE asset_tag = ? AND event_type = 'RETURN' ORDER BY id DESC LIMIT 1;",
+            ("TEMP-RETURN",),
+        ).fetchone()
+        payload = json.loads(str(event["payload"]))
+        self.assertEqual(int(payload["home_slot_id"]), 110)
+        self.assertEqual(int(payload["return_slot_id"]), 111)
+        receipt = self.conn.execute("SELECT snapshot_json FROM receipt_queue ORDER BY id DESC LIMIT 1;").fetchone()
+        snapshot = json.loads(str(receipt["snapshot_json"]))
+        self.assertEqual(int(snapshot["assets"][0]["home_slot"]["slot_id"]), 110)
+        self.assertEqual(int(snapshot["assets"][0]["return_slot"]["slot_id"]), 111)
+
+    def test_return_destination_accepts_canonical_tag_for_normalized_queued_scan(self) -> None:
+        self._insert_slot(120, "HOME-SCAN", 1, "HOME-OCCUPANT")
+        self._insert_slot(121, "TEMP-SCAN", 2, None)
+        self._insert_asset("SCAN-RETURN", location_type="IN_CUSTODY", holder_id=5, home_slot_id=120)
+
+        queued = self.client.post(
+            "/",
+            data={"scan_text": "scan-return", "return_to": "/return"},
+            follow_redirects=True,
+        )
+        self.assertEqual(queued.status_code, 200)
+        self.assertEqual([scan.asset_tag for scan in intake_app.SCAN_QUEUE], ["SCANRETURN"])
+
+        selected = self.client.post(
+            "/return/destination",
+            data={"asset_tag": "SCAN-RETURN", "destination_slot_id": "121"},
+            follow_redirects=True,
+        )
+
+        self.assertIn(b"Return destination set to TEMP-SCAN / 2.", selected.data)
+        preview = self.client.get("/return/preview")
+        self.assertIn(b"Return destination: TEMP-SCAN / 2", preview.data)
 
     def test_return_scan_validation_error_redirects_back_to_queue_anchor(self) -> None:
         response = self.client.post(

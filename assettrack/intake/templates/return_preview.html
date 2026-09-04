@@ -26,7 +26,7 @@
 
   <div class="card workflow-card review-signal {% if blocking_issues %}blocked{% endif %}">
     <h2>{% if blocking_issues %}Needs Review{% else %}Ready to Return{% endif %}</h2>
-    <p class="card-intro">Review home slots before commit.</p>
+    <p class="card-intro">Review home slots and selected return destinations before commit.</p>
   </div>
 
   {% if blocking_issues %}
@@ -65,7 +65,7 @@
                   <strong>Current State</strong><br />
                   Location: {{ row.before_location_type }}<br />
                   Issued to: {{ before_holder_display }}<br />
-                  Home location: {{ destination_slot_display }}
+                  Home slot: {{ row.home_slot if row.home_slot != "unknown" else "Not available" }}
                 </div>
               </td>
 
@@ -74,7 +74,8 @@
                   <strong>Return Destination</strong><br />
                   Location: {{ row.after_location_type }}<br />
                   Issued to: Not assigned<br />
-                  Assigned home slot: {{ destination_slot_display }}
+                  Return destination: {{ destination_slot_display }}<br />
+                  Permanent home slot: {{ row.home_slot if row.home_slot != "unknown" else "Not available" }}
                 </div>
               </td>
 

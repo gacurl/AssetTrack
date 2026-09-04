@@ -1727,6 +1727,7 @@ def _lookup_asset_for_verification(
     for raw_row in rows:
         asset = dict(raw_row)
         home_slot = _asset_home_slot(conn, asset.get("home_slot_id"))
+        current_slot = _asset_current_slot(conn, int(asset["id"]), str(asset.get("asset_tag") or ""))
         holder_row = None
         if asset.get("holder_record_id") is not None:
             holder_row = {
@@ -1762,6 +1763,8 @@ def _lookup_asset_for_verification(
                 "holder_label": holder_label,
                 "home_case_name": "" if home_slot is None else str(home_slot.get("case_name") or ""),
                 "home_slot_position": None if home_slot is None else int(home_slot["slot_position"]),
+                "current_case_name": "" if current_slot is None else str(current_slot.get("case_name") or ""),
+                "current_slot_position": None if current_slot is None else int(current_slot["slot_position"]),
                 "movement_proof": movement_proof,
                 "status_cue": _asset_search_status_cue(
                     location_type=location_type,
@@ -4526,13 +4529,30 @@ def _build_issue_preview_state(asset_tags: list[str], selected_holder: Optional[
     }
 
 
-def _build_return_preview_state(asset_tags: list[str]) -> dict:
+RETURN_DESTINATIONS_SESSION_KEY = "return_destination_slot_ids"
+
+
+def _return_destination_slot_ids() -> dict[str, int]:
+    raw = session.get(RETURN_DESTINATIONS_SESSION_KEY, {})
+    if not isinstance(raw, dict):
+        return {}
+    destinations: dict[str, int] = {}
+    for asset_tag, slot_id in raw.items():
+        try:
+            destinations[str(asset_tag).strip().upper()] = int(slot_id)
+        except (TypeError, ValueError):
+            continue
+    return destinations
+
+
+def _build_return_preview_state(asset_tags: list[str], destination_slot_ids: Optional[dict[str, int]] = None) -> dict:
     assets: list[dict] = []
     unknown_tags: list[str] = []
     not_in_custody: list[str] = []
     retired_assets: list[str] = []
     no_home_slot: list[str] = []
-    occupied_home_slot: list[str] = []
+    missing_destination: list[str] = []
+    occupied_destination: list[str] = []
     blocking_issues: list[str] = []
 
     if not asset_tags:
@@ -4551,6 +4571,9 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
             blocking_issues.append(f"Assets table missing columns: {', '.join(missing_columns)}")
             return {"assets": assets, "ready_count": 0, "blocking_issues": blocking_issues}
 
+        selections = destination_slot_ids or {}
+        empty_slot_options = _list_slot_options(conn, empty_only=True)
+        selected_destinations: dict[int, str] = {}
         for scan_tag in asset_tags:
             row: dict = {
                 "scanned_tag": scan_tag,
@@ -4559,6 +4582,7 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 "after_location_type": "STORAGE",
                 "before_holder": "null",
                 "after_holder": "null",
+                "home_slot": "unknown",
                 "destination_slot": "unknown",
                 "destination_case_name": None,
                 "before_slot_occupancy": "empty",
@@ -4607,14 +4631,45 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
                 assets.append(row)
                 continue
 
-            row["destination_case_name"] = str(slot["case_name"])
-            row["destination_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
-            if slot["occupied"]:
-                row["asset_issues"].append(
-                    f"Assigned home slot {row['destination_slot']} is occupied by {slot['occupied_by']}."
-                )
-                occupied_home_slot.append(canon_tag)
+            row["home_slot"] = f"{slot['case_name']} / {slot['slot_position']}"
+            selected_slot_id = selections.get(canon_tag.upper())
+            if selected_slot_id is None and not slot["occupied"]:
+                selected_slot_id = int(slot["id"])
+            row["destination_options"] = [
+                {
+                    "slot_id": int(option["id"]),
+                    "label": f"{option['case_name']} / {option['slot_position']}",
+                    "selected": int(option["id"]) == selected_slot_id,
+                }
+                for option in empty_slot_options
+            ]
+            if selected_slot_id is None:
+                row["asset_issues"].append("Choose an empty return destination.")
+                missing_destination.append(canon_tag)
                 row["before_slot_occupancy"] = "occupied"
+                assets.append(row)
+                continue
+
+            destination = _slot_occupancy_status(conn, selected_slot_id)
+            if destination is None:
+                row["asset_issues"].append("Selected return destination no longer exists.")
+                missing_destination.append(canon_tag)
+                assets.append(row)
+                continue
+            row["destination_case_name"] = str(destination["case_name"])
+            row["destination_slot"] = f"{destination['case_name']} / {destination['slot_position']}"
+            if destination["occupied"]:
+                row["asset_issues"].append(
+                    f"Selected return destination {row['destination_slot']} is occupied by {destination['occupied_by']}."
+                )
+                occupied_destination.append(canon_tag)
+                row["before_slot_occupancy"] = "occupied"
+            prior_tag = selected_destinations.get(int(destination["id"]))
+            if prior_tag and prior_tag != canon_tag:
+                row["asset_issues"].append(f"Selected return destination is also selected for {prior_tag}.")
+                occupied_destination.append(canon_tag)
+            else:
+                selected_destinations[int(destination["id"])] = canon_tag
 
             row["ready"] = not row["asset_issues"]
             assets.append(row)
@@ -4629,8 +4684,10 @@ def _build_return_preview_state(asset_tags: list[str]) -> dict:
         blocking_issues.append(f"Retired/disposed: {', '.join(retired_assets)}")
     if no_home_slot:
         blocking_issues.append(f"No assigned home slot: {', '.join(no_home_slot)}")
-    if occupied_home_slot:
-        blocking_issues.append(f"Assigned home slot occupied: {', '.join(occupied_home_slot)}")
+    if missing_destination:
+        blocking_issues.append(f"Return destination required: {', '.join(missing_destination)}")
+    if occupied_destination:
+        blocking_issues.append(f"Selected return destination occupied: {', '.join(occupied_destination)}")
 
     ready_count = sum(1 for row in assets if row["ready"])
     return {"assets": assets, "ready_count": ready_count, "blocking_issues": blocking_issues}
@@ -4966,6 +5023,7 @@ def _build_receipt_snapshot_from_stored_facts(
         asset_tag = str(event_row["asset_tag"] or "").strip()
         asset_row = _receipt_asset_row_snapshot(conn, asset_tag)
         home_slot_id = payload.get("home_slot_id")
+        return_slot_id = payload.get("return_slot_id", home_slot_id)
         building_room = "" if asset_row is None else str(asset_row["building_room"] or "")
         asset_snapshots.append(
             {
@@ -4987,6 +5045,10 @@ def _build_receipt_snapshot_from_stored_facts(
                 "home_slot": _receipt_slot_snapshot(
                     conn,
                     int(home_slot_id) if home_slot_id is not None else None,
+                ),
+                "return_slot": _receipt_slot_snapshot(
+                    conn,
+                    int(return_slot_id) if return_slot_id is not None else None,
                 ),
             }
         )
@@ -5241,6 +5303,7 @@ def _return_batch(
     asset_tags: list[str],
     responsibility_ack: dict[str, object],
     *,
+    destination_slot_ids: Optional[dict[str, int]] = None,
     commit_operator_user_id: int,
 ) -> tuple[int, int]:
     if not asset_tags:
@@ -5262,8 +5325,11 @@ def _return_batch(
             not_in_custody: list[str] = []
             retired_assets: list[str] = []
             no_home_slot: list[str] = []
-            occupied_home_slot: list[str] = []
+            missing_destination: list[str] = []
+            occupied_destination: list[str] = []
             validated_rows: list[dict] = []
+            selections = destination_slot_ids or {}
+            selected_destinations: dict[int, str] = {}
 
             for scan_tag in asset_tags:
                 asset_row = _canon_asset_row_for_scan_tag(conn, scan_tag)
@@ -5284,24 +5350,39 @@ def _return_batch(
                     no_home_slot.append(canon_tag)
                     continue
 
-                slot = _slot_occupancy_status(conn, home_slot_id)
-                if not slot:
+                home_slot = _slot_occupancy_status(conn, home_slot_id)
+                if not home_slot:
                     no_home_slot.append(canon_tag)
                     continue
-
-                if slot["occupied"]:
-                    occupied_home_slot.append(canon_tag)
+                destination_slot_id = selections.get(canon_tag.upper())
+                if destination_slot_id is None and not home_slot["occupied"]:
+                    destination_slot_id = int(home_slot["id"])
+                if destination_slot_id is None:
+                    missing_destination.append(canon_tag)
+                    continue
+                destination = _slot_occupancy_status(conn, destination_slot_id)
+                if destination is None:
+                    missing_destination.append(canon_tag)
+                    continue
+                if destination["occupied"]:
+                    occupied_destination.append(canon_tag)
+                    continue
+                if int(destination["id"]) in selected_destinations:
+                    occupied_destination.append(canon_tag)
+                    continue
+                selected_destinations[int(destination["id"])] = canon_tag
 
                 validated_rows.append(
                     {
                         "asset_id": int(asset_row["id"]),
                         "asset_tag": canon_tag,
-                        "home_slot_id": int(slot["id"]),
+                        "home_slot_id": int(home_slot["id"]),
+                        "destination_slot_id": int(destination["id"]),
                         "current_holder_id": None if asset_row["current_holder_id"] is None else int(asset_row["current_holder_id"]),
                     }
                 )
 
-            if unknown_tags or not_in_custody or retired_assets or no_home_slot or occupied_home_slot:
+            if unknown_tags or not_in_custody or retired_assets or no_home_slot or missing_destination or occupied_destination:
                 parts: list[str] = []
                 if unknown_tags:
                     parts.append(f"Unknown asset_tag(s): {', '.join(unknown_tags)}")
@@ -5311,8 +5392,10 @@ def _return_batch(
                     parts.append(f"Retired/disposed: {', '.join(retired_assets)}")
                 if no_home_slot:
                     parts.append(f"No assigned home slot: {', '.join(no_home_slot)}")
-                if occupied_home_slot:
-                    parts.append(f"Assigned home slot occupied: {', '.join(occupied_home_slot)}")
+                if missing_destination:
+                    parts.append(f"Return destination required: {', '.join(missing_destination)}")
+                if occupied_destination:
+                    parts.append(f"Selected return destination occupied: {', '.join(occupied_destination)}")
                 raise ValueError("; ".join(parts))
 
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -5322,7 +5405,12 @@ def _return_batch(
                 asset_id = row["asset_id"]
                 canon_tag = row["asset_tag"]
                 home_slot_id = row["home_slot_id"]
+                destination_slot_id = row["destination_slot_id"]
                 current_holder_id = row["current_holder_id"]
+
+                destination = _slot_occupancy_status(conn, destination_slot_id)
+                if destination is None or destination["occupied"]:
+                    raise ValueError(f"Selected return destination became occupied for {canon_tag}")
 
                 conn.execute(
                     """
@@ -5339,7 +5427,7 @@ def _return_batch(
                     INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at)
                     VALUES (?, ?, ?);
                     """,
-                    (home_slot_id, asset_id, now_iso),
+                    (destination_slot_id, asset_id, now_iso),
                 )
 
                 cursor = conn.execute(
@@ -5348,10 +5436,10 @@ def _return_batch(
                     SET current_asset_tag = ?
                     WHERE id = ? AND current_asset_tag IS NULL;
                     """,
-                    (canon_tag, home_slot_id),
+                    (canon_tag, destination_slot_id),
                 )
                 if cursor.rowcount != 1:
-                    raise ValueError(f"Home slot became occupied for {canon_tag}")
+                    raise ValueError(f"Selected return destination became occupied for {canon_tag}")
 
                 event_cursor = conn.execute(
                     """
@@ -5377,6 +5465,7 @@ def _return_batch(
                                 "from_location_type": "IN_CUSTODY",
                                 "to_location_type": "STORAGE",
                                 "home_slot_id": home_slot_id,
+                                "return_slot_id": destination_slot_id,
                                 "responsibility_ack": {
                                     **responsibility_ack,
                                     "ack_holder_id": current_holder_id,
@@ -6581,7 +6670,7 @@ def return_queue():
         return redirect(url_for("intake"))
 
     asset_tags = _queue_asset_tags()
-    state = _build_return_preview_state(asset_tags)
+    state = _build_return_preview_state(asset_tags, _return_destination_slot_ids())
     recent_return_cases_raw = session.pop("recent_return_cases", [])
     recent_return_cases = [str(case_name) for case_name in recent_return_cases_raw if str(case_name or "").strip()]
 
@@ -6603,12 +6692,46 @@ def return_queue():
         queued_count=len(asset_tags),
         ready_count=state["ready_count"],
         blocking_issues=state["blocking_issues"],
+        return_destination_rows=state["assets"],
         recent_return_cases=recent_return_cases,
         queue=SCAN_QUEUE,
         queue_len=len(SCAN_QUEUE),
         last_seen_age_seconds=seconds_since_last_seen(),
         timeout_seconds=INTAKE_TIMEOUT_SECONDS,
     )
+
+
+@app.post("/return/destination")
+@require_login
+def return_destination_update():
+    authed = enforce_inactivity_timeout()
+    if auth_enabled() and not authed:
+        flash("Locked. Re-enter access code.", "error")
+        return redirect(url_for("intake"))
+    asset_tag = str(request.form.get("asset_tag") or "").strip()
+    try:
+        destination_slot_id = int(str(request.form.get("destination_slot_id") or "").strip())
+    except ValueError:
+        flash("Select a valid return destination.", "error")
+        return redirect(url_for("return_queue"))
+
+    conn = get_connection()
+    try:
+        asset = _find_asset_for_scan_tag(conn, asset_tag)
+        destination = _slot_occupancy_status(conn, destination_slot_id)
+    finally:
+        conn.close()
+    if asset is None or not _queue_contains_asset_tag(str(asset["asset_tag"])):
+        flash("Asset is no longer in the Return queue.", "error")
+    elif destination is None or destination["occupied"]:
+        flash("Selected return destination is no longer empty.", "error")
+    else:
+        destinations = _return_destination_slot_ids()
+        destinations[str(asset["asset_tag"]).strip().upper()] = destination_slot_id
+        session[RETURN_DESTINATIONS_SESSION_KEY] = destinations
+        touch_session()
+        flash(f"Return destination set to {destination['case_name']} / {destination['slot_position']}.", "success")
+    return redirect(url_for("return_queue") + "#queue-section")
 
 
 @app.get("/return/preview")
@@ -6622,7 +6745,7 @@ def return_preview():
         return redirect(url_for("intake"))
 
     asset_tags = _queue_asset_tags()
-    state = _build_return_preview_state(asset_tags)
+    state = _build_return_preview_state(asset_tags, _return_destination_slot_ids())
 
     return render_template(
         "return_preview.html",
@@ -6671,7 +6794,8 @@ def return_commit():
         return redirect(url_for("return_preview"))
 
     asset_tags = _queue_asset_tags()
-    state = _build_return_preview_state(asset_tags)
+    destination_slot_ids = _return_destination_slot_ids()
+    state = _build_return_preview_state(asset_tags, destination_slot_ids)
     if state["blocking_issues"]:
         message = "; ".join(state["blocking_issues"])
         if wants_json():
@@ -6697,6 +6821,7 @@ def return_commit():
         committed_count, receipt_id = _return_batch(
             asset_tags,
             responsibility_ack,
+            destination_slot_ids=destination_slot_ids,
             commit_operator_user_id=int(user["id"]),
         )
     except ValueError as e:
@@ -6706,6 +6831,7 @@ def return_commit():
         return redirect(url_for("return_preview"))
 
     SCAN_QUEUE.clear()
+    session.pop(RETURN_DESTINATIONS_SESSION_KEY, None)
     session.pop(CASE_DETAIL_QUEUE_WORKFLOW_SESSION_KEY, None)
     touch_session()
     returned_cases: list[str] = []

@@ -393,6 +393,26 @@ class AssetSearchUiTests(unittest.TestCase):
         self.assertIn(b"Stored in CASE-12, Slot 4", response.data)
         self.assertNotIn(b"unassigned slot", response.data.lower())
 
+    def test_search_uses_current_occupancy_for_status_and_home_for_assigned_location(self) -> None:
+        self._insert_slot(44, "CASE-HOME", 7)
+        self._insert_slot(45, "CASE-TEMP", 3)
+        self._insert_asset("AT-TEMP-RETURN", serial_number="SER-TEMP-RETURN", location_type="STORAGE", home_slot_id=44)
+        asset_id = int(
+            self.conn.execute("SELECT id FROM assets WHERE asset_tag = ?;", ("AT-TEMP-RETURN",)).fetchone()["id"]
+        )
+        self.conn.execute(
+            "INSERT INTO slot_occupancy (slot_id, asset_id, assigned_at) VALUES (?, ?, ?);",
+            (45, asset_id, "2026-01-01T00:00:00Z"),
+        )
+        self.conn.execute("UPDATE slots SET current_asset_tag = ? WHERE id = ?;", ("AT-TEMP-RETURN", 45))
+        self.conn.commit()
+
+        response = self.client.get("/assets/search?asset_tag=AT-TEMP-RETURN")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Stored in CASE-TEMP, Slot 3", response.data)
+        self.assertIn(b"Stored in CASE-HOME, Slot 7", response.data)
+
     def test_search_shows_unslotted_wording_for_asset_without_slot(self) -> None:
         self._insert_asset("AT-UNSLOTTED-WORD", serial_number="SER-UNSLOTTED-WORD", location_type="STORAGE", home_slot_id=None)
 

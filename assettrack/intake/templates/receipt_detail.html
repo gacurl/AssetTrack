@@ -493,6 +493,7 @@
           <th>Movement</th>
           <th>Holder</th>
           <th>Home Slot</th>
+          {% if receipt.receipt_type == "RETURN" %}<th>Return Destination</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -500,6 +501,7 @@
           {% set issue_holder = asset.get("holder_snapshot") if asset.get("holder_snapshot") is mapping else None %}
           {% set return_holder = asset.get("from_holder_snapshot") if asset.get("from_holder_snapshot") is mapping else None %}
           {% set home_slot = asset.get("home_slot") if asset.get("home_slot") is mapping else None %}
+          {% set return_slot = asset.get("return_slot") if asset.get("return_slot") is mapping else None %}
           <tr>
             <td class="mono asset-tag">{{ asset.get("asset_tag") or "" }}</td>
             <td>
@@ -555,10 +557,19 @@
                 Unslotted
               {% endif %}
             </td>
+            {% if receipt.receipt_type == "RETURN" %}
+              <td>
+                {% if return_slot %}
+                  {{ return_slot.get("case_name") or "Unknown" }} / {{ return_slot.get("slot_position") if return_slot.get("slot_position") is not none else "Unknown" }}
+                {% else %}
+                  Unslotted
+                {% endif %}
+              </td>
+            {% endif %}
           </tr>
         {% else %}
           <tr>
-            <td colspan="5">No assets were captured in this receipt snapshot.</td>
+            <td colspan="{{ 6 if receipt.receipt_type == 'RETURN' else 5 }}">No assets were captured in this receipt snapshot.</td>
           </tr>
         {% endfor %}
       </tbody>
